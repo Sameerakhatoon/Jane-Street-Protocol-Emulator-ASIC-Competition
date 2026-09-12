@@ -1,0 +1,171 @@
+# tse_isa.yaml: the single source of truth for the TSE lane instruction set
+# (ISA version 1): encodings, cycle costs, fetch model, latency constants.
+# Bits not covered by a field are reserved and must be 0 (the decoder flags them).
+# Field keys: bits [hi, lo]; enum (name table); kind minus1 (encoded = written - 1),
+# addr (jump target), csr (lane register); flag (assembler keyword that sets a
+# 1-bit field); key (written as name=value); set_by (1 when that key is given);
+# token (operand word that sets this field and forces the operand field to 0);
+# enum_by (names depend on another field, see wait_idx); asm_max (largest value
+# the assembler accepts; larger values decode but are reserved).
+isa: tse-lane
+version: 1
+word_bits: 16
+frame_slots: 4      # S: lane k owns SRAM cycles s with s mod 4 == k
+fetch_entries: 2    # words kept per lane, least recently used replaced
+fetch_latency: 1    # 1: decode from A_DOUT; 2: registered A_DOUT (timing fallback)
+data_frame: 16      # lane k owns data cycles s with s mod 16 == 4k + 3
+latency:            # pipeline constants, to be measured by test/test_latency.py
+  instr_to_port: 2      # dispatch in cycle c, TT output port changes at edge c+2
+  port_to_wait: 2       # input change during cycle k is seen by WAIT in cycle k+2
+  emit_to_trig_port: 3  # EMIT in cycle c, trigger-out port changes at edge c+3
+  cfg_write_visible: 2  # CSRW to a class-L word in cycle c: assists use the new value from c+2
+common:
+  op: {bits: [15, 13]}
+  ss: {bits: [12, 11], doc: side-set value for pins ss_base and ss_base+1}
+enums:
+  cond:   {ALWAYS: 0, XZ: 1, XDEC: 2, YDEC: 3, XNEY: 4, PIN: 5, TOUT: 6, GUARD: 7}
+  wsrc:   {PIN: 0, EV: 1, FLAG: 2, CHIP: 3}
+  setdst: {PINS: 0, PINDIRS: 1, X: 2, Y: 3, T: 4, XH: 5, IRQ: 6, CMD: 7}
+  movdst: {X: 0, Y: 1, PINS: 2, PINDIRS: 3, ISR: 4, OSR: 5, T: 6, PC: 7}
+  movsrc: {X: 0, Y: 1, PINS: 2, ISR: 3, OSR: 4, T: 5, NOTX: 6, C: 7}
+  outdst: {PINS: 0, PINDIRS: 1, X: 2, Y: 3, "NULL": 4, T: 5}
+  insrc:  {PINS: 0, X: 1, Y: 2, ZEROS: 3, ONES: 4, OSR: 5}
+# Event map for WAIT idx and STATUS[7:0]. PIN has no names: idx 0 to 3 are
+# levels, 4 to 7 "changed since dispatch". The first name of a value is canonical.
+wait_idx:
+  EV:   {TXNEED: 0, TIMER: 0, RXFULL: 1, RULEHIT: 2, CRCOK: 3, ERR: 4, BITSTART: 5, TXIDLE: 6, ABORT: 7}
+  FLAG: {GUARD: 0, SAMPLE: 1, HALF: 2, EDGE: 3, HTXF: 4, HRXE: 5, SYNCED: 6, ONE: 7}
+  CHIP: {CF0: 0, CF1: 1, CF2: 2, CF3: 3, TRIG: 4, TICK: 5}
+instructions:
+  JMP:
+    match: {op: 0}
+    fields:
+      cond:   {bits: [10, 8], enum: cond}
+      target: {bits: [7, 0], kind: addr}
+    cycles: {base: 1}
+    doc: Jump to target if cond holds. XDEC and YDEC test for nonzero, then decrement.
+  WAIT:
+    match: {op: 1}
+    fields:
+      pol:   {bits: [10, 10]}
+      src:   {bits: [9, 8], enum: wsrc}
+      idx:   {bits: [7, 5], enum_by: src}
+      to:    {bits: [4, 4], flag: to, doc: time out when T counts down to 0}
+      alt:   {bits: [3, 3], flag: alt, doc: also end on the lane's alternate condition (LANE_CFG.alt_*)}
+      delay: {bits: [2, 0]}
+    cycles: {base: 1, wait: true, delay: delay}
+    doc: Stall until the signal equals pol (or the alternate holds, or T expires), then delay cycles.
+  SET:
+    match: {op: 2}
+    fields:
+      dst: {bits: [10, 8], enum: setdst}
+      imm: {bits: [7, 0]}
+    cycles: {base: 1}
+    doc: Write an immediate. PINS and PINDIRS use imm[7:4] as a write mask for imm[3:0].
+  MOV:
+    match: {op: 3}
+    fields:
+      dst:   {bits: [10, 8], enum: movdst}
+      src:   {bits: [7, 5], enum: movsrc}
+      delay: {bits: [4, 0]}
+    cycles: {base: 1, delay: delay}
+    doc: Copy a 16-bit register. dst PC is a computed jump.
+  OUT:
+    match: {op: 4}
+    fields:
+      dst:   {bits: [10, 8], enum: outdst}
+      n:     {bits: [7, 3], kind: minus1}
+      delay: {bits: [2, 0]}
+    cycles: {base: 1, delay: delay}
+    doc: Shift n bits (1 to 32) out of OSR, LSB first, into dst.
+  IN:
+    match: {op: 5}
+    fields:
+      src:   {bits: [10, 8], enum: insrc}
+      n:     {bits: [7, 3], kind: minus1}
+      delay: {bits: [2, 0]}
+    cycles: {base: 1, delay: delay}
+    doc: Shift n bits (1 to 32) from src into ISR, MSB first.
+  PUSH:
+    match: {op: 6, sub: 0}
+    fields:
+      sub: {bits: [10, 9]}
+      blk: {bits: [8, 8], flag: block}
+    cycles: {base: 1, wait: blk}
+    doc: ISR to the host RX mailbox, then clear ISR. blk stalls while the mailbox is full.
+  PULL:
+    match: {op: 6, sub: 1}
+    fields:
+      sub: {bits: [10, 9]}
+      blk: {bits: [8, 8], flag: block}
+    cycles: {base: 1, wait: blk}
+    doc: Host TX mailbox to OSR. Non-blocking PULL on an empty mailbox copies X instead.
+  CSRW:
+    match: {op: 6, sub: 2}
+    fields:
+      sub:  {bits: [10, 9]}
+      addr: {bits: [7, 0], kind: csr}
+    cycles: {base: 1, cfgword: 2}
+    doc: Write {Y,X} to lane register addr. Configuration words (class L) take 3 cycles in total.
+  STW:
+    match: {op: 6, sub: 2, dw: 1}
+    fields:
+      sub:  {bits: [10, 9]}
+      dw:   {bits: [8, 8]}
+      ind:  {bits: [7, 7], token: X, doc: "1: word address from X[6:0] (addr must then be 0)"}
+      addr: {bits: [6, 0]}
+    cycles: {base: 1, dslot: store}
+    constraints:
+      - {if: {ind: 1}, then: {addr: 0}}
+    doc: Store ISR to data window word addr in the lane's next data slot.
+  CSRR:
+    match: {op: 6, sub: 3}
+    fields:
+      sub:  {bits: [10, 9]}
+      addr: {bits: [7, 0], kind: csr}
+    cycles: {base: 1}
+    doc: Read lane register addr into {Y,X}.
+  LDW:
+    match: {op: 6, sub: 3, dw: 1}
+    fields:
+      sub:  {bits: [10, 9]}
+      dw:   {bits: [8, 8]}
+      ind:  {bits: [7, 7], token: X, doc: "1: word address from X[6:0] (addr must then be 0)"}
+      addr: {bits: [6, 0]}
+    cycles: {base: 1, dslot: load}
+    constraints:
+      - {if: {ind: 1}, then: {addr: 0}}
+    doc: Load data window word addr into OSR in the lane's next data slot.
+  DLY:
+    match: {op: 7, sub: 0}
+    fields:
+      sub: {bits: [10, 9]}
+      d:   {bits: [8, 0]}
+    cycles: {base: 1, delay: d}
+    doc: Do nothing for 1 + d cycles.
+  TMR:
+    match: {op: 7, sub: 1}
+    fields:
+      sub:   {bits: [10, 9]}
+      cclr:  {bits: [8, 8], flag: cclr, doc: reset clock C to 0}
+      gwe:   {bits: [7, 7], set_by: gsel, doc: write gsel}
+      gsel:  {bits: [6, 5], key: gsel, doc: "guard threshold GT[gsel] compared with C"}
+      delay: {bits: [4, 0]}
+    cycles: {base: 1, delay: delay}
+    doc: Timed-automaton clock control.
+  SIG:
+    match: {op: 7, sub: 2}
+    fields:
+      sub:  {bits: [10, 9]}
+      mask: {bits: [7, 4]}
+      val:  {bits: [3, 0]}
+    cycles: {base: 1}
+    doc: Write chip flags CF[3:0] under mask (visible to every lane next cycle).
+  EMIT:
+    match: {op: 7, sub: 3}
+    fields:
+      sub:   {bits: [10, 9]}
+      code:  {bits: [8, 3], asm_max: 0x3D, doc: 0x3E and 0x3F are reserved for TRIG and TIME records}
+      delay: {bits: [2, 0]}
+    cycles: {base: 1, delay: delay}
+    doc: Send event (code, X[7:0]) to the event unit. Never stalls.

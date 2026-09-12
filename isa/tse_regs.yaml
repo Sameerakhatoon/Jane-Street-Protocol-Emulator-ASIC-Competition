@@ -1,0 +1,112 @@
+# tse_regs.yaml: every lane register and every register of the host (chip) map
+# with address, class, storage and fields. Bits outside the listed fields do
+# not exist: they read 0 and have no storage.
+# Class: L configuration word (latch, or flop with CFG_LATCH = 0; cleared by
+# the loader, not by rst_n; lane CSRW costs 3 cycles; programs cannot read it),
+# F runtime flop (reset by rst_n), P write-only command pulse (reads 0),
+# R read-only (computed, no storage of its own).
+# Field form: [hi, lo], or {bits: [hi, lo], min, max, enum}. A register may
+# list require rules: {if: {field: value}, then: {field: value}}.
+# count/stride: an array of registers starting at addr.
+version: 1
+classes:
+  L: {storage: latch, reset: 0, cleared_by: clr, lane: w3, host: rw_stopped}
+  F: {storage: flop, reset: 0, cleared_by: rst_n, lane: rw, host: rw_stopped}
+  P: {storage: pulse, lane: w, host: w_stopped}
+  R: {storage: none, lane: r, host: r}
+lane_window: {host_base: 0x1000, stride: 0x100, size: 0x100, max_lanes: 4}
+regions:
+  sram:     {base: 0x0000, size: 0x0200, doc: program SRAM words; window w at 0x80 x w; 6x4 window 3 is the data window}
+  data:     {base: 0x0400, size: 0x0080, doc: data window for LDW and STW (alias of window 3 in 6x4)}
+  fallback: {base: 0x0800, size: 0x0008, doc: fallback latch program store}
+  lanes:    {base: 0x1000, size: 0x0400, doc: lane registers at 0x1000 + 0x100 x lane + reg}
+  xbar:     {base: 0x2000, size: 0x0040, doc: crossbar}
+  event:    {base: 0x3000, size: 0x0040, doc: event unit}
+  chip:     {base: 0x4000, size: 0x0040, doc: "chip control, status and mailboxes"}
+
+lane_regs:
+  CRC_POLY:    {addr: 0x00, class: L, fields: {poly: [31, 0]}, doc: "polynomial, left-aligned"}
+  CRC_INIT:    {addr: 0x01, class: L, fields: {init: [31, 0]}, doc: "initial value, left-aligned"}
+  CRC_XOR:     {addr: 0x02, class: L, fields: {xorout: [31, 0]}, doc: "final XOR in transmission order, left-aligned"}
+  CRC_CHECK:   {addr: 0x03, class: L, fields: {check: [31, 0]}, doc: "expected residue, left-aligned"}
+  CRC_CTL:     {addr: 0x04, class: L, fields: {wm1: [4, 0], refin: [5, 5], refout: [6, 6]}, doc: width minus 1 and reflection}
+  STUFF_CFG:   {addr: 0x08, class: L, fields: {n: [3, 0], ones: [4, 4], zeros: [5, 5]}, doc: stuff after n equal bits (0 off)}
+  CODEC_CFG:   {addr: 0x09, class: L, doc: line code,
+                fields: {mode: {bits: [1, 0], max: 2, enum: {NRZ: 0, NRZI: 1, MANCHESTER: 2}}, inv: [2, 2], t_on1: [3, 3]}}
+  DPLL_PERIOD: {addr: 0x10, class: L, fields: {period: [19, 0]}, doc: bit period in 1/16 cycle}
+  DPLL_SPT:    {addr: 0x11, class: L, fields: {spt: [19, 0]}, doc: sample point from bit start in 1/16 cycle}
+  DPLL_SJW:    {addr: 0x12, class: L, fields: {sjw: [15, 0]}, doc: largest correction per resync in 1/16 cycle}
+  DPLL_CTL:    {addr: 0x13, class: L, fields: {resync: [0, 0], dual: [1, 1], rise: [2, 2], fall: [3, 3]}, doc: resync and edge options}
+  TIMER_INC:   {addr: 0x14, class: L, fields: {inc: [23, 0]}, doc: "NCO increment: tick rate = f_clk x inc / 2^24"}
+  TIMER_CTL:   {addr: 0x15, class: L, fields: {reload: [15, 0], on_tick: [16, 16], en: [17, 17], ev0_sel: [18, 18]},
+                doc: "lane timer reload, mode and event 0 select"}
+  LANE_CFG:    {addr: 0x18, class: L, doc: "pins, framing, options and the WAIT alternate condition",
+                fields: {txpin: [1, 0], rxpin: [3, 2], ss_base: [5, 4], side_en: [6, 6], jmp_pin: [8, 7],
+                         tx_msb: [9, 9], rx_msb: [10, 10], tx_crc: [11, 11], rx_crc: [12, 12], arb_en: [13, 13],
+                         resp_coded: [14, 14], tx_owns_pin: [15, 15], rx_len_m1: [20, 16], idle: [21, 21],
+                         alt_pol: [22, 22], alt_src: {bits: [24, 23], enum: {PIN: 0, EV: 1, FLAG: 2, CHIP: 3}},
+                         alt_idx: [27, 25]}}
+  LANE_PROG:   {addr: 0x19, class: L, fields: {start_pc: [7, 0], window: [9, 8], fallback: [10, 10]},
+                doc: "start address, SRAM window, fallback store"}
+  GUARD01:     {addr: 0x1A, class: L, fields: {gt0: [15, 0], gt1: [31, 16]}, doc: guard thresholds GT0 and GT1 in cycles}
+  GUARD23:     {addr: 0x1B, class: L, fields: {gt2: [15, 0], gt3: [31, 16]}, doc: guard thresholds GT2 and GT3 in cycles}
+  TXDATA:      {addr: 0x20, class: F, fields: {data: [31, 0]}, doc: word to send; the write starts transmission}
+  TXCTL:       {addr: 0x21, class: F, fields: {count_m1: [4, 0], append_crc: [5, 5]}, doc: "bits to send minus 1, CRC append"}
+  RXDATA:      {addr: 0x22, class: R, fields: {data: [31, 0]}, doc: last complete RX word; reading clears RXFULL}
+  STATUS:      {addr: 0x23, class: R, doc: lane status,
+                fields: {ev: [7, 0], tflag: [8, 8], illegal: [9, 9], running: [10, 10], hits: [12, 11],
+                         rx_count: [17, 13], tx_active: [18, 18], crc_busy: [19, 19], serr: [20, 20],
+                         abort: [21, 21], aflag: [22, 22], timer: [23, 23], pc: [31, 24]}}
+  CMD:         {addr: 0x24, class: P, doc: command pulses (also SET CMD),
+                fields: {frame_rst: [0, 0], crc_clear: [1, 1], hard_arm: [2, 2], tx_abort: [3, 3],
+                         dpll_on: [4, 4], dpll_off: [5, 5], line_set: [6, 6], line_val: [7, 7]}}
+  CRC_RESULT:  {addr: 0x25, class: R, fields: {result: [31, 0]}, doc: "CRC register XOR CRC_XOR, right-aligned"}
+  CLOCK:       {addr: 0x26, class: R, fields: {c: [15, 0]}, doc: current value of the clock C}
+  TS:          {addr: 0x28, class: R, fields: {ts: [31, 0]}, doc: chip timestamp (alias of the event unit TS)}
+  RULE0_MATCH:    {addr: 0x40, class: L, fields: {pattern: [15, 0], mask: [31, 16]}, doc: rule 0 pattern and compare mask}
+  RULE0_RESP_POS: {addr: 0x41, class: L, fields: {resp: [15, 0], pos: {bits: [23, 16], max: 254}, any: [24, 24]},
+                   doc: rule 0 response bits and frame bit position}
+  RULE0_CTL:      {addr: 0x42, class: L, doc: rule 0 control,
+                   fields: {rlen_m1: [3, 0], offset: [7, 4], cond: {bits: [9, 8], enum: {NONE: 0, CRC_GOOD: 1, CRC_BAD: 2, TX_IDLE: 3}},
+                            drive: [10, 10], abort: [11, 11], en: [12, 12]}}
+  RULE1_MATCH:    {addr: 0x44, class: L, fields: {pattern: [15, 0], mask: [31, 16]}, doc: rule 1 pattern and compare mask}
+  RULE1_RESP_POS: {addr: 0x45, class: L, fields: {resp: [15, 0], pos: {bits: [23, 16], max: 254}, any: [24, 24]},
+                   doc: rule 1 response bits and frame bit position}
+  RULE1_CTL:      {addr: 0x46, class: L, doc: rule 1 control (chain extends rule 0 to 32-bit patterns),
+                   fields: {rlen_m1: [3, 0], offset: [7, 4], cond: {bits: [9, 8], enum: {NONE: 0, CRC_GOOD: 1, CRC_BAD: 2, TX_IDLE: 3}},
+                            drive: [10, 10], abort: [11, 11], en: [12, 12], chain: [13, 13]}}
+  RULE_CLK:       {addr: 0x48, class: L, doc: what clocks both rules (bit mode or pin-edge mode),
+                   fields: {src: [0, 0], clk_pin: [2, 1], edge: [3, 3], tick_delay: [11, 4]},
+                   require: [{if: {src: 0}, then: {tick_delay: 0}}]}
+
+chip_regs:
+  PAD_OUT:     {addr: 0x2000, count: 16, class: L, doc: "output pad p (0 to 7 uo_out, 8 to 15 uio)",
+                fields: {src: [3, 0], inv: [4, 4], od: [5, 5], en: [6, 6], idle: [7, 7], idle_oe: [8, 8]}}
+  LANE_IN:     {addr: 0x2020, count: 16, class: L, doc: "input of lane virtual pin i = lane x 4 + vpin",
+                fields: {src: {bits: [4, 0], max: 23}, inv: [5, 5], delay: [8, 6]}}
+  PIN_OPT:     {addr: 0x2030, class: L, fields: {host_spi_off: [0, 0], trig_pad: [1, 1], irq_pad: [2, 2], loopback: [3, 3]},
+                doc: pin options}
+  EV_CTL:      {addr: 0x3000, class: L, fields: {log_en: [0, 0], lane_mask: [4, 1], tick_k: [9, 5]}, doc: event log control}
+  EV_STATUS:   {addr: 0x3001, class: R, fields: {count: [3, 0], dropped: [11, 4], armed: [12, 12], fired: [13, 13], stage: [15, 14]},
+                doc: event FIFO and trigger status}
+  EV_POP:      {addr: 0x3002, class: R, fields: {record: [31, 0]}, doc: reading pops one event record}
+  TS:          {addr: 0x3003, class: R, fields: {ts: [31, 0]}, doc: chip timestamp}
+  EV_CLEAR:    {addr: 0x3005, class: P, fields: {fifo: [0, 0], drops: [1, 1]}, doc: "empty the FIFO, clear the drop counter"}
+  TRIG_MATCH:  {addr: 0x3008, count: 4, class: L, doc: trigger stage s match,
+                fields: {lanes: [3, 0], code: [9, 4], code_mask: [15, 10], data: [23, 16], data_mask: [31, 24]}}
+  TRIG_WIN:    {addr: 0x300C, count: 4, class: L, fields: {window: [15, 0]}, doc: cycles allowed since the previous stage (0 no limit)}
+  TRIG_CTL:    {addr: 0x3010, class: L, doc: trigger control,
+                fields: {last: [1, 0], en: [2, 2], rearm: [3, 3], width_m1: [11, 4], pol: [12, 12], stop_mask: [16, 13]}}
+  TRIG_ARM:    {addr: 0x3011, class: P, fields: {arm: [0, 0]}, doc: "arm: stage pointer to 0, clear fired and TRIG"}
+  ID:          {addr: 0x4000, class: R, fields: {magic: [7, 0], isa_version: [11, 8], lanes: [14, 12], cfg_latch: [15, 15], evq_depth: [19, 16]},
+                doc: "chip identity (magic 0x54)"}
+  RUN:         {addr: 0x4001, class: F, host: rw, fields: {run: [3, 0]}, doc: one bit per lane; takes effect at the next frame boundary}
+  STATUS:      {addr: 0x4002, class: R, doc: chip status,
+                fields: {loaded: [0, 0], bist_done: [1, 1], bist_pass: [2, 2], host_err: [3, 3], halted: [7, 4], running: [11, 8]}}
+  BIST:        {addr: 0x4003, class: R, fields: {fail_word: [8, 0], element: [11, 9], background: [12, 12], fail: [13, 13]},
+                doc: memory self-test result}
+  LOAD_CRC:    {addr: 0x4004, class: R, fields: {crc: [31, 0]}, doc: running CRC-32 since BEGIN}
+  IRQ:         {addr: 0x4006, class: R, fields: {irq: [15, 0]}, doc: "sticky interrupt bits, 4 per lane; reading clears"}
+  MBOX_TX:     {addr: 0x4008, count: 4, class: F, host: w, fields: {data: [31, 0]}, doc: host to lane mailbox (PULL)}
+  MBOX_RX:     {addr: 0x400C, count: 4, class: R, fields: {data: [31, 0]}, doc: lane to host mailbox (PUSH); reading empties it}
+  MBOX_STATUS: {addr: 0x4010, class: R, fields: {full: [7, 0]}, doc: "bit 2 x lane TX mailbox full, bit 2 x lane + 1 RX full"}
