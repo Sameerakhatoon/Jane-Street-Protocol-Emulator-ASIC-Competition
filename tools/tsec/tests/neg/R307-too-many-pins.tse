@@ -1,0 +1,12 @@
+protocol p {
+  wire a : out;
+  wire b : out;
+  wire c : out;
+  wire d : out;
+  wire e : out;
+  role r : controller uses a, b, c, d, e {
+    var v : bits[8];
+    state idle { on host.pull(v) -> f; }
+    state f { seq { drive e = 0 for 1 us; } -> idle; }
+  }
+}

@@ -1,0 +1,4 @@
+tools/tsec/tests/neg/E217-no-states.tse:3:8: error: role 'r' has no states [E217]
+ 3 |   role r : target uses rx {
+   |        ^
+1 error(s); nothing compiled

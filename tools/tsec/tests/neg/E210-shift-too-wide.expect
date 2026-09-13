@@ -1,0 +1,4 @@
+tools/tsec/tests/neg/E210-shift-too-wide.tse:6:21: error: shift of 9 bits into bits[8] [E210]
+ 6 |     state f { seq { shift rx -> b lsb 9 each 1 us; } -> idle; }
+   |                     ^~~~~
+1 error(s); nothing compiled

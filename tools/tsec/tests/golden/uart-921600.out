@@ -1,0 +1,62 @@
+tsec: protocol 'uart', clock 60 MHz, S = 4, fetch buffer 2 word(s), fetch_latency 1, clock budget 50 ppm
+  param baud = 921600 (freq)
+  param tol = 0.02 (ratio)
+
+== role tx_side (controller) on lane 0
+strategy: DLY pacing
+addr  word   instruction                    note
+  0  c300   idle:  PULL  block                    anchor
+  1  4207          SET   X, 7                     loop count, also the phase lock
+  2  4010          SET   PINS, 0, mask=0b0001     drive tx
+  3  e040          DLY   64                       
+  4  8000   L4:    OUT   PINS, 1                  shift tx
+  5  e03e          DLY   62                       
+  6  0204          JMP   XDEC, L4                 
+  7  4011          SET   PINS, 1, mask=0b0001     drive tx
+  8  e03e          DLY   62                       
+  9  0000          JMP   ALWAYS, idle             
+obligations (cycles; worst case over all slot phases and buffer states):
+  line 30 drive tx     #0: at     0, ideal     0.00, error  0.00 <=  1.30  ok
+  line 31 shift tx     #0: at    66, ideal    65.10, error  0.90 <=  1.30  ok
+  line 31 shift tx     #1: at   131, ideal   130.21, error  0.79 <=  1.30  ok
+  line 31 shift tx     #2: at   196, ideal   195.31, error  0.69 <=  1.29  ok
+  line 31 shift tx     #3: at   261, ideal   260.42, error  0.58 <=  1.29  ok
+  line 31 shift tx     #4: at   326, ideal   325.52, error  0.48 <=  1.29  ok
+  line 31 shift tx     #5: at   391, ideal   390.62, error  0.38 <=  1.28  ok
+  line 31 shift tx     #6: at   456, ideal   455.73, error  0.27 <=  1.28  ok
+  line 31 shift tx     #7: at   521, ideal   520.83, error  0.17 <=  1.28  ok
+  line 32 drive tx     #0: at   586, ideal   585.94, error  0.06 <=  1.27  ok
+  hold after last edge >= 67 cycles (needs 63.8)  ok
+ACCEPTED: 10 instructions, image c300 4207 4010 e040 8000 e03e 0204 4011 e03e 0000
+
+== role rx_side (target) on lane 1
+strategy: DLY pacing
+addr  word   instruction                    note
+  0  2000   idle:  WAIT  0, PIN, 0                anchor
+  1  e01b          DLY   27                       
+  2  e000          DLY   0                        pad
+  3  4207          SET   X, 7                     loop count, also the phase lock
+  4  0500          JMP   PIN, idle                sample rx
+  5  e040          DLY   64                       
+  6  a000   L6:    IN    PINS, 1                  shift rx
+  7  e03e          DLY   62                       
+  8  0206          JMP   XDEC, L6                 
+  9  050b          JMP   PIN, ok9                 sample rx
+ 10  4601          SET   IRQ, 1                   framing error
+ 11  c100   ok9:   PUSH  block                    
+ 12  0000          JMP   ALWAYS, idle             
+obligations (cycles; worst case over all slot phases and buffer states):
+  line 42 sample rx    #0: sample in [34, 35) after edge, window [26.0, 39.1]  ok
+  line 43 shift rx     #0: at    66, ideal    65.10, error  0.90 <=  1.30  ok
+  line 43 shift rx     #1: at   131, ideal   130.21, error  0.79 <=  1.30  ok
+  line 43 shift rx     #2: at   196, ideal   195.31, error  0.69 <=  1.29  ok
+  line 43 shift rx     #3: at   261, ideal   260.42, error  0.58 <=  1.29  ok
+  line 43 shift rx     #4: at   326, ideal   325.52, error  0.48 <=  1.29  ok
+  line 43 shift rx     #5: at   391, ideal   390.62, error  0.38 <=  1.28  ok
+  line 43 shift rx     #6: at   456, ideal   455.73, error  0.27 <=  1.28  ok
+  line 43 shift rx     #7: at   521, ideal   520.83, error  0.17 <=  1.28  ok
+  line 44 sample rx    #0: at   586, ideal   585.94, error  0.06 <=  1.27  ok
+  re-armed within 10 cycles of the last sample (limit 31)  ok
+ACCEPTED: 13 instructions, image 2000 e01b e000 4207 0500 e040 a000 e03e 0206 050b 4601 c100 0000
+
+RESULT: all roles accepted, image ready

@@ -1,0 +1,7 @@
+tools/tsec/tests/neg/E101-unknown-name.tse:2:24: error: unknown name 'baudrate' [E101]
+ 2 |   param t : time = 3 * baudrate;
+   |                        ^~~~~~~~
+tools/tsec/tests/neg/E101-unknown-name.tse:3:22: error: unknown unit 'parsecs' [E101]
+ 3 |   param u : time = 4 parsecs;
+   |                      ^~~~~~~
+2 error(s); nothing compiled

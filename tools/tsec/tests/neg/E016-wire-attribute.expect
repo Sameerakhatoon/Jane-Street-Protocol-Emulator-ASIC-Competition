@@ -1,0 +1,4 @@
+tools/tsec/tests/neg/E016-wire-attribute.tse:2:17: error: unknown wire attribute 'push_pul' [E016]
+ 2 |   wire tx : out push_pul;
+   |                 ^~~~~~~~
+1 error(s); nothing compiled

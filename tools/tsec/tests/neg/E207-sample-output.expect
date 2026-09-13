@@ -1,0 +1,4 @@
+tools/tsec/tests/neg/E207-sample-output.tse:6:28: error: cannot sample 'tx': it is declared 'out' [E207]
+ 6 |     state f { seq { sample tx expect 0 for 1 us; } -> idle; }
+   |                            ^~
+1 error(s); nothing compiled

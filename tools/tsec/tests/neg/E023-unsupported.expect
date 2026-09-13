@@ -1,0 +1,4 @@
+tools/tsec/tests/neg/E023-unsupported.tse:2:3: error: 'frame' is not supported by this version of tsec [E023]
+ 2 |   frame f { }
+   |   ^~~~~
+1 error(s); nothing compiled

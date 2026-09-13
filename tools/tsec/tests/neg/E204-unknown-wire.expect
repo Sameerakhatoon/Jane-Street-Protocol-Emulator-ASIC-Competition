@@ -1,0 +1,4 @@
+tools/tsec/tests/neg/E204-unknown-wire.tse:6:27: error: unknown wire 'tz' [E204]
+ 6 |     state f { seq { drive tz = 0 for 1 us; } -> idle; }
+   |                           ^~
+1 error(s); nothing compiled

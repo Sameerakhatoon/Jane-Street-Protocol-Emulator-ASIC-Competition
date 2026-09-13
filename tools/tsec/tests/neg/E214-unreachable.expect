@@ -1,0 +1,4 @@
+tools/tsec/tests/neg/E214-unreachable.tse:5:11: error: state 'lost' is unreachable [E214]
+ 5 |     state lost { on fall(rx) -> idle; }
+   |           ^~~~
+1 error(s); nothing compiled

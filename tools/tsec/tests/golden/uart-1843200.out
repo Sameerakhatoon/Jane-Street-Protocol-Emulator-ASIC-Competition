@@ -1,0 +1,72 @@
+tsec: protocol 'uart', clock 60 MHz, S = 4, fetch buffer 2 word(s), fetch_latency 1, clock budget 50 ppm
+  param baud = 1.8432e+06 (freq)
+  param tol = 0.02 (ratio)
+
+== role tx_side (controller) on lane 0
+strategy: bit-timer pacing (DLY pacing rejected: shift tx (line 31, visit 0): error 2.45 cycles exceeds budget 0.65 (worst at phase 3, warm buffer))
+addr  word   instruction                    note
+  0  c300   idle:  PULL  block                    anchor
+  1  e000          DLY   0                        pad: start the next pair on an SRAM word
+  2  4710          SET   CMD, 0x10                start bit timer in phase
+  3  4010          SET   PINS, 0, mask=0b0001     drive tx
+  4  4207          SET   X, 7                     
+  5  e000          DLY   0                        pad: start the next pair on an SRAM word
+  6  25a0   L6:    WAIT  1, EV, 5                 bit timer tick
+  7  8000          OUT   PINS, 1                  shift tx
+  8  0206          JMP   XDEC, L6                 
+  9  e000          DLY   0                        pad: start the next pair on an SRAM word
+ 10  25a0          WAIT  1, EV, 5                 bit timer tick
+ 11  4011          SET   PINS, 1, mask=0b0001     drive tx
+ 12  25a0          WAIT  1, EV, 5                 hold for the last gap
+ 13  4720          SET   CMD, 0x20                
+ 14  0000          JMP   ALWAYS, idle             
+assist config: DPLL_PERIOD = 521 (bit timer 521/16 = 32.5625 cycles), resync off, phase +0.50 cycles
+obligations (cycles; worst case over all slot phases and buffer states):
+  line 30 drive tx     #0: at     0, ideal     0.00, error  0.00 <=  0.65  ok
+  line 31 shift tx     #0: at    33, ideal    32.55, error  0.45 <=  0.65  ok
+  line 31 shift tx     #1: at    65, ideal    65.10, error  0.10 <=  0.65  ok
+  line 31 shift tx     #2: at    98, ideal    97.66, error  0.34 <=  0.65  ok
+  line 31 shift tx     #3: at   130, ideal   130.21, error  0.21 <=  0.64  ok
+  line 31 shift tx     #4: at   163, ideal   162.76, error  0.24 <=  0.64  ok
+  line 31 shift tx     #5: at   195, ideal   195.31, error  0.31 <=  0.64  ok
+  line 31 shift tx     #6: at   228, ideal   227.86, error  0.14 <=  0.64  ok
+  line 31 shift tx     #7: at   261, ideal   260.42, error  0.58 <=  0.64  ok
+  line 32 drive tx     #0: at   293, ideal   292.97, error  0.03 <=  0.64  ok
+  hold after last edge >= 39 cycles (needs 31.9)  ok
+ACCEPTED: 15 instructions, image c300 e000 4710 4010 4207 e000 25a0 8000 0206 e000 25a0 4011 25a0 4720 0000
+
+== role rx_side (target) on lane 1
+strategy: bit-timer pacing (DLY pacing rejected: shift rx (line 43, visit 0): error 2.45 cycles exceeds budget 0.65 (worst at phase 3, warm buffer))
+addr  word   instruction                    note
+  0  2000   idle:  WAIT  0, PIN, 0                anchor
+  1  e00d          DLY   13                       
+  2  4710          SET   CMD, 0x10                start bit timer in phase
+  3  0500          JMP   PIN, idle                sample rx
+  4  4207          SET   X, 7                     
+  5  e000          DLY   0                        pad: start the next pair on an SRAM word
+  6  25a0   L6:    WAIT  1, EV, 5                 bit timer tick
+  7  a000          IN    PINS, 1                  shift rx
+  8  0206          JMP   XDEC, L6                 
+  9  e000          DLY   0                        pad: start the next pair on an SRAM word
+ 10  25a0          WAIT  1, EV, 5                 bit timer tick
+ 11  050d          JMP   PIN, ok11                sample rx
+ 12  4601          SET   IRQ, 1                   framing error
+ 13  4720   ok11:  SET   CMD, 0x20                
+ 14  c100          PUSH  block                    
+ 15  0000          JMP   ALWAYS, idle             
+assist config: DPLL_PERIOD = 521 (bit timer 521/16 = 32.5625 cycles), resync off, phase +0.50 cycles
+obligations (cycles; worst case over all slot phases and buffer states):
+  line 42 sample rx    #0: sample in [16, 17) after edge, window [13.0, 19.5]  ok
+  line 43 shift rx     #0: at    33, ideal    32.55, error  0.45 <=  0.65  ok
+  line 43 shift rx     #1: at    65, ideal    65.10, error  0.10 <=  0.65  ok
+  line 43 shift rx     #2: at    98, ideal    97.66, error  0.34 <=  0.65  ok
+  line 43 shift rx     #3: at   130, ideal   130.21, error  0.21 <=  0.64  ok
+  line 43 shift rx     #4: at   163, ideal   162.76, error  0.24 <=  0.64  ok
+  line 43 shift rx     #5: at   195, ideal   195.31, error  0.31 <=  0.64  ok
+  line 43 shift rx     #6: at   228, ideal   227.86, error  0.14 <=  0.64  ok
+  line 43 shift rx     #7: at   261, ideal   260.42, error  0.58 <=  0.64  ok
+  line 44 sample rx    #0: at   293, ideal   292.97, error  0.03 <=  0.64  ok
+  re-armed within 12 cycles of the last sample (limit 15)  ok
+ACCEPTED: 16 instructions, image 2000 e00d 4710 0500 4207 e000 25a0 a000 0206 e000 25a0 050d 4601 4720 c100 0000
+
+RESULT: all roles accepted, image ready

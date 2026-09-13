@@ -1,0 +1,4 @@
+tools/tsec/tests/neg/E202-unknown-state.tse:5:37: error: state 'frame' does not exist in role 'r' [E202]
+ 5 |     state idle { on host.pull(b) -> frame; }
+   |                                     ^~~~~
+1 error(s); nothing compiled

@@ -1,0 +1,6 @@
+tools/tsec/tests/neg/R314-rearm.tse:11:9: error: re-arm too late in role 'r': listening again 10 cycles after the last sample, must be at most 5 (phase 0, cold buffer) [R314]
+ 11 |         sample rx expect 1 for 100 ns ~ 5 ns;
+    |         ^~~~~~
+  note: with DLY pacing: re-arm: listening again 8 cycles after the last sample, must be at most 5 (phase 0, cold buffer)
+  note: hint: timer-paced edges still land on whole cycles (up to half a cycle of error); lower the rate, widen the tolerance or use the TX shift register
+1 obligation(s) or limit(s) not met; no image written (rule R1)

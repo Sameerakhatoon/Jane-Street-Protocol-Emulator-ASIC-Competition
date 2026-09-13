@@ -1,0 +1,3 @@
+protocol p {
+  param x : count = sh[3];
+}

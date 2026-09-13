@@ -1,0 +1,4 @@
+tools/tsec/tests/neg/E110-not-a-constant.tse:2:21: error: 'sh' is not a constant here [E110]
+ 2 |   param x : count = sh[3];
+   |                     ^~
+1 error(s); nothing compiled

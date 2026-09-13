@@ -1,0 +1,4 @@
+tools/tsec/tests/neg/E013-expected-expression.tse:2:23: error: expected an expression but found ';' [E013]
+ 2 |   param baud : freq = ;
+   |                       ^
+1 error(s); nothing compiled

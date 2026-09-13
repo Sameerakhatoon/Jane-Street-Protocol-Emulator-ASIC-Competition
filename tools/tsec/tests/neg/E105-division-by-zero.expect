@@ -1,0 +1,4 @@
+tools/tsec/tests/neg/E105-division-by-zero.tse:2:23: error: division by zero [E105]
+ 2 |   param x : ratio = 1 / 0;
+   |                       ^
+1 error(s); nothing compiled

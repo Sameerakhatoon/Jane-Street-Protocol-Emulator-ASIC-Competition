@@ -1,0 +1,4 @@
+tools/tsec/tests/neg/E001-bad-character.tse:2:33: error: unexpected character '$' [E001]
+ 2 |   param baud : freq = 115200 Hz $;
+   |                                 ^
+1 error(s); nothing compiled

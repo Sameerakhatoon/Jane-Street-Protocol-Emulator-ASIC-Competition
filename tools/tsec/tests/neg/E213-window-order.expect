@@ -1,0 +1,4 @@
+tools/tsec/tests/neg/E213-window-order.tse:5:60: error: window must be [a, b] with times 0 <= a < b [E213]
+ 5 |     state f { seq { sample rx expect 0 within [2 us, 1 us] after fall(rx); } -> idle; }
+   |                                                            ^~~~~
+1 error(s); nothing compiled

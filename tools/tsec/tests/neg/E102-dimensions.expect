@@ -1,0 +1,4 @@
+tools/tsec/tests/neg/E102-dimensions.tse:2:27: error: cannot add time and frequency [E102]
+ 2 |   param t : time = 4.7 us + 400 kHz;
+   |                           ^
+1 error(s); nothing compiled

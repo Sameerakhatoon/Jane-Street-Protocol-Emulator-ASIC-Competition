@@ -1,0 +1,4 @@
+tools/tsec/tests/neg/E019-event.tse:4:18: error: expected an event but found '5' [E019]
+ 4 |     state s { on 5 -> s; }
+   |                  ^
+1 error(s); nothing compiled

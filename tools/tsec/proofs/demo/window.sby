@@ -1,0 +1,26 @@
+[tasks]
+ok    prv
+tight prv
+bug   prv
+cov   cvr
+
+[options]
+prv: mode prove
+cvr: mode cover
+cvr: depth 20
+
+[engines]
+prv: abc pdr
+cvr: smtbmc boolector
+
+[script]
+ok:    verilog_defines -DLO=3 -DHI=4
+cov:   verilog_defines -DLO=3 -DHI=4
+tight: verilog_defines -DLO=3 -DHI=3
+bug:   verilog_defines -DLO=3 -DHI=4 -DBUG_EXTRA_STAGE
+read_verilog -formal -sv tse_window_check.sv demo_dut.sv
+prep -top top
+
+[files]
+tse_window_check.sv
+demo_dut.sv

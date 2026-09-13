@@ -1,0 +1,49 @@
+Spec name=uart @17:10
+  items:
+    Param name=baud type=freq value=(115200 Hz) @18:9
+    Param name=tol type=ratio value=(2 %) @19:9
+    UnitDef name=bit value=(1 / baud) @20:9
+    Wire name=tx dir=out @22:8
+      attrs:
+        WireAttr name=push_pull
+        WireAttr name=idle value=(1)
+    Wire name=rx dir=in @23:8
+    Role name=tx_side kind=controller uses=[tx] @25:8
+      vars:
+        Var name=b type=bits[8] @26:9
+      states:
+        State name=idle @27:11
+          edges:
+            OnEdge target=frame @27:19
+              event:
+                Event kind=named name=host attr=pull @27:22
+                  args:
+                    b
+        State name=frame @28:11
+          edges:
+            SeqEdge target=idle @29:7
+              body:
+                Drive wire=tx value=(0) for=(1 bit) tol=(tol) @30:9
+                Shift out=True var=b order=lsb count=(8) wires=[tx] each=(1 bit) tol=(tol) @31:9
+                Drive wire=tx value=(1) for=(1 bit) tol=(tol) @32:9
+    Role name=rx_side kind=target uses=[rx] @37:8
+      vars:
+        Var name=b type=bits[8] @38:9
+      states:
+        State name=idle @39:11
+          edges:
+            OnEdge target=frame @39:19
+              event:
+                Event kind=fall name=rx @39:22
+        State name=frame @40:11
+          edges:
+            SeqEdge target=idle @41:7
+              body:
+                Sample wire=rx expect=(0) for=(1 bit) @42:9
+                  window:
+                    Window lo=(0.4 bit) hi=(0.6 bit) @42:54
+                      after:
+                        Event kind=fall name=rx @42:60
+                Shift var=b order=lsb count=(8) wires=[rx] each=(1 bit) tol=(tol) @43:9
+                Sample wire=rx expect=(1) for=(0.5 bit) tol=(tol) @44:9
+                HostIO var=b @45:9

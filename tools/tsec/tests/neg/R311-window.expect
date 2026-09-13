@@ -1,0 +1,6 @@
+tools/tsec/tests/neg/R311-window.tse:9:9: error: response window not met in role 'r': sample rx, visit 0: sample in [60, 61) cycles after the edge, outside [60.0, 60.6] (worst at phase 3, warm buffer) [R311]
+ 9 |         sample rx expect 0 within [1 us, 1.01 us] after fall(rx) for 10 us;
+   |         ^~~~~~
+  note: with DLY pacing: sample rx, visit 0: sample in [58, 59) cycles after the edge, outside [60.0, 60.6] (worst at phase 3, warm buffer)
+  note: hint: timer-paced edges still land on whole cycles (up to half a cycle of error); lower the rate, widen the tolerance or use the TX shift register
+1 obligation(s) or limit(s) not met; no image written (rule R1)

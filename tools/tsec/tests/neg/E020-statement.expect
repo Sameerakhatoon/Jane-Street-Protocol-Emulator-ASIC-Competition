@@ -1,0 +1,4 @@
+tools/tsec/tests/neg/E020-statement.tse:6:21: error: unknown statement 'jump' [E020]
+ 6 |     state f { seq { jump tx; } -> idle; }
+   |                     ^~~~
+1 error(s); nothing compiled

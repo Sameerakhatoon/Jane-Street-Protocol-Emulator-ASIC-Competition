@@ -1,0 +1,16 @@
+// the next start edge may come 100 ns (6 ticks) after the stop sample
+protocol p {
+  wire rx : in;
+  role r : target uses rx {
+    var b : bits[8];
+    state idle { on fall(rx) -> f; }
+    state f {
+      seq {
+        sample rx expect 0 within [4 us, 6 us] after fall(rx) for 10 us;
+        shift rx -> b lsb 8 each 10 us ~ 2 %;
+        sample rx expect 1 for 100 ns ~ 5 ns;
+        push host b;
+      } -> idle;
+    }
+  }
+}

@@ -1,0 +1,4 @@
+tools/tsec/tests/neg/E021-role-kind.tse:3:12: error: expected controller, target or monitor but found 'boss' [E021]
+ 3 |   role r : boss uses rx {
+   |            ^~~~
+1 error(s); nothing compiled

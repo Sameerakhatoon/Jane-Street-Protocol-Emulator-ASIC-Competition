@@ -1,0 +1,11 @@
+tools/tsec/tests/neg/R310-edge-placement.tse:13:9: error: output placement outside tolerance in role 'tx_side': shift tx, visit 0: error 0.50 cycles exceeds budget 0.15 (worst at phase 3, warm buffer) [R310]
+ 13 |         shift b lsb 8 -> tx each 1 bit ~ tol;
+    |         ^~~~~
+  note: with DLY pacing: shift tx, visit 0: error 2.50 cycles exceeds budget 0.15 (worst at phase 3, warm buffer)
+  note: hint: timer-paced edges still land on whole cycles (up to half a cycle of error); lower the rate, widen the tolerance or use the TX shift register
+tools/tsec/tests/neg/R310-edge-placement.tse:14:9: error: output placement outside tolerance in role 'tx_side': drive tx, visit 0: error 0.50 cycles exceeds budget 0.15 (worst at phase 3, warm buffer) [R310]
+ 14 |         drive tx = 1 for 1 bit ~ tol;
+    |         ^~~~~
+  note: with DLY pacing: drive tx, visit 0: error 1.50 cycles exceeds budget 0.15 (worst at phase 3, warm buffer)
+  note: hint: timer-paced edges still land on whole cycles (up to half a cycle of error); lower the rate, widen the tolerance or use the TX shift register
+2 obligation(s) or limit(s) not met; no image written (rule R1)

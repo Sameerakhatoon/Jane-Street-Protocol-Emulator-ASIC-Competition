@@ -1,0 +1,4 @@
+tools/tsec/tests/neg/R307-too-many-pins.tse:7:40: error: role 'r' uses 5 wires; a lane has 4 pins [R307]
+ 7 |   role r : controller uses a, b, c, d, e {
+   |                                        ^
+1 obligation(s) or limit(s) not met; no image written (rule R1)

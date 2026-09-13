@@ -1,0 +1,4 @@
+tools/tsec/tests/neg/E010-expected-symbol.tse:2:21: error: expected '=' but found '115200' [E010]
+ 2 |   param baud : freq 115200 Hz;
+   |                     ^~~~~~
+1 error(s); nothing compiled

@@ -1,0 +1,6 @@
+tools/tsec/tests/neg/R317-timer-overrun.tse:9:21: error: bit-timer pacing overrun in role 'r': timer pacing overrun at phase 0: instruction 6 reached the timer wait at cycle 20, after tick 1 at cycle 2 [R317]
+ 9 |     state f { seq { shift b lsb 8 -> tx each 1 bit ~ 50 %; } -> idle; }
+   |                     ^~~~~
+  note: with DLY pacing: this obligation holds, but others fail
+  note: hint: the loop body needs more cycles than one period of 2.00 cycles; lower the rate or use a hardware assist
+1 obligation(s) or limit(s) not met; no image written (rule R1)

@@ -1,0 +1,10 @@
+// three states: the lowering supports one anchor edge and one seq
+protocol p {
+  wire tx : out;
+  role r : controller uses tx {
+    var b : bits[8];
+    state idle { on host.pull(b) -> f; }
+    state f { seq { drive tx = 0 for 1 us; } -> g; }
+    state g { seq { drive tx = 1 for 1 us; } -> idle; }
+  }
+}

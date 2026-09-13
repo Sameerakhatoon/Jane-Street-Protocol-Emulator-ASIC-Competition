@@ -1,0 +1,4 @@
+tools/tsec/tests/neg/R300-unsupported-shape.tse:7:49: error: not supported by this version of tsec: the seq must return to the initial state [R300]
+ 7 |     state f { seq { drive tx = 0 for 1 us; } -> g; }
+   |                                                 ^
+1 obligation(s) or limit(s) not met; no image written (rule R1)

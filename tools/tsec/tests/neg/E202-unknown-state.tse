@@ -1,0 +1,7 @@
+protocol p {
+  wire tx : out;
+  role r : controller uses tx {
+    var b : bits[8];
+    state idle { on host.pull(b) -> frame; }
+  }
+}

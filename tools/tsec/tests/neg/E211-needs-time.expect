@@ -1,0 +1,4 @@
+tools/tsec/tests/neg/E211-needs-time.tse:6:21: error: 'for' needs a time, got a frequency [E211]
+ 6 |     state f { seq { drive tx = 0 for 3 MHz; } -> idle; }
+   |                     ^~~~~
+1 error(s); nothing compiled

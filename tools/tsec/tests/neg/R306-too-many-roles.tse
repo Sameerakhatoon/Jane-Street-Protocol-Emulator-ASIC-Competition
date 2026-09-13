@@ -1,0 +1,20 @@
+// four roles, three lanes
+protocol p {
+  wire rx : in;
+  role a : target uses rx {
+    state idle { on fall(rx) -> f; }
+    state f { seq { sample rx expect 0 for 1 us; } -> idle; }
+  }
+  role b : target uses rx {
+    state idle { on fall(rx) -> f; }
+    state f { seq { sample rx expect 0 for 1 us; } -> idle; }
+  }
+  role c : target uses rx {
+    state idle { on fall(rx) -> f; }
+    state f { seq { sample rx expect 0 for 1 us; } -> idle; }
+  }
+  role d : target uses rx {
+    state idle { on fall(rx) -> f; }
+    state f { seq { sample rx expect 0 for 1 us; } -> idle; }
+  }
+}

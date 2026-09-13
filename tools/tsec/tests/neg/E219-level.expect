@@ -1,0 +1,7 @@
+tools/tsec/tests/neg/E219-level.tse:2:22: error: a wire level is 0 or 1 [E219]
+ 2 |   wire tx : out idle 3;
+   |                      ^
+tools/tsec/tests/neg/E219-level.tse:6:32: error: a wire level is 0 or 1 [E219]
+ 6 |     state f { seq { drive tx = 2 for 1 us; } -> idle; }
+   |                                ^
+2 error(s); nothing compiled

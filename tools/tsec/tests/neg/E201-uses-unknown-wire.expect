@@ -1,0 +1,4 @@
+tools/tsec/tests/neg/E201-uses-unknown-wire.tse:3:32: error: role 'r' uses unknown wire 'ty' [E201]
+ 3 |   role r : controller uses tx, ty {
+   |                                ^~
+1 error(s); nothing compiled

@@ -1,0 +1,48 @@
+// Every statement and edge form the parser and checker accept.
+protocol tour {
+  param rate : freq = 1 MHz;
+  unit  cyc  = 1 / rate;
+  wire  clk  : in sample_delay 2 filter 3;
+  wire  dat  : inout open_drain pull_up;
+  wire  aux  : out push_pull idle 0;
+  wire  rdy  : in;
+
+  event go = fall(dat) when clk == 1;
+
+  datasheet d {
+    rule hold : fall(clk) -> rise(clk) >= 4 cyc;
+    rule setup : edge(dat) -> rise(clk) >= 1 cyc when clk == 0;
+  }
+
+  role r : target uses clk, dat, aux, rdy lane 1 {
+    var sh  : bits[8];
+    var cnt : uint[4] = 0;
+    var ok  : bit;
+    assume ready : host.ready;
+    assume quiet : fall(clk) -> rise(clk) >= 2 cyc;
+
+    initial state idle {
+      on go -> work;
+    }
+    state work inv cnt <= 8 {
+      on fall(clk) when sh[7:1] == 0x2A and not (cnt == 3 or ok == 1) do {
+        drive dat = 0 within [1 cyc, 3 cyc] after fall(clk);
+        release dat for 2 cyc ~ 10 %;
+        shift (clk, rdy) -> sh msb 2;
+        shift sh lsb 1 -> (aux);
+      } -> loop;
+      respond ack : on rise(clk) when ok == 0 { drive aux = 1; } within [0 ns, 200 ns] -> loop;
+    }
+    state loop {
+      seq {
+        repeat 4 { await rise(clk) when rdy == 1 timeout 10 cyc; sample clk; }
+        if sh[0] == 1 { emit got(sh); } else { emit miss; }
+        set cnt = 0;
+        reset cnt, ok;
+        wait 5 cyc;
+        pull host sh;
+        push host sh;
+      } -> idle abort on rise(rdy) -> idle;
+    }
+  }
+}

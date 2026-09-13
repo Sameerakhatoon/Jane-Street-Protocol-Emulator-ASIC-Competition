@@ -1,0 +1,4 @@
+tools/tsec/tests/neg/E215-duplicate.tse:3:8: error: 'rx' is already declared at line 2 [E215]
+ 3 |   wire rx : in;
+   |        ^~
+1 error(s); nothing compiled

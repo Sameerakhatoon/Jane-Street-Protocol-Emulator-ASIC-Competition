@@ -1,0 +1,8 @@
+protocol p {
+  wire rx : in;
+  role r : target uses rx {
+    var b : bits[8];
+    state idle { on fall(rx) -> f; }
+    state f { seq { shift rx -> b lsb 9 each 1 us; } -> idle; }
+  }
+}

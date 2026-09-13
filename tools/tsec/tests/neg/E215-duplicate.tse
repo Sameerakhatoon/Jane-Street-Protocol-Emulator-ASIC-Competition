@@ -1,0 +1,8 @@
+protocol p {
+  wire rx : in;
+  wire rx : in;
+  role r : target uses rx {
+    state idle { on fall(rx) -> idle; }
+    state idle { on fall(rx) -> idle; }
+  }
+}

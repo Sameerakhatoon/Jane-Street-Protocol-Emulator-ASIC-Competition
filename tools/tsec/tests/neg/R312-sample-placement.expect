@@ -1,0 +1,6 @@
+tools/tsec/tests/neg/R312-sample-placement.tse:12:9: error: sample placement outside tolerance in role 'r': shift rx, visit 0: error 0.55 cycles exceeds budget 0.03 (worst at phase 3, warm buffer) [R312]
+ 12 |         shift rx -> b lsb 8 each 1 bit ~ 0.1 %;
+    |         ^~~~~
+  note: with DLY pacing: shift rx, visit 0: error 58.45 cycles exceeds budget 0.03 (worst at phase 3, warm buffer)
+  note: hint: timer-paced edges still land on whole cycles (up to half a cycle of error); lower the rate, widen the tolerance or use the TX shift register
+1 obligation(s) or limit(s) not met; no image written (rule R1)

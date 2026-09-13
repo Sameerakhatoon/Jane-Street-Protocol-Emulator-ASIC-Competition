@@ -1,0 +1,4 @@
+tools/tsec/tests/neg/E212-tolerance.tse:6:45: error: '~' needs a ratio or a time [E212]
+ 6 |     state f { seq { drive tx = 0 for 1 us ~ 3 MHz; } -> idle; }
+   |                                             ^
+1 error(s); nothing compiled

@@ -1,0 +1,4 @@
+tools/tsec/tests/neg/E024-comparison.tse:4:33: error: expected a comparison but found '=' [E024]
+ 4 |     rule r : fall(a) -> rise(a) = 1 us;
+   |                                 ^
+1 error(s); nothing compiled

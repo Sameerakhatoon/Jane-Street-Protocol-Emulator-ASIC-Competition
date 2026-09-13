@@ -1,0 +1,69 @@
+tsec: protocol 'uart', clock 60 MHz, S = 4, fetch buffer 2 word(s), fetch_latency 1, clock budget 50 ppm
+  param baud = 115200 (freq)
+  param tol = 0.02 (ratio)
+
+== role tx_side (controller) on lane 0
+strategy: DLY pacing
+addr  word   instruction                    note
+  0  c300   idle:  PULL  block                    anchor
+  1  4207          SET   X, 7                     loop count, also the phase lock
+  2  4010          SET   PINS, 0, mask=0b0001     drive tx
+  3  e1ff          DLY   511                      long delay, first part (9-bit DLY field)
+  4  e006          DLY   6                        
+  5  e003          DLY   3                        pad: loop starts a word (4 cycles, no fetch stall)
+  6  8000   L6:    OUT   PINS, 1                  shift tx
+  7  e1ff          DLY   511                      long delay, first part (9-bit DLY field)
+  8  e005          DLY   5                        
+  9  0206          JMP   XDEC, L6                 
+ 10  4011          SET   PINS, 1, mask=0b0001     drive tx
+ 11  e1ff          DLY   511                      long delay, first part (9-bit DLY field)
+ 12  e005          DLY   5                        
+ 13  0000          JMP   ALWAYS, idle             
+obligations (cycles; worst case over all slot phases and buffer states):
+  line 30 drive tx     #0: at     0, ideal     0.00, error  0.00 <= 10.42  ok
+  line 31 shift tx     #0: at   524, ideal   520.83, error  3.17 <= 10.39  ok
+  line 31 shift tx     #1: at  1044, ideal  1041.67, error  2.33 <= 10.36  ok
+  line 31 shift tx     #2: at  1564, ideal  1562.50, error  1.50 <= 10.34  ok
+  line 31 shift tx     #3: at  2084, ideal  2083.33, error  0.67 <= 10.31  ok
+  line 31 shift tx     #4: at  2604, ideal  2604.17, error  0.17 <= 10.29  ok
+  line 31 shift tx     #5: at  3124, ideal  3125.00, error  1.00 <= 10.26  ok
+  line 31 shift tx     #6: at  3644, ideal  3645.83, error  1.83 <= 10.23  ok
+  line 31 shift tx     #7: at  4164, ideal  4166.67, error  2.67 <= 10.21  ok
+  line 32 drive tx     #0: at  4684, ideal  4687.50, error  3.50 <= 10.18  ok
+  hold after last edge >= 521 cycles (needs 510.4)  ok
+ACCEPTED: 14 instructions, image c300 4207 4010 e1ff e006 e003 8000 e1ff e005 0206 4011 e1ff e005 0000
+
+== role rx_side (target) on lane 1
+strategy: DLY pacing
+addr  word   instruction                    note
+  0  2000   idle:  WAIT  0, PIN, 0                anchor
+  1  e0fe          DLY   254                      
+  2  e000          DLY   0                        pad
+  3  4207          SET   X, 7                     loop count, also the phase lock
+  4  0500          JMP   PIN, idle                sample rx
+  5  e1ff          DLY   511                      long delay, first part (9-bit DLY field)
+  6  e006          DLY   6                        
+  7  e003          DLY   3                        pad: loop starts a word (4 cycles, no fetch stall)
+  8  a000   L8:    IN    PINS, 1                  shift rx
+  9  e1ff          DLY   511                      long delay, first part (9-bit DLY field)
+ 10  e005          DLY   5                        
+ 11  0208          JMP   XDEC, L8                 
+ 12  050e          JMP   PIN, ok12                sample rx
+ 13  4601          SET   IRQ, 1                   framing error
+ 14  c100   ok12:  PUSH  block                    
+ 15  0000          JMP   ALWAYS, idle             
+obligations (cycles; worst case over all slot phases and buffer states):
+  line 42 sample rx    #0: sample in [258, 259) after edge, window [208.3, 312.5]  ok
+  line 43 shift rx     #0: at   524, ideal   520.83, error  3.17 <= 10.39  ok
+  line 43 shift rx     #1: at  1044, ideal  1041.67, error  2.33 <= 10.36  ok
+  line 43 shift rx     #2: at  1564, ideal  1562.50, error  1.50 <= 10.34  ok
+  line 43 shift rx     #3: at  2084, ideal  2083.33, error  0.67 <= 10.31  ok
+  line 43 shift rx     #4: at  2604, ideal  2604.17, error  0.17 <= 10.29  ok
+  line 43 shift rx     #5: at  3124, ideal  3125.00, error  1.00 <= 10.26  ok
+  line 43 shift rx     #6: at  3644, ideal  3645.83, error  1.83 <= 10.23  ok
+  line 43 shift rx     #7: at  4164, ideal  4166.67, error  2.67 <= 10.21  ok
+  line 44 sample rx    #0: at  4684, ideal  4687.50, error  3.50 <= 10.18  ok
+  re-armed within 8 cycles of the last sample (limit 250)  ok
+ACCEPTED: 16 instructions, image 2000 e0fe e000 4207 0500 e1ff e006 e003 a000 e1ff e005 0208 050e 4601 c100 0000
+
+RESULT: all roles accepted, image ready

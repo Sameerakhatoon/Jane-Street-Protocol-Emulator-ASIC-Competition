@@ -1,0 +1,7 @@
+protocol p {
+  wire rx : in;
+  role r : target uses rx {
+    state idle { on fall(rx) -> f; }
+    state f { seq { sample rx expect 0 within [2 us, 1 us] after fall(rx); } -> idle; }
+  }
+}

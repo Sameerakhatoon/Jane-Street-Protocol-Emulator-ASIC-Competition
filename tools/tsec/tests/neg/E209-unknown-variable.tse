@@ -1,0 +1,8 @@
+protocol p {
+  wire tx : out;
+  role r : controller uses tx {
+    var b : bits[8];
+    state idle { on host.pull(c) -> f; }
+    state f { seq { shift d lsb 8 -> tx each 1 us; } -> idle; }
+  }
+}

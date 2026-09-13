@@ -1,0 +1,4 @@
+tools/tsec/tests/neg/E018-edge.tse:4:15: error: expected on, after, seq or respond, found 'go' [E018]
+ 4 |     state s { go -> s; }
+   |               ^~
+1 error(s); nothing compiled

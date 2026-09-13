@@ -1,0 +1,10 @@
+tools/tsec/tests/neg/E0xx-recovery.tse:3:21: error: expected '=' but found '115200' [E010]
+ 3 |   param baud : freq 115200 Hz;
+   |                     ^~~~~~
+tools/tsec/tests/neg/E0xx-recovery.tse:4:17: error: unknown wire attribute 'push_pul' [E016]
+ 4 |   wire tx : out push_pul;
+   |                 ^~~~~~~~
+tools/tsec/tests/neg/E0xx-recovery.tse:9:21: error: unknown statement 'jump' [E020]
+ 9 |     state f { seq { jump tx; drive tx = 0 for 1 us; } -> idle; }
+   |                     ^~~~
+3 error(s); nothing compiled

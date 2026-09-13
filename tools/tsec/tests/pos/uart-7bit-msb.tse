@@ -1,0 +1,21 @@
+// build
+// 7 data bits, MSB first, two stop bits, 57600 baud.
+protocol uart7 {
+  param baud : freq  = 57.6 kHz;
+  param tol  : ratio = 1.5 %;
+  unit  bit  = 1 / baud;
+
+  wire tx : out push_pull idle 1;
+
+  role tx_side : controller uses tx {
+    var c : bits[7];
+    state idle  { on host.pull(c) -> frame; }
+    state frame {
+      seq {
+        drive tx = 0 for 1 bit ~ tol;
+        shift c msb 7 -> tx each 1 bit ~ tol;
+        drive tx = 1 for 2 bit ~ tol;
+      } -> idle;
+    }
+  }
+}

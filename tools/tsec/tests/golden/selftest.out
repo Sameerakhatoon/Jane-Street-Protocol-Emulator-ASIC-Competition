@@ -1,0 +1,14 @@
+self-test: encoder, decoder and timing model against the published ISA numbers
+  ok   JMP   XDEC, 6 side 1 = 0x0A06 (expected 0x0A06)
+  ok   OUT   PINS, 1 [6] = 0x8006 (expected 0x8006)
+  ok   EMIT  5 [2] = 0xE62A (expected 0xE62A)
+  ok   WAIT  1, PIN, 5, alt = 0x24A8 (expected 0x24A8)
+  ok   LDW   X = 0xC780 (expected 0xC780)
+  ok   UART example encodes to 4011 41FD C300 4207 4810 E806 8806 0A06 4011 0002
+  ok   all 65536 words: 55320 legal over 16 instructions, each re-encodes identically, the rest illegal
+  ok   UART layout 2, lane 0: bits [8] cycles, frame 80 cycles (expected 8 and 80)
+  ok   square wave with 1 buffer word(s): [(1, 5), (0, 7)] (expected [(1, 5), (0, 7)])
+  ok   square wave with 2 buffer word(s): [(1, 5), (0, 4)] (expected [(1, 5), (0, 4)])
+  ok   LDW lasts 2 to 17, STW 1 to 16 cycles over the 16 data-frame phases (expected 2 to 17, 1 to 16)
+  ok   CSRW LANE_CFG (class L) costs 3 cycles, CSRW TXDATA (class F) 1
+self-test passed

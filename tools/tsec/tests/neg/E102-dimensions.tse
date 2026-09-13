@@ -1,0 +1,3 @@
+protocol p {
+  param t : time = 4.7 us + 400 kHz;
+}

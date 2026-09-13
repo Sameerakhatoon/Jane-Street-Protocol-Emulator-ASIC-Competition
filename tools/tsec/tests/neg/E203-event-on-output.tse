@@ -1,0 +1,6 @@
+protocol p {
+  wire tx : out;
+  role r : controller uses tx {
+    state idle { on fall(tx) -> idle; }
+  }
+}

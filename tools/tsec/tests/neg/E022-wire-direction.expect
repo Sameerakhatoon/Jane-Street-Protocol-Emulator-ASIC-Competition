@@ -1,0 +1,4 @@
+tools/tsec/tests/neg/E022-wire-direction.tse:2:12: error: expected in, out or inout but found 'sideways' [E022]
+ 2 |   wire x : sideways;
+   |            ^~~~~~~~
+1 error(s); nothing compiled

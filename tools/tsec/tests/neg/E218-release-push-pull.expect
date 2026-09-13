@@ -1,0 +1,4 @@
+tools/tsec/tests/neg/E218-release-push-pull.tse:6:29: error: 'release' needs an open-drain wire; 'tx' is push-pull [E218]
+ 6 |     state f { seq { release tx for 1 us; } -> idle; }
+   |                             ^~
+1 error(s); nothing compiled

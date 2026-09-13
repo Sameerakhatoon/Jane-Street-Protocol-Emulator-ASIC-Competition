@@ -1,0 +1,4 @@
+tools/tsec/tests/neg/E203-event-on-output.tse:4:26: error: event fall(tx) needs an input wire [E203]
+ 4 |     state idle { on fall(tx) -> idle; }
+   |                          ^~
+1 error(s); nothing compiled

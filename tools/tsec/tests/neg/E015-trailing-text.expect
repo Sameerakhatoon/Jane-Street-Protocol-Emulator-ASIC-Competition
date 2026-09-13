@@ -1,0 +1,4 @@
+tools/tsec/tests/neg/E015-trailing-text.tse:4:1: error: text after the end of the protocol [E015]
+ 4 | wire extra : in;
+   | ^~~~
+1 error(s); nothing compiled

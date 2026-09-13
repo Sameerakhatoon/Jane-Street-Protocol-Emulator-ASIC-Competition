@@ -1,0 +1,4 @@
+tools/tsec/tests/neg/E025-bit-order.tse:6:29: error: expected lsb or msb but found 'lsx' [E025]
+ 6 |     state f { seq { shift b lsx 8 -> tx each 1 us; } -> idle; }
+   |                             ^~~
+1 error(s); nothing compiled

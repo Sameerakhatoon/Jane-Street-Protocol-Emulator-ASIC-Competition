@@ -1,0 +1,49 @@
+// uart.tse: 8N1 UART, transmitter and receiver roles.
+//
+// Obligations at 60 MHz, 115200 baud: one bit is 60e6 / 115200 = 520.83 ticks,
+// tol = 2 % of the interval before each action, minus 50 ppm of drift.
+//
+//   role     line  obligation  statement                ideal (ticks)        budget (ticks)
+//   tx_side  30    OB-EDGE     start bit edge           0 (reference)        10.42
+//   tx_side  31    OB-EDGE     data bit k, k = 0..7     520.83 * (k + 1)     10.42 - 50e-6 * ideal
+//   tx_side  32    OB-EDGE     stop bit edge            4687.50              10.18
+//   tx_side  32    OB-HOLD     stop bit held            >= 520.83 - 10.42 = 510.4
+//   rx_side  42    OB-WIN      start bit sample         [208.33, 312.50] after fall(rx)
+//   rx_side  43    OB-SAMP     data sample k            520.83 * (k + 1)     10.42 - 50e-6 * ideal
+//   rx_side  44    OB-SAMP     stop bit sample          4687.50              10.18
+//   rx_side  44    OB-REARM    waiting for fall(rx)     within floor(260.42 - 10.42) = 250
+//
+// tsec proves every row for every fetch slot phase and buffer state, or rejects.
+protocol uart {
+  param baud : freq  = 115200 Hz;
+  param tol  : ratio = 2 %;
+  unit  bit  = 1 / baud;
+
+  wire tx : out push_pull idle 1;
+  wire rx : in;
+
+  role tx_side : controller uses tx {
+    var b : bits[8];
+    state idle  { on host.pull(b) -> frame; }
+    state frame {
+      seq {
+        drive tx = 0 for 1 bit ~ tol;
+        shift b lsb 8 -> tx each 1 bit ~ tol;
+        drive tx = 1 for 1 bit ~ tol;
+      } -> idle;
+    }
+  }
+
+  role rx_side : target uses rx {
+    var b : bits[8];
+    state idle  { on fall(rx) -> frame; }
+    state frame {
+      seq {
+        sample rx expect 0 within [0.4 bit, 0.6 bit] after fall(rx) for 1 bit;
+        shift rx -> b lsb 8 each 1 bit ~ tol;
+        sample rx expect 1 for 0.5 bit ~ tol;
+        push host b;
+      } -> idle;
+    }
+  }
+}

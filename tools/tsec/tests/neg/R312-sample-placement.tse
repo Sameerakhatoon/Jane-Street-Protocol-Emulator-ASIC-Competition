@@ -1,0 +1,17 @@
+// 0.1 % of a 32.55-tick bit is 0.03 ticks: no sample lands that close
+protocol p {
+  param baud : freq = 1843200 Hz;
+  unit  bit  = 1 / baud;
+  wire rx : in;
+  role r : target uses rx {
+    var b : bits[8];
+    state idle { on fall(rx) -> f; }
+    state f {
+      seq {
+        sample rx expect 0 within [0.3 bit, 0.7 bit] after fall(rx) for 1 bit;
+        shift rx -> b lsb 8 each 1 bit ~ 0.1 %;
+        push host b;
+      } -> idle;
+    }
+  }
+}

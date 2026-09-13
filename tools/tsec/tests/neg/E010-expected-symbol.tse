@@ -1,0 +1,3 @@
+protocol p {
+  param baud : freq 115200 Hz;
+}

@@ -1,0 +1,8 @@
+protocol p {
+  wire tx : out;
+  role r : controller uses tx {
+    var b : bits[8];
+    state idle { on host.pull(b) -> f; }
+    state f { seq { drive tx = 0 for 3 MHz; } -> idle; }
+  }
+}

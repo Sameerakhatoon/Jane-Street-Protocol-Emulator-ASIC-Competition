@@ -1,0 +1,11 @@
+// three syntax errors in one file: all three are reported
+protocol p {
+  param baud : freq 115200 Hz;
+  wire tx : out push_pul;
+  wire rx : in;
+  role r : controller uses tx {
+    var b : bits[8];
+    state idle { on host.pull(b) -> f; }
+    state f { seq { jump tx; drive tx = 0 for 1 us; } -> idle; }
+  }
+}

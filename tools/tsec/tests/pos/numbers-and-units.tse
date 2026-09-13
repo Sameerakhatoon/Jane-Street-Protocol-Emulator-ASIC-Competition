@@ -1,0 +1,17 @@
+// Number forms, built-in and user units, consts, and constant arithmetic.
+protocol numbers {
+  param f      : freq  = 0.4 MHz;
+  param slow   : freq  = 100_000 Hz;
+  param ppm_ok : ratio = 50 ppm;
+  param mask   : count = 0xF0 | 0b0000_0101;
+  param shifted: count = (1 << 4) >> 2;
+  param both   : count = 0xFF & 0x3C;
+  const t_low  : time  = 1.3 us;
+  const t_sum  : time  = t_low + 200 ns - 0.1 us;
+  const t_neg  : time  = -(t_low - 2 us);
+  unit  period = 1 / f;
+  unit  half   = period / 2;
+  param t_half : time  = 1 half;
+  param wait_t : time  = 3 ms / 1000;
+  param ratio2 : ratio = t_low / period;
+}

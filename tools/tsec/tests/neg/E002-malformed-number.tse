@@ -1,0 +1,3 @@
+protocol p {
+  param mask : count = 0b102;
+}

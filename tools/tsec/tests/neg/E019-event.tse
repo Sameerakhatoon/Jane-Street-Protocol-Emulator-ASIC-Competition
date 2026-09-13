@@ -1,0 +1,6 @@
+protocol p {
+  wire rx : in;
+  role r : target uses rx {
+    state s { on 5 -> s; }
+  }
+}

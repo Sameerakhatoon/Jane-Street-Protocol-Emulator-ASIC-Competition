@@ -1,0 +1,3 @@
+protocol p {
+  wire x : sideways;
+}

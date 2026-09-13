@@ -1,0 +1,4 @@
+tools/tsec/tests/neg/R306-too-many-roles.tse:16:8: error: more roles than lanes: role 'd' would need lane 3, the chip has 3 [R306]
+ 16 |   role d : target uses rx {
+    |        ^
+1 obligation(s) or limit(s) not met; no image written (rule R1)

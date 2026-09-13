@@ -1,0 +1,59 @@
+// spi_target.tse: SPI target, mode 0 (CPOL = 0, CPHA = 0), MISO data from the host.
+//
+// Hand-computed obligations at 60 MHz (one tick = 16.67 ns), f_sck = 4 MHz, so
+// half = 125 ns = 7.5 ticks. Windows round inward: lower bounds up, upper bounds
+// down. Pads add 0 to 25 ns on each side, an assumed bound.
+//
+//   obligation          window                   ticks    implementation               worst case            margin
+//   first_bit  OB-WIN   [0, t_css - t_su]        [0, 5]   WAIT cs_n, then OUT from a    [4, 5) ticks + pads   -13.3 ns with full pads,
+//                       = [0, 95 ns]                      buffered word (D = 1)         = 66.7 to 108.3 ns    +11.7 ns with ideal pads
+//   miso       OB-WIN   [0, half - t_su]         [0, 7]   response rule 0, pin-edge     [3, 4) ticks + pads   28.3 ns
+//                       = [0, 120 ns]                     mode on fall(sck)             = 50.0 to 91.7 ns
+//   mosi       OB-WIN   [0, half - t_mo]         [0, 6]   two-word loop: WAIT low,      [1, 2) ticks + pads   46.7 ns
+//                       = [0, 105 ns]                     WAIT high, IN, JMP XDEC       = 16.7 to 58.3 ns
+//   loop re-arm         one SCK half period      7.5      2 cycles from IN to WAIT      2 ticks               5.5 ticks
+//   abort on rise(cs_n) stated bound                      WAIT alternate on cs_n        8 x 4 = 32 cycles     (bound, 0.53 us)
+//
+// Assumptions (the controller's side): sck_low, sck_high, css, window_loaded.
+// first_bit fails with the full 25 ns pad budget; it passes once pads are
+// measured below 11.7 ns, or if MISO is pre-driven while armed.
+// tsec parses and checks this spec; `build` rejects it with R300 because
+// respond, repeat and abort are not lowered yet.
+protocol spi_target_mode0 {
+  param f_sck : freq = 4 MHz;          // fastest SCK the controller will use
+  param t_su  : time = 5 ns;           // controller's MISO setup before its sampling edge
+  param t_css : time = 100 ns;         // controller's CS fall to first SCK rise
+  param t_mo  : time = 20 ns;          // controller's MOSI output delay after SCK falls
+  unit  half  = 1 / (2 * f_sck);
+
+  wire cs_n : in;
+  wire sck  : in;
+  wire mosi : in;
+  wire miso : out push_pull idle 0;
+
+  datasheet spi_controller {
+    rule sck_low  : fall(sck)  -> rise(sck) >= half;
+    rule sck_high : rise(sck)  -> fall(sck) >= half;
+    rule css      : fall(cs_n) -> rise(sck) >= t_css;
+  }
+
+  role tgt : target uses cs_n, sck, mosi, miso {
+    var txw : bits[32];                // four bytes from the host, MSB first
+    var rxb : bits[8];
+    assume window_loaded : host.window_loaded;
+    state idle  { on host.pull(txw) -> armed; }
+    state armed {
+      respond first_bit : on fall(cs_n) { shift txw msb 1 -> miso; }
+                          within [0 ns, t_css - t_su] -> bits;
+    }
+    state bits {
+      seq {
+        repeat 8 {
+          shift mosi -> rxb msb 1 within [0 ns, half - t_mo] after rise(sck);
+          shift txw msb 1 -> miso within [0 ns, half - t_su] after fall(sck);
+        }
+        push host rxb;
+      } -> bits abort on rise(cs_n) -> idle;
+    }
+  }
+}

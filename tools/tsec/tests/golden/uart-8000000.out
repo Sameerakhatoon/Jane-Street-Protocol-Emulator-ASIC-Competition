@@ -1,0 +1,39 @@
+tsec: protocol 'uart', clock 60 MHz, S = 4, fetch buffer 2 word(s), fetch_latency 1, clock budget 50 ppm
+  param baud = 8e+06 (freq)
+  param tol = 0.02 (ratio)
+
+== role tx_side (controller) on lane 0
+REJECTED: no lowering meets every obligation (rule R1, all or nothing)
+  strategy dly:
+    - R310 shift tx (line 31, visit 0): error 2.50 cycles exceeds budget 0.15 (worst at phase 3, warm buffer)
+    - R310 shift tx (line 31, visit 1): error 2.00 cycles exceeds budget 0.15 (worst at phase 3, warm buffer)
+    - R310 shift tx (line 31, visit 2): error 1.50 cycles exceeds budget 0.15 (worst at phase 3, warm buffer)
+    - R310 shift tx (line 31, visit 3): error 1.00 cycles exceeds budget 0.15 (worst at phase 3, warm buffer)
+    - ... 4 more
+    hint: a DLY-paced loop has a whole-cycle period (a multiple of S = 4 if it spans more than 2 word(s)); the series needs its ideal period
+  strategy timer:
+    - R310 shift tx (line 31, visit 0): error 0.50 cycles exceeds budget 0.15 (worst at phase 3, warm buffer)
+    - R310 shift tx (line 31, visit 2): error 0.50 cycles exceeds budget 0.15 (worst at phase 3, warm buffer)
+    - R310 shift tx (line 31, visit 4): error 0.50 cycles exceeds budget 0.15 (worst at phase 3, warm buffer)
+    - R310 shift tx (line 31, visit 6): error 0.50 cycles exceeds budget 0.15 (worst at phase 3, warm buffer)
+    - ... 1 more
+    hint: timer-paced edges still land on whole cycles (up to half a cycle of error); lower the rate, widen the tolerance or use the TX shift register
+
+== role rx_side (target) on lane 1
+REJECTED: no lowering meets every obligation (rule R1, all or nothing)
+  strategy dly:
+    - R314 re-arm: listening again 10 cycles after the last sample, must be at most 3 (phase 0, cold buffer)
+    - R314 re-arm: listening again 10 cycles after the last sample, must be at most 3 (phase 0, warm buffer)
+    - R314 re-arm: listening again 10 cycles after the last sample, must be at most 3 (phase 1, cold buffer)
+    - R314 re-arm: listening again 10 cycles after the last sample, must be at most 3 (phase 1, warm buffer)
+    - ... 13 more
+    hint: a DLY-paced loop has a whole-cycle period (a multiple of S = 4 if it spans more than 2 word(s)); the series needs its ideal period
+  strategy timer:
+    - R314 re-arm: listening again 10 cycles after the last sample, must be at most 3 (phase 0, cold buffer)
+    - R314 re-arm: listening again 10 cycles after the last sample, must be at most 3 (phase 0, warm buffer)
+    - R314 re-arm: listening again 11 cycles after the last sample, must be at most 3 (phase 1, cold buffer)
+    - R314 re-arm: listening again 11 cycles after the last sample, must be at most 3 (phase 1, warm buffer)
+    - ... 10 more
+    hint: timer-paced edges still land on whole cycles (up to half a cycle of error); lower the rate, widen the tolerance or use the TX shift register
+
+RESULT: REJECTED, no image written (all or nothing)

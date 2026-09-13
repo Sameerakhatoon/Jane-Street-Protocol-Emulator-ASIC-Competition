@@ -1,0 +1,4 @@
+tools/tsec/tests/neg/E011-expected-name.tse:2:8: error: expected a name but found '9' [E011]
+ 2 |   wire 9 : in;
+   |        ^
+1 error(s); nothing compiled

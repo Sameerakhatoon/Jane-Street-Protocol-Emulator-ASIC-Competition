@@ -1,0 +1,8 @@
+protocol p {
+  wire sda : inout open_drain pull_up;
+  role r : controller uses sda {
+    var b : bits[8];
+    state idle { on host.pull(b) -> f; }
+    state f { seq { drive sda = 1 for 1 us; } -> idle; }
+  }
+}

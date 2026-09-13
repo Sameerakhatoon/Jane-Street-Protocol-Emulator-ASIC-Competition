@@ -1,0 +1,6 @@
+protocol p {
+  wire rx : in;
+  role r : boss uses rx {
+    state s { on fall(rx) -> s; }
+  }
+}

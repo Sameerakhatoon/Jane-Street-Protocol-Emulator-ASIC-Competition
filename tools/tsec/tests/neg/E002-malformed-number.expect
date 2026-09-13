@@ -1,0 +1,4 @@
+tools/tsec/tests/neg/E002-malformed-number.tse:2:24: error: malformed number [E002]
+ 2 |   param mask : count = 0b102;
+   |                        ^~~~~
+1 error(s); nothing compiled

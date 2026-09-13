@@ -1,0 +1,4 @@
+protocol p {
+  param t : time = 3 * baudrate;
+  param u : time = 4 parsecs;
+}

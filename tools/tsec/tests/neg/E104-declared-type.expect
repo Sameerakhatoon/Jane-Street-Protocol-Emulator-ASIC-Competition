@@ -1,0 +1,4 @@
+tools/tsec/tests/neg/E104-declared-type.tse:2:9: error: param 'baud' is declared freq but its value is a time [E104]
+ 2 |   param baud : freq = 1 ms;
+   |         ^~~~
+1 error(s); nothing compiled

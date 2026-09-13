@@ -1,0 +1,4 @@
+tools/tsec/tests/neg/E205-not-in-uses.tse:7:27: error: wire 'led' is not in the 'uses' list of role 'r' [E205]
+ 7 |     state f { seq { drive led = 0 for 1 us; } -> idle; }
+   |                           ^~~
+1 error(s); nothing compiled
