@@ -1,56 +1,61 @@
 # Tiny Tapeout project information
 project:
-  title:        ""      # Project title
-  author:       ""      # Your name
-  discord:      ""      # Your discord username, for communication and automatically assigning you a Tapeout role (optional)
-  description:  ""      # One line description of what your project does
-  language:     "Verilog" # other examples include SystemVerilog, Amaranth, VHDL, etc
-  clock_hz:     0       # Clock frequency in Hz (or 0 if not applicable)
+  title:        "TSE: Timed Spec Engine"
+  author:       "Sameera Khatoon"
+  discord:      ""
+  description:  "Write a protocol once as a timed spec; the chip speaks it, checks it and triggers on it"
+  language:     "SystemVerilog"
+  clock_hz:     60000000
 
-  # How many tiles your design occupies? A single tile is about 167x108 uM.
-  tiles: "1x1"          # Valid values: 1x1, 1x2, 2x2, 3x2, 4x2, 6x2 or 8x2
+  # Valid tile sizes for CMOS5L are the keys of tt-support-tools tile_sizes.yaml.
+  tiles: "6x4"
 
-  # Your top module name must start with "tt_um_". Make it unique by including your github username:
-  top_module:  "tt_um_example"
+  # Rename here and in the module line of the top source file only (see test/Makefile).
+  top_module:  "tt_um_tse_sk"
 
-  # List your project's source files here.
-  # Source files must be in ./src and you must list each source file separately, one per line.
-  # Don't forget to also update `PROJECT_SOURCES` in test/Makefile.
+  # Source files must be in ./src, one per line. test/Makefile reads this list.
+  # The tile builds the UART test design; the full chip's sources are listed in info_chip.yaml.
   source_files:
-    - "project.v"
+    - "tt_um_tse_sk.sv"
+    - "tse_rst_sync.sv"
+    - "tse_sync.sv"
+    - "tse_nco.sv"
+    - "tse_uart_tx.sv"
+    - "tse_uart_rx.sv"
 
 # The pinout of your project. Leave unused pins blank. DO NOT delete or add any pins.
-# This section is for the datasheet/website. Use descriptive names (e.g., RX, TX, MOSI, SCL, SEG_A, etc.).
+# Each name reads: UART test design use / full chip load mode (rst_n low) / full chip run mode.
+# LDn = loader data, RBn = loader readback, XINn, XOUTn, XIOn = crossbar pads.
 pinout:
   # Inputs
-  ui[0]: ""
-  ui[1]: ""
-  ui[2]: ""
-  ui[3]: ""
-  ui[4]: ""
-  ui[5]: ""
-  ui[6]: ""
-  ui[7]: ""
+  ui[0]: "TX byte bit 0 / LD0 / SPI CS_N or XIN0"
+  ui[1]: "TX byte bit 1 / LD1 / SPI SCK or XIN1"
+  ui[2]: "TX byte bit 2 / LD2 / SPI MOSI or XIN2"
+  ui[3]: "TX byte bit 3 or UART RX in echo mode / LD3 / XIN3"
+  ui[4]: "TX byte bit 4 / LD4 / XIN4"
+  ui[5]: "TX byte bit 5 / LD5 / XIN5"
+  ui[6]: "TX byte bit 6 / LD6 / XIN6"
+  ui[7]: "TX byte bit 7 / LD7 / XIN7"
 
   # Outputs
-  uo[0]: ""
-  uo[1]: ""
-  uo[2]: ""
-  uo[3]: ""
-  uo[4]: ""
-  uo[5]: ""
-  uo[6]: ""
-  uo[7]: ""
+  uo[0]: "UART TX / RB0 / XOUT0"
+  uo[1]: "TX busy / RB1 / XOUT1"
+  uo[2]: "RX byte toggle / RB2 / XOUT2"
+  uo[3]: "RX framing error / RB3 / SPI MISO or XOUT3"
+  uo[4]: "unused / RB4 / XOUT4"
+  uo[5]: "unused / RB5 / XOUT5"
+  uo[6]: "unused / RB6 / IRQ or XOUT6"
+  uo[7]: "unused / RB7 / TRIG or XOUT7"
 
   # Bidirectional pins
-  uio[0]: ""
-  uio[1]: ""
-  uio[2]: ""
-  uio[3]: ""
-  uio[4]: ""
-  uio[5]: ""
-  uio[6]: ""
-  uio[7]: ""
+  uio[0]: "send strobe (rising edge) / LD strobe / XIO0"
+  uio[1]: "echo mode / LD frame / XIO1"
+  uio[2]: "unused / unused / XIO2 (open drain)"
+  uio[3]: "unused / unused / XIO3 (open drain)"
+  uio[4]: "unused / unused / XIO4 (open drain)"
+  uio[5]: "unused / unused / XIO5 (open drain)"
+  uio[6]: "unused / unused / XIO6 (open drain)"
+  uio[7]: "unused / unused / XIO7 (open drain)"
 
 # Do not change!
 yaml_version: 6

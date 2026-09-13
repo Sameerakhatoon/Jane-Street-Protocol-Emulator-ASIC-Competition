@@ -1,18 +1,23 @@
 # Makefile
 # See https://docs.cocotb.org/en/stable/quickstart.html for more info
+# The top module and the source list are read from ../info.yaml, so the two
+# can never drift apart.
 
 # defaults
 SIM ?= icarus
 FST ?= -fst # Use more efficient FST format
 TOPLEVEL_LANG ?= verilog
 SRC_DIR = $(PWD)/../src
-PROJECT_SOURCES = project.v
+INFO = $(PWD)/../info.yaml
+TT_TOP := $(shell sed -n 's/^ *top_module: *"\([^"]*\)".*/\1/p' $(INFO))
+PROJECT_SOURCES := $(shell sed -n '/^ *source_files:/,/^[^ ]/s/^ *- *"\([^"]*\)".*/\1/p' $(INFO))
 
 ifneq ($(GATES),yes)
 
 # RTL simulation:
 SIM_BUILD				= sim_build/rtl
 VERILOG_SOURCES += $(addprefix $(SRC_DIR)/,$(PROJECT_SOURCES))
+COMPILE_ARGS    += -g2012
 
 else
 
@@ -23,6 +28,8 @@ COMPILE_ARGS    += -DFUNCTIONAL
 COMPILE_ARGS    += -DSIM
 VERILOG_SOURCES += $(PDK_ROOT)/ihp-sg13cmos5l/libs.ref/sg13cmos5l_io/verilog/sg13cmos5l_io.v
 VERILOG_SOURCES += $(PDK_ROOT)/ihp-sg13cmos5l/libs.ref/sg13cmos5l_stdcell/verilog/sg13cmos5l_stdcell.v
+# Template fix: the flop models instantiate UDPs (ihp_dff_r and friends) that live here.
+VERILOG_SOURCES += $(PDK_ROOT)/ihp-sg13cmos5l/libs.ref/sg13cmos5l_stdcell/verilog/sg13cmos5l_udp.v
 
 # this gets copied in by the GDS action workflow
 VERILOG_SOURCES += $(PWD)/gate_level_netlist.v
@@ -31,6 +38,7 @@ endif
 
 # Allow sharing configuration between design and testbench via `include`:
 COMPILE_ARGS 		+= -I$(SRC_DIR)
+COMPILE_ARGS 		+= -DTT_TOP=$(TT_TOP)
 
 # Include the testbench sources:
 VERILOG_SOURCES += $(PWD)/tb.v
