@@ -1,0 +1,30 @@
+# Mutation coverage stub for tse_crc: each mutant of the CRC unit must make the
+# catalogue proofs (CRC-32 and CRC-15/CAN check values) fail. First run only;
+# the classification test (does a mutant change any output at all) comes next.
+[options]
+size 40
+tags COVERED UNCOVERED
+
+[script]
+read -sv tse_crc.sv
+prep -top tse_crc
+
+[files]
+tse_crc.sv
+crc_props.sv
+test_fm.sby
+test_fm.sh
+
+[logic]
+if result("test_fm") == "FAIL":
+    tag("COVERED")
+else:
+    tag("UNCOVERED")
+
+[report]
+c, u = tags("COVERED"), tags("UNCOVERED")
+print("killed %d of %d mutants (%.1f%%)" % (c, c + u, 100.0 * c / max(1, c + u)))
+
+[test test_fm]
+expect PASS FAIL
+run bash $PRJDIR/test_fm.sh

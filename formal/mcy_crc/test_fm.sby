@@ -1,0 +1,22 @@
+[tasks]
+crc32
+crc15
+
+[options]
+mode bmc
+depth 90
+expect pass,fail
+
+[engines]
+smtbmc yices
+
+[script]
+verilog_defines -DCAT
+crc15: verilog_defines -DCRC15_CAN
+read_rtlil mutated.il
+read -formal crc_props.sv
+prep -top crc_props
+
+[files]
+mutated.il
+crc_props.sv

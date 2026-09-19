@@ -1,0 +1,27 @@
+[tasks]
+equiv          E
+cat_crc5_usb   K crc5
+cat_crc15_can  K crc15
+cat_crc16_usb  K crc16
+cat_crc32      K crc32
+
+[options]
+E: mode prove
+E: depth 20
+K: mode bmc
+K: depth 90
+
+[engines]
+smtbmc bitwuzla
+
+[script]
+K: verilog_defines -DCAT
+crc5:  verilog_defines -DCRC5_USB
+crc15: verilog_defines -DCRC15_CAN
+crc16: verilog_defines -DCRC16_USB
+read -formal tse_crc.sv crc_props.sv
+prep -top crc_props
+
+[files]
+tse_crc.sv
+crc_props.sv

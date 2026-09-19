@@ -1,0 +1,54 @@
+# Reference model tests, RTL-versus-model lockstep (cocotb 2.1.0 + Hypothesis) and
+# formal proofs, through the same make targets as a local run. The template's own
+# test job (test.yaml) stays on its cocotb version and is not touched here.
+name: verify
+on: [push, pull_request, workflow_dispatch]
+
+env:
+  CI: 'true'                  # Hypothesis: derandomized, no example database
+
+jobs:
+  model:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - run: pip install pytest==9.1.1
+      - run: make model-test
+
+  lockstep:
+    runs-on: ubuntu-24.04
+    if: hashFiles('src/tse_seq.sv') != ''
+    steps:
+      - uses: actions/checkout@v6
+      - uses: YosysHQ/setup-oss-cad-suite@v4
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - run: pip install cocotb==2.1.0 hypothesis==6.169.0 pytest==9.1.1
+      - run: make verif-lint lockstep
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: lockstep-results
+          path: verif/lockstep/results.xml
+
+  formal:
+    runs-on: ubuntu-24.04
+    if: hashFiles('src/tse_crc.sv') != ''
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v6
+      - uses: YosysHQ/setup-oss-cad-suite@v4
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - run: make formal
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: formal-counterexamples
+          path: build/formal/**/engine_*/trace*.vcd

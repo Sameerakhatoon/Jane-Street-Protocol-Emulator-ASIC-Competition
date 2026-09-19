@@ -1,0 +1,44 @@
+# Nightly: many more random Hypothesis examples with a cached example database,
+# and mutation coverage of the CRC unit.
+name: nightly
+on:
+  schedule:
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+
+jobs:
+  long-random:
+    runs-on: ubuntu-24.04
+    if: hashFiles('src/tse_seq.sv') != ''
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v6
+      - uses: YosysHQ/setup-oss-cad-suite@v4
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - run: pip install cocotb==2.1.0 hypothesis==6.169.0 pytest==9.1.1
+      - uses: actions/cache@v4
+        with:
+          path: verif/lockstep/sim_build/.hypothesis-*
+          key: hypothesis-db-${{ github.run_id }}
+          restore-keys: hypothesis-db-
+      - run: make lockstep HYP_EXAMPLES=2000 CI=false
+
+  mutation:
+    runs-on: ubuntu-24.04
+    if: hashFiles('src/tse_crc.sv') != ''
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v6
+      - uses: YosysHQ/setup-oss-cad-suite@v4
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - run: make mcy | tee mcy.txt
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: mcy-status
+          path: mcy.txt
