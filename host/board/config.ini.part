@@ -1,0 +1,9 @@
+; Section for the Tiny Tapeout SDK config.ini on the demo board (append it).
+; 60 MHz project clock: the SDK moves the RP2350 to 120 MHz (exact, divider 2).
+; start_in_reset keeps rst_n low after selection, which is load mode.
+[tt_um_tse]
+rp_clock_frequency = 120e6
+clock_frequency = 60e6
+mode = ASIC_RP_CONTROL
+start_in_reset = yes
+ui_in = 0
