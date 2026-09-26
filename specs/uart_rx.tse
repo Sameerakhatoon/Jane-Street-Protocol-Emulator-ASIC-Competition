@@ -1,0 +1,50 @@
+// uart_rx.tse: UART receiver, 8N1, one role, back-to-back frames and break.
+//
+// Line format (TIA-232 asynchronous character framing): idle high, start bit
+// 0, 8 data bits least significant first, stop bit 1. The receiver anchors on
+// the falling edge of the start bit, checks the start bit near its middle
+// (a glitch shorter than half a bit is rejected), then samples every bit one
+// bit time later. A break (line held low for a whole frame) arrives as 0x00
+// with a bad stop bit, which the stop-bit `expect` reports as a framing error.
+//
+// Hand-computed obligations. tol = 2 % of the interval before each sample,
+// less 50 ppm of each ideal; windows round inward (lower up, upper down).
+//
+//   baud       fclk     bit (ticks)   start window [0.4, 0.6] bit   data/stop budget        re-arm limit
+//   115200     60 MHz   520.83        [208.33, 312.50]              10.42 - 50e-6 * ideal   floor(260.42 - 10.42) = 250
+//   115200     50 MHz   434.03        [173.61, 260.42]               8.68 - 50e-6 * ideal   floor(217.01 - 8.68) = 208
+//   1000000    60 MHz    60           [24, 36]                       1.20 - 50e-6 * ideal   floor(30 - 1.2) = 28
+//   1000000    50 MHz    50           [20, 30]                       1.00 - 50e-6 * ideal   floor(25 - 1.0) = 24
+//
+//   obligation        statement               ideal (ticks, from the start sample)
+//   OB-WIN start      sample rx expect 0      inside the window after fall(rx)
+//   OB-SAMP data k    shift rx -> b lsb 8     bit * (k + 1), k = 0..7
+//   OB-SAMP stop      sample rx expect 1      bit * 9 (budget 10.18 at 115200 / 60 MHz)
+//   OB-REARM          end of frame            waiting for fall(rx) again within the limit
+//
+// The re-arm limit is what makes back-to-back frames work: the next start
+// edge may come half a bit (less tol) after the stop sample, so the program
+// must be back on its WAIT by then. The input synchronizer adds 2 to 3 ticks
+// between the pin edge and the first instruction that can see it; that delay
+// is inside the window arithmetic (start sample lands [D, D + 1) ticks after
+// the edge for an instruction issued D cycles after the synchronized edge).
+protocol uart_rx {
+  param baud : freq  = 115200 Hz;
+  param tol  : ratio = 2 %;
+  unit  bit  = 1 / baud;
+
+  wire rx : in;
+
+  role rx_side : target uses rx {
+    var b : bits[8];
+    state idle  { on fall(rx) -> frame; }
+    state frame {
+      seq {
+        sample rx expect 0 within [0.4 bit, 0.6 bit] after fall(rx) for 1 bit;
+        shift rx -> b lsb 8 each 1 bit ~ tol;
+        sample rx expect 1 for 0.5 bit ~ tol;    // stop bit; 0 here is a framing error or a break
+        push host b;
+      } -> idle;
+    }
+  }
+}

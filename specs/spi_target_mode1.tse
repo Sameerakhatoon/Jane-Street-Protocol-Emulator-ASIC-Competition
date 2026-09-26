@@ -1,0 +1,63 @@
+// spi_target_mode1.tse: SPI target, mode 1 (CPOL = 0, CPHA = 1), MISO data from the host.
+//
+// Transmission format (CPOL/CPHA formats of the Motorola SPI block): SCK idles
+// low; both sides launch data on the rising (leading) edge and sample on the
+// falling (trailing) edge. Unlike modes 0 and 2 there is no response to the CS
+// edge itself: the first MISO bit is launched by the first rising edge, so the
+// first bit has the same window as every other bit.
+//
+// Hand-computed obligations, f_sck = 4 MHz, half = 125 ns. Windows round
+// inward. Pads add 0 to 25 ns until they are characterised.
+//
+//   obligation                window                    60 MHz (16.67 ns)              50 MHz (20 ns)
+//   miso   OB-WIN after rise   [0, half - t_su]          [0, 7] ticks                   [0, 6] ticks
+//                              = [0, 120 ns]             rule, pin-edge mode on rise,   [3, 4) ticks + pads
+//                                                        [3, 4) ticks + pads            = 60 to 105 ns
+//                                                        = 50.0 to 91.7 ns              margin 15 ns
+//                                                        margin 28.3 ns
+//   mosi   OB-WIN after fall   [0, half - t_mo]          [0, 6] ticks                   [0, 5] ticks
+//                              = [0, 105 ns]             two-word WAIT/WAIT/IN/JMP      [1, 2) ticks + pads
+//                                                        loop, [1, 2) ticks + pads      = 20 to 65 ns
+//                                                        = 16.7 to 58.3 ns              margin 40 ns
+//                                                        margin 46.7 ns
+//   loop re-arm               one SCK half period       2 of 7.5 ticks                 2 of 6.25 ticks
+//   abort on rise(cs_n)       stated bound              8 x 4 = 32 cycles (0.53 us)    32 cycles (0.64 us)
+//
+// Rate limits from the miso row (worst 4 ticks + 25 ns against half - t_su):
+// half >= 96.7 ns at 60 MHz (5.17 MHz), half >= 110 ns at 50 MHz (4.55 MHz).
+// Assumptions (the controller's side): sck_low, sck_high, css, window_loaded.
+protocol spi_target_mode1 {
+  param f_sck : freq = 4 MHz;          // fastest SCK the controller will use
+  param t_su  : time = 5 ns;           // controller's MISO setup before its sampling edge
+  param t_css : time = 100 ns;         // controller's CS fall to first SCK edge
+  param t_mo  : time = 20 ns;          // controller's MOSI output delay after its launch edge
+  unit  half  = 1 / (2 * f_sck);
+
+  wire cs_n : in;
+  wire sck  : in;
+  wire mosi : in;
+  wire miso : out push_pull idle 0;
+
+  datasheet spi_controller {
+    rule sck_low  : fall(sck)  -> rise(sck) >= half;
+    rule sck_high : rise(sck)  -> fall(sck) >= half;
+    rule css      : fall(cs_n) -> rise(sck) >= t_css;
+  }
+
+  role tgt : target uses cs_n, sck, mosi, miso {
+    var txw : bits[32];                // four bytes from the host, MSB first
+    var rxb : bits[8];
+    assume window_loaded : host.window_loaded;
+    state idle  { on host.pull(txw) -> armed; }
+    state armed { on fall(cs_n) -> bits; }
+    state bits {
+      seq {
+        repeat 8 {
+          shift txw msb 1 -> miso within [0 ns, half - t_su] after rise(sck);
+          shift mosi -> rxb msb 1 within [0 ns, half - t_mo] after fall(sck);
+        }
+        push host rxb;
+      } -> bits abort on rise(cs_n) -> idle;
+    }
+  }
+}

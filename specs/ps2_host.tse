@@ -1,0 +1,77 @@
+// ps2_host.tse: PS/2 host: receive device frames, send commands with request to send.
+//
+// Source: Adam Chapweske, "The PS/2 Mouse/Keyboard Protocol", sections
+// "Communication: Device-to-Host" and "Host-to-Device Communication". The
+// device generates the clock (10 to 16.7 kHz, high and low 30 to 50 us each).
+//   device to host: the device changes data at least 5 us after a rising
+//   clock edge and 5 to 25 us before a falling one; the host reads on the fall
+//   host to device: pull clock low for at least 100 us, pull data low, release
+//   clock; the device clocks within 15 ms; the host changes data only while
+//   clock is low; after the parity bit the host releases data (stop bit) and
+//   the device acknowledges by pulling data low before its 11th falling edge;
+//   the whole packet must complete within 2 ms
+// Frames: start (0), 8 data bits least significant first, odd parity, stop (1).
+// The host computes the parity and checks it in received frames.
+//
+// Hand-computed obligations (tolerance 10 %), against the device figures:
+//
+//   obligation                    window / value        60 MHz ticks       50 MHz ticks       margin
+//   OB-WIN read data after fall    [0, 35 us]            [0, 2,100]         [0, 1,750]         data is valid from 5 us before
+//                                                                                              the fall to 5 us after the next
+//                                                                                              rise, >= 35 us after the fall
+//   inhibit (clock low)           120 us ~ 10 %          7,200              6,000              >= 108 us against 100 us
+//   request to send (data low)    10 us ~ 10 %           600                500                any positive time
+//   OB-WIN data change after fall  [0, 20 us]            [0, 1,200]         [0, 1,000]         the clock stays low >= 30 us
+//   OB-WIN ACK sample after fall   [0, 35 us]            [0, 2,100]         [0, 1,750]         as for device data
+//
+// The inhibit row is the one to read twice: an obvious 110 us with a 10 %
+// tolerance may come out as 99 us, below the 100 us minimum, so the spec asks
+// for 120 us. The 2 ms packet limit is the device's: 11 clocks at 80 us take 0.88 ms.
+protocol ps2_host {
+  const t_rdw  : time = 35 us;            // device data valid after a falling clock
+  const t_chg  : time = 20 us;            // host data changes this soon after a falling clock
+  const t_inh  : time = 120 us;           // inhibit: at least 100 us even at the tolerance edge
+  const t_rts  : time = 10 us;            // data low before releasing the clock
+  param tol    : ratio = 10 %;
+
+  wire clk  : inout open_drain pull_up;
+  wire data : inout open_drain pull_up;
+
+  datasheet ps2_device {
+    rule t_clk_low  : fall(clk) -> rise(clk) >= 30 us;
+    rule t_clk_high : rise(clk) -> fall(clk) >= 30 us;
+  }
+
+  role host_side : controller uses clk, data {
+    var rb  : bits[10];                   // 8 data, parity, stop
+    var cmd : bits[10];                   // 8 data, parity, stop (1); built by the host
+    var ack : bits[8];
+
+    state idle {
+      on fall(clk) when data == 0 -> rx;  // the device's first falling edge carries the start bit
+      on host.pull(cmd) -> inhibit;
+    }
+
+    state rx {
+      seq {
+        repeat 10 {
+          shift data -> rb lsb 1 within [0 us, t_rdw] after fall(clk);
+        }
+        push host rb;
+      } -> idle;
+    }
+
+    state inhibit {
+      seq {
+        drive clk = 0 for t_inh ~ tol;    // inhibit, which also aborts a device transmission
+        drive data = 0 for t_rts ~ tol;   // request to send: this is the start bit
+        release clk;                      // the device now clocks, within 15 ms
+        repeat 10 {                       // 8 data bits, parity, then the stop bit (a 1 releases data)
+          shift cmd lsb 1 -> data within [0 us, t_chg] after fall(clk);
+        }
+        shift data -> ack lsb 1 within [0 us, t_rdw] after fall(clk);   // 0 = the device's ACK
+        push host ack;
+      } -> idle;
+    }
+  }
+}

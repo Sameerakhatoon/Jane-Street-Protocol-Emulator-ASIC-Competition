@@ -1,0 +1,148 @@
+// spi_flash_target.tse: SPI NOR flash personality, mode 0, for a flashrom-driven demo.
+//
+// Source: the instruction set common to serial NOR flash, as in the Winbond
+// W25Q16JV datasheet (instruction tables and the instruction descriptions):
+//   0x9F  JEDEC ID          out: manufacturer, memory type, capacity (3 bytes)
+//   0x05  read status 1     out: status, repeated while CS stays low (bit 1 = WEL, bit 0 = BUSY)
+//   0x06  write enable      sets WEL
+//   0x03  read data         in: 24-bit address; out: data bytes until CS rises
+//   0x02  page program      in: 24-bit address, then data bytes; needs WEL; clears WEL
+//   0x20  sector erase 4K   in: 24-bit address; needs WEL; clears WEL
+// Mode 0 timing as in spi_target.tse: sample MOSI after SCK rises, change MISO
+// after SCK falls. Erase and program complete at once (BUSY reads 0); the
+// bytes, addresses and opcodes go to the host, which keeps the image.
+//
+// Hand-computed obligations, f_sck = 4 MHz (half = 125 ns), windows inward,
+// pads 0 to 25 ns:
+//
+//   obligation               window                 60 MHz                         50 MHz
+//   mosi  OB-WIN after rise   [0, half - t_mo]       [0, 6] ticks; [1, 2) + pads    [0, 5] ticks; [1, 2) + pads
+//                            = [0, 105 ns]          = 16.7 to 58.3 ns, margin 46.7  = 20 to 65 ns, margin 40
+//   miso  OB-WIN after fall   [0, half - t_su]       [0, 7] ticks; rule [3, 4)      [0, 6] ticks; rule [3, 4)
+//                            = [0, 120 ns]          + pads = 50 to 91.7 ns,         + pads = 60 to 105 ns,
+//                                                   margin 28.3 ns                  margin 15 ns
+//   decode budget            8th rise to the next   half = 7.5 ticks: the opcode    6.25 ticks
+//                            fall                   compare and the first response
+//                                                   word must be ready, or the
+//                                                   first miso window fails (R311)
+//   abort on rise(cs_n)      stated bound           32 cycles (0.53 us)             32 cycles (0.64 us)
+//
+// The decode budget is the row to watch: the response to 0x9F and 0x05
+// starts on the very next falling edge, so the chain of `after` edges must be
+// short (one compare per opcode, the matching opcode tested first) or the
+// first response bit must come from a response rule armed while the opcode
+// shifts in. The read data stream needs the host to keep up (assume host_ready);
+// a read served from the data window instead needs an indexed load the
+// language cannot state yet (the address is data, not a constant).
+protocol spi_flash_target {
+  param f_sck    : freq = 4 MHz;
+  param t_su     : time = 5 ns;            // controller's MISO setup before its sampling edge
+  param t_css    : time = 100 ns;          // controller's CS fall to first SCK rise
+  param t_mo     : time = 20 ns;           // controller's MOSI output delay after SCK falls
+  param jedec_id : bits[24] = 0xEF4015;    // manufacturer 0xEF, type 0x40, capacity 0x15 (16 Mbit)
+  unit  half     = 1 / (2 * f_sck);
+
+  wire cs_n : in;
+  wire sck  : in;
+  wire mosi : in;
+  wire miso : out push_pull idle 0;
+
+  datasheet spi_controller {
+    rule sck_low  : fall(sck)  -> rise(sck) >= half;
+    rule sck_high : rise(sck)  -> fall(sck) >= half;
+    rule css      : fall(cs_n) -> rise(sck) >= t_css;
+  }
+
+  role flash : target uses cs_n, sck, mosi, miso {
+    var op   : bits[8];
+    var addr : bits[24];
+    var din  : bits[8];
+    var id   : bits[24];
+    var sr   : bits[8];
+    var dout : bits[32];
+    var wel  : bit = 0;
+    assume host_ready : host.ready;
+
+    state idle { on fall(cs_n) -> opcode; }
+
+    state opcode {
+      seq {
+        repeat 8 { shift mosi -> op msb 1 within [0 ns, half - t_mo] after rise(sck); }
+      } -> decode abort on rise(cs_n) -> idle;
+    }
+
+    state decode {
+      after op == 0x9F -> jedec;
+      after op == 0x05 -> status;
+      after op == 0x03 -> read_addr;
+      after op == 0x06 -> write_enable;
+      after op == 0x02 and wel == 1 -> prog_addr;
+      after op == 0x20 and wel == 1 -> erase_addr;
+      after op != 0x9F -> ignore;                  // unknown, or program/erase without WEL
+    }
+
+    state jedec {
+      seq {
+        set id = jedec_id;
+        repeat 24 { shift id msb 1 -> miso within [0 ns, half - t_su] after fall(sck); }
+      } -> ignore abort on rise(cs_n) -> idle;
+    }
+
+    state status {                                 // repeats until CS rises
+      seq {
+        if wel == 1 { set sr = 0x02; } else { set sr = 0x00; }
+        repeat 8 { shift sr msb 1 -> miso within [0 ns, half - t_su] after fall(sck); }
+      } -> status abort on rise(cs_n) -> idle;
+    }
+
+    state write_enable {
+      on rise(cs_n) do { set wel = 1; } -> idle;
+    }
+
+    state read_addr {
+      seq {
+        repeat 24 { shift mosi -> addr msb 1 within [0 ns, half - t_mo] after rise(sck); }
+        push host op;
+        push host addr;
+      } -> read_data abort on rise(cs_n) -> idle;
+    }
+
+    state read_data {                              // the host streams the bytes at addr onward
+      seq {
+        pull host dout;
+        repeat 32 { shift dout msb 1 -> miso within [0 ns, half - t_su] after fall(sck); }
+      } -> read_data abort on rise(cs_n) -> idle;
+    }
+
+    state prog_addr {
+      seq {
+        repeat 24 { shift mosi -> addr msb 1 within [0 ns, half - t_mo] after rise(sck); }
+        push host op;
+        push host addr;
+      } -> prog_data abort on rise(cs_n) -> idle;
+    }
+
+    state prog_data {                              // bytes to program, until CS rises
+      seq {
+        repeat 8 { shift mosi -> din msb 1 within [0 ns, half - t_mo] after rise(sck); }
+        push host din;
+      } -> prog_data abort on rise(cs_n) -> done;
+    }
+
+    state erase_addr {
+      seq {
+        repeat 24 { shift mosi -> addr msb 1 within [0 ns, half - t_mo] after rise(sck); }
+        push host op;
+        push host addr;
+      } -> erase_end abort on rise(cs_n) -> done;
+    }
+
+    state erase_end { on rise(cs_n) -> done; }
+
+    state done {                                   // program or erase finished: clear WEL
+      seq { set wel = 0; } -> idle;
+    }
+
+    state ignore { on rise(cs_n) -> idle; }        // stay off the bus until CS rises
+  }
+}

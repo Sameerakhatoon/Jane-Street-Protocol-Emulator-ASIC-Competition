@@ -1,0 +1,204 @@
+// i2c_controller_sm.tse: I2C controller, Standard-mode (up to 100 kHz), clock stretching handled.
+//
+// Source: NXP UM10204 (I2C-bus specification and user manual, Rev. 7.0),
+// Table 11 (characteristics of the SDA and SCL bus lines) and section 3.1.9
+// (clock stretching). Values referred to 0.3 VDD and 0.7 VDD.
+//
+//   symbol     meaning                                   Standard-mode
+//   fSCL       SCL clock frequency                       max 100 kHz
+//   tHD;STA    hold time, (repeated) START               min 4.0 us
+//   tLOW       SCL low period                            min 4.7 us
+//   tHIGH      SCL high period                           min 4.0 us
+//   tSU;STA    setup time, repeated START                min 4.7 us
+//   tHD;DAT    data hold time (I2C-bus devices)          min 0
+//   tSU;DAT    data setup time                           min 250 ns
+//   tr         rise time, SDA and SCL                    max 1000 ns
+//   tf         fall time, SDA and SCL                    max 300 ns
+//   tSU;STO    setup time, STOP                          min 4.0 us
+//   tBUF       bus free time between STOP and START      min 4.7 us
+//   tVD;DAT    data valid time (SCL low to SDA out)      max 3.45 us
+//
+// The controller owns every SCL edge except a rising one: after it releases
+// SCL, a target may hold the line low (clock stretching), so every high
+// period is counted from the rise the controller observes (`await rise(scl)`),
+// never from the release. That one rule is the whole of clock-stretching
+// support, and it holds for every bit, the ACK slot and the repeated START.
+//
+// Each wait adds the worst bus edge to the datasheet minimum, because the
+// datasheet measures at 0.3 / 0.7 VDD while we count from our own drive or
+// from our input threshold:
+//   low part 1  t_hold = tf                  SDA changes only after SCL is below 0.3 VDD
+//   low part 2  tLOW + tf - t_hold           so the whole low period is tLOW + tf
+//   high        tHIGH + tr                   from the observed rise
+//   START hold  tHD;STA + tf     setup rSTA  tSU;STA + tr
+//   STOP setup  tSU;STO + tr     bus free    tBUF + tr
+//
+// Hand-computed waits (each rounds up to whole ticks):
+//
+//   wait                 value     60 MHz ticks   50 MHz ticks   guarantee at the bus (worst edges)
+//   t_hold               300 ns    18             15             SDA moves after SCL is low
+//   low part 2           4.7 us    282            235            tLOW >= 5.0 - tf = 4.7 us, margin 0 at tf = 300 ns
+//   high (two halves)    5.0 us    150 + 150      125 + 125      tHIGH >= 5.0 - tr = 4.0 us, plus 2 ticks of
+//                                                                synchronizer: margin 33 ns / 40 ns
+//   START hold           4.3 us    258            215            tHD;STA >= 4.0 us
+//   rSTA setup           5.7 us    342            285            tSU;STA >= 4.7 us
+//   STOP setup           5.0 us    300            250            tSU;STO >= 4.0 us
+//   bus free             5.7 us    342            285            tBUF >= 4.7 us
+//
+//   SCL period = 0.3 + 4.7 + 5.0 us + t_obs, where t_obs (release to observed
+//   rise) is at least 2 ticks of synchronizer plus the bus rise: >= 10.03 us,
+//   so fSCL <= 99.7 kHz <= 100 kHz at 60 MHz (600 ticks + 2; at 50 MHz
+//   500 ticks + 2 = 10.04 us, 99.6 kHz).
+//   tSU;DAT: SDA settles by t_hold + tr = 1.3 us after the fall, SCL is
+//   released at 5.0 us: setup >= 3.7 us against 250 ns.
+//   Reading: a target's SDA is valid by tVD;DAT = 3.45 us after the fall; we
+//   sample 2.5 us after the observed rise, >= 7.5 us after the fall.
+//
+// Host interface: one 16-bit command per step, data in bits 15..8 and the
+// operation in bits 2..0: 1 START, 2 repeated START, 3 write byte (pushes the
+// ACK bit, 0 = ACK), 4 read byte and ACK it, 5 read the last byte and NACK it,
+// 6 STOP. Single controller only: no arbitration against a second controller.
+protocol i2c_controller_sm {
+  const t_low    : time = 4.7 us;
+  const t_high   : time = 4.0 us;
+  const t_hd_sta : time = 4.0 us;
+  const t_su_sta : time = 4.7 us;
+  const t_su_sto : time = 4.0 us;
+  const t_buf    : time = 4.7 us;
+  const t_r      : time = 1000 ns;
+  const t_f      : time = 300 ns;
+  const t_hold   : time = t_f;
+
+  wire scl : inout open_drain pull_up;
+  wire sda : inout open_drain pull_up;
+
+  datasheet i2c_sm_target {
+    rule t_vd_dat : fall(scl) -> edge(sda) <= 3.45 us;     // a transmitting target's data valid time
+  }
+
+  role ctl : controller uses scl, sda {
+    var cmd : bits[16];
+    var rx  : bits[8];
+
+    state idle { on host.pull(cmd) -> dispatch; }
+
+    state dispatch {
+      after cmd[2:0] == 1 -> start;
+      after cmd[2:0] == 2 -> restart;
+      after cmd[2:0] == 3 -> wbyte;
+      after cmd[2:0] == 4 -> rbyte_ack;
+      after cmd[2:0] == 5 -> rbyte_nack;
+      after cmd[2:0] == 6 -> stop;
+      after cmd[2:0] != 0 -> idle;                 // unknown operation: ignore it
+    }
+
+    state start {                                  // bus idle: SDA falls while SCL is high
+      seq {
+        drive sda = 0;
+        wait t_hd_sta + t_f;
+        drive scl = 0;
+        wait t_hold;
+      } -> idle;
+    }
+
+    state restart {                                // from SCL low after an ACK slot
+      seq {
+        release sda;
+        wait t_low + t_f - t_hold;
+        release scl;
+        await rise(scl);                           // a target may stretch here too
+        wait t_su_sta + t_r;
+        drive sda = 0;
+        wait t_hd_sta + t_f;
+        drive scl = 0;
+        wait t_hold;
+      } -> idle;
+    }
+
+    state wbyte {                                  // 8 bits MSB first, then the target's ACK
+      seq {
+        repeat 8 {
+          shift cmd msb 1 -> sda;                  // a 1 releases SDA
+          wait t_low + t_f - t_hold;
+          release scl;
+          await rise(scl);
+          wait (t_high + t_r) / 2;
+          wait (t_high + t_r) / 2;
+          drive scl = 0;
+          wait t_hold;
+        }
+        release sda;                               // ACK slot: the target drives SDA
+        wait t_low + t_f - t_hold;
+        release scl;
+        await rise(scl);
+        wait (t_high + t_r) / 2;
+        shift sda -> rx msb 1;                     // 0 = ACK
+        wait (t_high + t_r) / 2;
+        drive scl = 0;
+        wait t_hold;
+        push host rx;
+      } -> idle;
+    }
+
+    state rbyte_ack {
+      seq {
+        release sda;
+        repeat 8 {
+          wait t_low + t_f - t_hold;
+          release scl;
+          await rise(scl);
+          wait (t_high + t_r) / 2;
+          shift sda -> rx msb 1;                   // SDA is stable while SCL is high
+          wait (t_high + t_r) / 2;
+          drive scl = 0;
+          wait t_hold;
+        }
+        push host rx;
+        drive sda = 0;                             // ACK: more bytes wanted
+        wait t_low + t_f - t_hold;
+        release scl;
+        await rise(scl);
+        wait t_high + t_r;
+        drive scl = 0;
+        wait t_hold;
+        release sda;
+      } -> idle;
+    }
+
+    state rbyte_nack {
+      seq {
+        release sda;
+        repeat 8 {
+          wait t_low + t_f - t_hold;
+          release scl;
+          await rise(scl);
+          wait (t_high + t_r) / 2;
+          shift sda -> rx msb 1;
+          wait (t_high + t_r) / 2;
+          drive scl = 0;
+          wait t_hold;
+        }
+        push host rx;
+        release sda;                               // NACK: the last byte
+        wait t_low + t_f - t_hold;
+        release scl;
+        await rise(scl);
+        wait t_high + t_r;
+        drive scl = 0;
+        wait t_hold;
+      } -> idle;
+    }
+
+    state stop {                                   // from SCL low: SDA rises while SCL is high
+      seq {
+        drive sda = 0;
+        wait t_low + t_f - t_hold;
+        release scl;
+        await rise(scl);
+        wait t_su_sto + t_r;
+        release sda;
+        wait t_buf + t_r;                          // bus free before any next START
+      } -> idle;
+    }
+  }
+}

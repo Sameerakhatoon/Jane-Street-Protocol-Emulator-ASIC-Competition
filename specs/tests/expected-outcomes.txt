@@ -1,0 +1,29 @@
+# Expected `tsec build` outcome per spec and argument set, checked by 03-build-outcomes.sh.
+# spec|build arguments (- for none)|exit status|first diagnostic code (- if none)|its reason
+# Exit 0 accepted, 2 rejected (no image written). A change in any column is a compiler change.
+uart.tse|-|0|-|-
+uart_tx.tse|-|0|-|-
+uart_tx.tse|--fclk 50e6|0|-|-
+uart_tx.tse|-D baud=1000000|0|-|-
+uart_tx.tse|-D baud=1000000 --fclk 50e6|0|-|-
+uart_rx.tse|-|0|-|-
+uart_rx.tse|--fclk 50e6|0|-|-
+uart_rx.tse|-D baud=1000000|0|-|-
+uart_rx.tse|-D baud=1000000 --fclk 50e6|0|-|-
+spi_controller_mode0.tse|-|2|R300|not supported by this version of tsec: state 'dispatch' must have exactly one 'seq' edge
+spi_controller_mode1.tse|-|2|R300|not supported by this version of tsec: state 'dispatch' must have exactly one 'seq' edge
+spi_controller_mode2.tse|-|2|R300|not supported by this version of tsec: state 'dispatch' must have exactly one 'seq' edge
+spi_controller_mode3.tse|-|2|R300|not supported by this version of tsec: state 'dispatch' must have exactly one 'seq' edge
+spi_target.tse|-|2|R300|not supported by this version of tsec: state 'armed' must have exactly one 'seq' edge
+spi_target_mode1.tse|-|2|R300|not supported by this version of tsec: state 'armed' must have exactly one 'seq' edge
+spi_target_mode2.tse|-|2|R300|not supported by this version of tsec: state 'armed' must have exactly one 'seq' edge
+spi_target_mode3.tse|-|2|R300|not supported by this version of tsec: state 'armed' must have exactly one 'seq' edge
+spi_flash_target.tse|-|2|R300|not supported by this version of tsec: the seq must return to the initial state
+i2c_target.tse|-|2|R300|not supported by this version of tsec: the anchor must be host.pull(v), fall(w) or rise(w)
+i2c_controller_fm.tse|-|2|R300|not supported by this version of tsec: state 'dispatch' must have exactly one 'seq' edge
+i2c_controller_sm.tse|-|2|R300|not supported by this version of tsec: state 'dispatch' must have exactly one 'seq' edge
+can_node.tse|-|2|R300|not supported by this version of tsec: state 'idle' must have exactly one 'on' edge
+swd_probe.tse|-|2|R300|not supported by this version of tsec: state 'dispatch' must have exactly one 'seq' edge
+jtag_probe.tse|-|2|R300|not supported by this version of tsec: 'repeat' inside seq
+ps2_device.tse|-|2|R300|not supported by this version of tsec: state 'idle' must have exactly one 'on' edge
+ps2_host.tse|-|2|R300|not supported by this version of tsec: state 'idle' must have exactly one 'on' edge

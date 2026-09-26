@@ -1,0 +1,104 @@
+// ps2_device.tse: PS/2 device (keyboard side): send with host inhibit, receive host commands.
+//
+// Source: Adam Chapweske, "The PS/2 Mouse/Keyboard Protocol", sections
+// "Communication: Device-to-Host" and "Host-to-Device Communication". Both
+// lines are open collector with pull-ups; the device always generates the
+// clock. Figures quoted there:
+//   clock frequency                         10 to 16.7 kHz; high 30 to 50 us, low 30 to 50 us
+//   device to host: rising clock to a data change     min 5 us
+//   device to host: data change to falling clock      min 5 us, max 25 us
+//   the host reads device data on the falling edge
+//   host inhibit: clock held low                      min 100 us
+//   clock high continuously before the device sends   min 50 us
+//   host to device: the host pulls clock low >= 100 us, pulls data low
+//   (request to send), releases clock; the device starts clocking within
+//   15 ms; the host changes data while clock is low, the device reads it while
+//   clock is high; after the stop bit the device acknowledges by pulling data
+//   low while clock is high and giving one more clock pulse.
+// Frames: start (0), 8 data bits least significant first, odd parity, stop
+// (1). Parity is computed by the host (the language keeps data simple).
+//
+// Hand-computed obligations at f_clk = 12.5 kHz (half = 40 us), tolerance 10 %:
+//
+//   quantity                       value     60 MHz ticks   50 MHz ticks   against the figure
+//   half period (high, low)        40 us     2,400          2,000          30 to 50 us: 36 to 44 us with tol
+//   data change after rising clock 20 us     1,200          1,000          >= 5 us: margin 13 us with tol
+//   data change before falling     20 us     1,200          1,000          5 to 25 us: 18 to 22 us with tol
+//   clock high before sending      50 us     3,000          2,500          >= 50 us (wait, then abort if taken)
+//   release data after inhibit     <= 100 us 6,000          5,000          inside the shortest inhibit
+//   first clock after request      [40 us, 15 ms]  [2,400, 900,000]  [2,000, 750,000]   <= 15 ms
+//   read point in the high phase   10 us after rise  600    500            host data stable while high
+//
+// Every number is thousands of ticks against a 16.7 ns tick, so PS/2 is a
+// flexibility example, not a timing one: its lowering needs the long-delay
+// idiom (40 us is more than one DLY holds) and the WAIT alternate for the
+// abort on a host inhibit, seen in one tick during any wait of the send loop.
+protocol ps2_device {
+  param f_clk : freq = 12.5 kHz;          // inside 10 to 16.7 kHz
+  param tol   : ratio = 10 %;
+  unit  half  = 1 / (2 * f_clk);          // 40 us
+  const t_ch   : time = 20 us;            // rising clock to data change, and data change to falling clock
+  const t_idle : time = 50 us;            // clock high before the device may send
+  const t_inh  : time = 100 us;           // the host's inhibit time
+  const t_rts  : time = 15 ms;            // first device clock after a request to send
+  const t_rd   : time = 10 us;            // device reads host data this long after the rising clock
+
+  wire clk  : inout open_drain pull_up;
+  wire data : inout open_drain pull_up;
+
+  datasheet ps2_host {
+    rule inhibit : taken(clk) -> rise(clk) >= t_inh;      // an inhibit lasts at least 100 us
+  }
+
+  role kbd : target uses clk, data {
+    var sc : bits[11];                    // start, 8 data, odd parity, stop; built by the host
+    var rb : bits[10];                    // 8 data, parity, stop from the host
+
+    state idle {
+      on host.pull(sc) when clk == 1 -> send;
+      on fall(clk) -> held;               // the host inhibits, or starts a request to send
+    }
+
+    state send {
+      seq {
+        wait t_idle;                      // clock high for 50 us, else the abort below fires
+        repeat 11 {
+          shift sc lsb 1 -> data for t_ch ~ tol;       // data changes while the clock is high
+          drive clk = 0 for half ~ tol;                // the host reads data on this fall
+          release clk for half - t_ch ~ tol;
+        }
+        release data;
+      } -> idle abort on taken(clk) -> inhibited;
+    }
+
+    state inhibited {                     // let go of DATA, tell the host the byte must be resent
+      seq {
+        release data within [0 us, t_inh] after taken(clk);
+        emit resend;
+      } -> held;
+    }
+
+    state held {
+      on rise(clk) when data == 0 -> receive;          // request to send
+      on rise(clk) -> idle;
+    }
+
+    state receive {
+      seq {
+        drive clk = 0 within [half, t_rts] after rise(clk) for half ~ tol;
+        repeat 9 {                                     // 8 data bits and parity
+          release clk for t_rd ~ tol;
+          shift data -> rb lsb 1 for half - t_rd ~ tol;
+          drive clk = 0 for half ~ tol;                // the host changes data while low
+        }
+        release clk for t_rd ~ tol;                    // stop bit
+        shift data -> rb lsb 1 for t_rd ~ tol;
+        drive data = 0 for half - 2 * t_rd ~ tol;      // ACK: data low while the clock is high
+        drive clk = 0 for half ~ tol;
+        release clk for t_rd ~ tol;
+        release data for half - t_rd ~ tol;
+        push host rb;
+      } -> idle;
+    }
+  }
+}

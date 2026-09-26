@@ -1,0 +1,69 @@
+// spi_target_mode2.tse: SPI target, mode 2 (CPOL = 1, CPHA = 0), MISO data from the host.
+//
+// Transmission format (CPOL/CPHA formats of the Motorola SPI block): SCK idles
+// high; the first MISO bit must be valid after CS falls and before the first
+// falling edge; both sides sample on the falling edge and change data after
+// the rising edge. This is mode 0 with SCK inverted, so every number below is
+// the mode 0 number with rise and fall swapped.
+//
+// Hand-computed obligations, f_sck = 4 MHz, half = 125 ns. Windows round
+// inward. Pads add 0 to 25 ns until they are characterised.
+//
+//   obligation                 window                 60 MHz (16.67 ns)              50 MHz (20 ns)
+//   first_bit  OB-WIN after     [0, t_css - t_su]      [0, 5] ticks                   [0, 4] ticks
+//              fall(cs_n)       = [0, 95 ns]           WAIT cs_n, OUT from a          [4, 5) ticks + pads
+//                                                      buffered word (D = 1),         = 80 to 125 ns
+//                                                      [4, 5) ticks + pads            late by 30 ns (full pads),
+//                                                      = 66.7 to 108.3 ns             late by 5 ns (ideal pads)
+//                                                      late by 13.3 ns (full pads),
+//                                                      11.7 ns spare (ideal pads)
+//   miso       OB-WIN after     [0, half - t_su]       [0, 7] ticks, rule on rise,    [0, 6] ticks
+//              rise(sck)        = [0, 120 ns]          50.0 to 91.7 ns, margin 28.3   60 to 105 ns, margin 15
+//   mosi       OB-WIN after     [0, half - t_mo]       [0, 6] ticks, two-word loop,   [0, 5] ticks
+//              fall(sck)        = [0, 105 ns]          16.7 to 58.3 ns, margin 46.7   20 to 65 ns, margin 40
+//   loop re-arm                one SCK half period    2 of 7.5 ticks                 2 of 6.25 ticks
+//   abort on rise(cs_n)        stated bound           32 cycles (0.53 us)            32 cycles (0.64 us)
+//
+// first_bit is the binding row, exactly as in mode 0: it fails with the full
+// 25 ns pad budget at 60 MHz and with any pads at 50 MHz. The fixes are the
+// same: pre-drive MISO while armed, measure the pads, or assume a larger t_css
+// (t_css >= 113.3 ns at 60 MHz, >= 130 ns at 50 MHz, with full pads).
+// Assumptions (the controller's side): sck_low, sck_high, css, window_loaded.
+protocol spi_target_mode2 {
+  param f_sck : freq = 4 MHz;          // fastest SCK the controller will use
+  param t_su  : time = 5 ns;           // controller's MISO setup before its sampling edge
+  param t_css : time = 100 ns;         // controller's CS fall to first SCK fall
+  param t_mo  : time = 20 ns;          // controller's MOSI output delay after SCK rises
+  unit  half  = 1 / (2 * f_sck);
+
+  wire cs_n : in;
+  wire sck  : in;
+  wire mosi : in;
+  wire miso : out push_pull idle 0;
+
+  datasheet spi_controller {
+    rule sck_low  : fall(sck)  -> rise(sck) >= half;
+    rule sck_high : rise(sck)  -> fall(sck) >= half;
+    rule css      : fall(cs_n) -> fall(sck) >= t_css;
+  }
+
+  role tgt : target uses cs_n, sck, mosi, miso {
+    var txw : bits[32];                // four bytes from the host, MSB first
+    var rxb : bits[8];
+    assume window_loaded : host.window_loaded;
+    state idle  { on host.pull(txw) -> armed; }
+    state armed {
+      respond first_bit : on fall(cs_n) { shift txw msb 1 -> miso; }
+                          within [0 ns, t_css - t_su] -> bits;
+    }
+    state bits {
+      seq {
+        repeat 8 {
+          shift mosi -> rxb msb 1 within [0 ns, half - t_mo] after fall(sck);
+          shift txw msb 1 -> miso within [0 ns, half - t_su] after rise(sck);
+        }
+        push host rxb;
+      } -> bits abort on rise(cs_n) -> idle;
+    }
+  }
+}

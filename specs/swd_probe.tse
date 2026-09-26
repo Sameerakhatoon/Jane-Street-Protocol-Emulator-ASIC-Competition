@@ -1,0 +1,146 @@
+// swd_probe.tse: Serial Wire Debug host (probe), SWCLK at 5 MHz.
+//
+// Source: Arm Debug Interface Architecture Specification ADIv5.0 to ADIv5.2
+// (Arm IHI 0031), part B4, the Serial Wire Debug protocol. One transaction:
+//   request   8 bits, host drives, LSB first: Start (1), APnDP, RnW, A[2:3],
+//             Parity (even, over APnDP..A3), Stop (0), Park (1)
+//   Trn       1 cycle, nobody drives
+//   ACK       3 bits, target drives, LSB first: OK = 0b001, WAIT = 0b010, FAULT = 0b100
+//   read      RDATA 32 bits + parity, target drives; then Trn
+//   write     Trn; then WDATA 32 bits + parity, host drives
+//   line reset   at least 50 SWCLK cycles with SWDIO high, then at least 2 idle (low) cycles
+//   JTAG to SWD  line reset, the 16-bit sequence 0xE79E LSB first, line reset
+// The target samples SWDIO on the rising edge of SWCLK and changes it after a
+// rising edge; the host changes SWDIO while SWCLK is low and samples before
+// the next rising edge.
+//
+// Host interface: the host pulls one control byte per step: 1 request + Trn +
+// ACK (pulls the request byte, pushes the 3 ACK bits), 2 read data phase
+// (pushes 32 data bits and the parity bit, ends with Trn), 3 write data phase
+// (pulls 32 data bits and the parity bit, starts with Trn), 4 raw 32 bits out
+// (line reset, 0xE79E, idle cycles). Parity, ACK handling (OK, WAIT, FAULT,
+// retries) and the order of steps are host decisions: the probe owns SWCLK and
+// simply stops it high between steps, which the protocol allows.
+//
+// Hand-computed obligations at f_clk = 5 MHz (half = 100 ns), t_rd = 20 ns,
+// t_jit = 5 ns (0.30 tick at 60 MHz, 0.25 tick at 50 MHz). Bit period 12 / 10 ticks.
+//
+//   obligation                       ideal in the bit           60 MHz          50 MHz
+//   OB-EDGE SWCLK fall + SWDIO out    0                          0, error 0      0, error 0
+//   OB-EDGE SWCLK rise                half                       6, error 0      5, error 0
+//   OB-SAMP SWDIO in (ACK, RDATA)     2 half - t_rd after the    10.8 -> 11      9, error 0
+//                                    previous rise              error 0.20
+//
+//   read round trip   target data valid t_od + pads after our rise at our pin:
+//                     30 ns (its datasheet) + 25 ns pad budget = 55 ns;
+//                     we sample 183.3 ns (60) / 180 ns (50) after the rise:
+//                     margin 128.3 ns / 125 ns
+//   read hold         we sample 16.7 ns (60) / 20 ns (50) before our next rise,
+//                     and the target changes SWDIO only after it: margin >= 16.7 ns
+//   write setup/hold  SWDIO changes at the fall, half = 100 ns before the rise
+//                     and half after it, against a few ns in any SW-DP
+//   longest step      33 data bits + Trn = 34 bits = 6.8 us; 50 ppm drift 0.02 tick
+//
+//   rate              60 MHz                                 50 MHz
+//   5 MHz             accepted (above)                       accepted (above)
+//   7.5 MHz (clk/8)   half 4 ticks, sample 6.8 -> 7, ok;     half 3.33 ticks, rise error 0.33
+//                     round trip margin 61.7 ns              against 0.25: rejected
+//   6.25 MHz          half 4.8 ticks, error 0.4: rejected    half 4 ticks, sample 7: ok
+// The silicon claim stays 5 MHz with the 25 ns pad budget.
+// t_od is stated but not used by a statement: the round trip is a window
+// anchored on our own SWCLK edge (within [t_od + pads, ...] after rise(swclk)), and
+// pin events on an output wire are rejected (E203), so that row is
+// checked by hand only.
+protocol swd_probe {
+  param f_clk : freq = 5 MHz;
+  param t_rd  : time = 20 ns;          // sample this long before the next rising edge
+  param t_jit : time = 5 ns;           // placement tolerance of every SWCLK and SWDIO edge
+  param t_od  : time = 30 ns;          // target: SWDIO valid after SWCLK rises (its datasheet)
+  unit  half  = 1 / (2 * f_clk);
+
+  wire swclk : out push_pull idle 1;
+  wire swdio : inout push_pull pull_up;
+
+  role probe : controller uses swclk, swdio {
+    var op   : bits[8];
+    var req  : bits[8];
+    var ack  : bits[3];
+    var data : bits[32];
+    var par  : bit;
+
+    state idle { on host.pull(op) -> dispatch; }
+
+    state dispatch {
+      after op == 1 -> load_req;
+      after op == 2 -> rdata;
+      after op == 3 -> load_wdata;
+      after op == 4 -> load_raw;
+      after op != 0 -> idle;
+    }
+
+    state load_req { on host.pull(req) -> request; }
+    state request {
+      seq {
+        repeat 8 {                                         // Start .. Park, LSB first
+          drive swclk = 0;
+          shift req lsb 1 -> swdio for half ~ t_jit;
+          drive swclk = 1 for half ~ t_jit;                // the target samples
+        }
+        drive swclk = 0;                                   // Trn: our driver turns off; the
+        sample swdio for half ~ t_jit;                     // sample makes SWDIO an input
+        drive swclk = 1 for half ~ t_jit;                  // the target drives ACK[0] after this rise
+        repeat 3 {
+          drive swclk = 0 for half - t_rd ~ t_jit;
+          shift swdio -> ack lsb 1 for t_rd ~ t_jit;
+          drive swclk = 1 for half ~ t_jit;
+        }
+        push host ack;
+      } -> idle;
+    }
+
+    state rdata {                                          // after an OK ACK of a read
+      seq {
+        repeat 32 {
+          drive swclk = 0 for half - t_rd ~ t_jit;
+          shift swdio -> data lsb 1 for t_rd ~ t_jit;
+          drive swclk = 1 for half ~ t_jit;
+        }
+        drive swclk = 0 for half - t_rd ~ t_jit;           // parity
+        shift swdio -> par lsb 1 for t_rd ~ t_jit;
+        drive swclk = 1 for half ~ t_jit;
+        drive swclk = 0 for half ~ t_jit;                  // Trn: the target lets go
+        drive swclk = 1 for half ~ t_jit;
+        push host data;
+        push host par;
+      } -> idle;
+    }
+
+    state load_wdata { on host.pull(data) -> wdata; }
+    state wdata {                                          // after an OK ACK of a write
+      seq {
+        pull host par;
+        drive swclk = 0 for half ~ t_jit;                  // Trn: the target lets go
+        drive swclk = 1 for half ~ t_jit;
+        repeat 32 {
+          drive swclk = 0;
+          shift data lsb 1 -> swdio for half ~ t_jit;
+          drive swclk = 1 for half ~ t_jit;
+        }
+        drive swclk = 0;
+        shift par lsb 1 -> swdio for half ~ t_jit;
+        drive swclk = 1 for half ~ t_jit;
+      } -> idle;
+    }
+
+    state load_raw { on host.pull(data) -> raw; }
+    state raw {                                            // line reset, 0xE79E, idle cycles
+      seq {
+        repeat 32 {
+          drive swclk = 0;
+          shift data lsb 1 -> swdio for half ~ t_jit;
+          drive swclk = 1 for half ~ t_jit;
+        }
+      } -> idle;
+    }
+  }
+}

@@ -1,0 +1,106 @@
+// can_node.tse: classical CAN 2.0A node, bit layer with arbitration, 500 kbit/s.
+//
+// Source: Bosch CAN Specification 2.0, part A (data frame format, bit
+// stuffing, bit timing requirements), as carried into ISO 11898-1. The bus is
+// wired-AND: 0 (dominant) beats 1 (recessive). A data frame is SOF (0),
+// 11-bit identifier, RTR, IDE (0), r0, 4-bit DLC, 0 to 8 data bytes, CRC-15
+// (polynomial 0x4599), CRC delimiter (1), ACK slot, ACK delimiter (1), EOF (7
+// recessive), then 3 bits of intermission. From SOF to the end of the CRC an
+// opposite bit is stuffed after 5 equal bits. A node that sends recessive and
+// reads dominant during arbitration has lost and stops driving; every correct
+// receiver drives dominant in the ACK slot.
+//
+// What this file states, and what it leaves to the host. The language of this
+// version has no CRC or stuffer assists and no frame construct, so:
+//   - the host builds the transmitted bit stream (stuffing and CRC-15
+//     included) from SOF through intermission and pads it with recessive bits
+//     to 5 words (160 bit times; the longest 2.0A frame with 8 bytes is 135);
+//   - the lane sends it bit by bit, reads every bit back at the sample point
+//     and stops driving (sends recessive) from the first bit where it sent
+//     recessive and read dominant: arbitration loss. Because the read-back
+//     continues, the loser has the winner's frame in its read-back words, as
+//     on a real CAN controller. A dominant ACK slot also sets the flag, which
+//     is harmless because everything after it is recessive;
+//   - the receive path samples 160 bits from the SOF edge and pushes them raw;
+//     the host destuffs and checks the CRC;
+//   - not stated: the receiver's ACK (it must destuff and finish the CRC-15
+//     within the CRC delimiter bit, which needs the hardware CRC), resync on
+//     recessive-to-dominant edges (the DPLL with SJW), error frames.
+//
+// Bit timing (500 kbit/s, 20 time quanta per bit, sample point 80 %):
+//
+//   quantity          60 MHz            50 MHz            1 Mbit/s at 60 / 50 MHz
+//   bit               120 ticks         100 ticks         60 / 50 ticks
+//   time quantum tq   6 ticks           5 ticks           3 / 2.5 ticks
+//   sample point      96 ticks          80 ticks          48 / 40 ticks
+//
+// Hand-computed obligations at 500 kbit/s (tolerance 1 tq, clock budget 50 ppm):
+//
+//   obligation                        ideal (from bit start)    60 MHz                50 MHz
+//   OB-WIN  SOF sample, after fall    [0.8 bit - tq, 0.8 bit + tq]   [90, 102] ticks    [75, 85] ticks
+//   OB-EDGE TX bit k                  k bits                    budget 6 - 50e-6 * i  5 - 50e-6 * i
+//   OB-SAMP read-back / RX bit k      k bits + 0.8 bit          same                  same
+//   last bit of 160                   19,200 / 16,000 ticks     budget 5.04 ticks     budget 4.20 ticks
+//
+// The 50 ppm budget is what lets this file run without resync: across a whole
+// 160-bit window the two clocks move 0.96 ticks (60 MHz) apart, far inside the
+// 6-tick quantum. A peer more than about 300 ppm off (1 tq over 160 bits)
+// needs the DPLL resync this version cannot state; CAN itself allows
+// oscillators far worse than that, so resync is required on a real bus. Every ideal is a whole
+// number of ticks at both clocks, so placement adds no rounding error.
+protocol can_node {
+  param bitrate : freq = 500 kHz;
+  unit  bit     = 1 / bitrate;
+  unit  tq      = bit / 20;
+
+  wire txd : out push_pull idle 1;     // to the transceiver; 0 is dominant
+  wire rxd : in;                       // the bus as the transceiver sees it
+
+  datasheet can_bus {
+    rule min_bit : fall(rxd) -> rise(rxd) >= 1 bit;   // every level lasts at least one bit
+  }
+
+  role node : controller uses txd, rxd {
+    var txw  : bits[32];
+    var rxw  : bits[32];
+    var lost : bit = 0;
+
+    state idle {
+      on host.pull(txw) when rxd == 1 -> send;
+      on fall(rxd) -> receive;                     // someone else's start of frame
+    }
+
+    state send {
+      seq {
+        set lost = 0;
+        repeat 4 {
+          repeat 32 {
+            if lost == 0 { shift txw lsb 1 -> txd for 0.8 bit ~ 1 tq; }
+            else { drive txd = 1 for 0.8 bit ~ 1 tq; }
+            shift rxd -> rxw lsb 1 for 0.2 bit ~ 1 tq;     // the sample point
+            if txd == 1 and rxd == 0 { set lost = 1; }      // sent recessive, read dominant
+          }
+          push host rxw;
+          pull host txw;
+        }
+        repeat 32 {
+          if lost == 0 { shift txw lsb 1 -> txd for 0.8 bit ~ 1 tq; }
+          else { drive txd = 1 for 0.8 bit ~ 1 tq; }
+          shift rxd -> rxw lsb 1 for 0.2 bit ~ 1 tq;
+          if txd == 1 and rxd == 0 { set lost = 1; }
+        }
+        push host rxw;
+      } -> idle;
+    }
+
+    state receive {                                         // hard sync on the SOF edge
+      seq {
+        sample rxd expect 0 within [0.8 bit - 1 tq, 0.8 bit + 1 tq] after fall(rxd) for 1 bit;
+        repeat 5 {
+          shift rxd -> rxw lsb 32 each 1 bit ~ 1 tq;
+          push host rxw;
+        }
+      } -> idle;
+    }
+  }
+}

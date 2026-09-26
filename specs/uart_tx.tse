@@ -1,0 +1,49 @@
+// uart_tx.tse: UART transmitter, 8N1, one role.
+//
+// Line format (TIA-232 asynchronous character framing, as used by every 16550
+// class UART): idle high, one start bit (0), 8 data bits least significant
+// first, one stop bit (1). There is no clock wire, so the receiver relies on
+// both sides keeping the bit time; the usual budget is 2 percent of a bit per
+// edge, so that a receiver sampling at mid-bit stays inside the bit after 10
+// bits with both clocks off in opposite directions.
+//
+// Hand-computed obligations. One bit = fclk / baud ticks; tol = 2 % of the
+// interval before each edge; the clock budget subtracts 50 ppm of each ideal.
+//
+//   baud       fclk     bit (ticks)   tol (ticks)   stop edge ideal   stop budget   stop hold (>= bit - tol)
+//   115200     60 MHz   520.83        10.42         4687.50           10.18         510.42
+//   115200     50 MHz   434.03         8.68         3906.25            8.49         425.35
+//   1000000    60 MHz    60 (exact)    1.20          540                1.17          58.8
+//   1000000    50 MHz    50 (exact)    1.00          450                0.98          49.0
+//
+//   obligation           statement           ideal (ticks)            budget (ticks)
+//   OB-EDGE start        drive tx = 0        0 (reference)            tol
+//   OB-EDGE data k       shift b lsb 8       bit * (k + 1), k = 0..7  tol - 50e-6 * ideal
+//   OB-EDGE stop         drive tx = 1        bit * 9                  tol - 50e-6 * ideal
+//   OB-HOLD stop         end of frame        we own the next start    held >= bit - tol
+//
+// At 1 Mbaud every ideal is a whole number of ticks at both clocks, so the
+// only error is the loop structure; at 115200 the fractional bit is placed to
+// the nearest tick and the error (at most 0.5 tick plus the pacing error) is
+// charged to the 10.42 / 8.68 tick budget. A 2 % budget needs at least
+// 25 ticks per bit from any cycle-quantised output, which caps the rate near
+// 2.4 Mbaud at 60 MHz and 2 Mbaud at 50 MHz.
+protocol uart_tx {
+  param baud : freq  = 115200 Hz;
+  param tol  : ratio = 2 %;
+  unit  bit  = 1 / baud;
+
+  wire tx : out push_pull idle 1;
+
+  role tx_side : controller uses tx {
+    var b : bits[8];
+    state idle  { on host.pull(b) -> frame; }
+    state frame {
+      seq {
+        drive tx = 0 for 1 bit ~ tol;            // start bit
+        shift b lsb 8 -> tx each 1 bit ~ tol;    // data, least significant first
+        drive tx = 1 for 1 bit ~ tol;            // stop bit
+      } -> idle;
+    }
+  }
+}
