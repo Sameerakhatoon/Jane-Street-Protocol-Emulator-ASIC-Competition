@@ -7,7 +7,7 @@ mkdir -p build/rtl-sim
 run_tb() {   # run_tb <tb> [iverilog args]
     local tb=$1; shift
     local out=build/rtl-sim/$tb
-    if ! iverilog -g2012 -DSIM "$@" -o $out.vvp -s $tb test/rtl/$tb.sv $(ls src/*_pkg.sv 2>/dev/null) $(ls src/*.sv | grep -v _pkg.sv) src/*.v \
+    if ! iverilog -g2012 -DSIM "$@" -o $out.vvp -s $tb $(ls src/*_pkg.sv 2>/dev/null) test/rtl/$tb.sv $(ls src/*.sv | grep -v _pkg.sv) src/*.v \
             > $out.build.txt 2>&1; then
         echo "FAIL $tb (build)"; grep -v sorry $out.build.txt | head -20; return 1
     fi

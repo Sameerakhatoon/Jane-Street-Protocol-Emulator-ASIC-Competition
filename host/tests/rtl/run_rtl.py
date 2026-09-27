@@ -1,25 +1,39 @@
-"""Build tse_loader.sv with Icarus and run the cocotb tests in proto_loader.py.
+"""Build the whole chip with Icarus and run the cocotb tests in loader_rtl.py.
 
     python3 host/tests/rtl/run_rtl.py        (from the repository root)
-Exit status 0 when every test passes or fails exactly as marked.
+The source list is the full-chip one from info_chip.yaml, with the SRAM model
+instead of the black box; the pin driver comes from verif/chip.
+Exit status 0 when every test passes.
 """
 import os
+import re
 import sys
 
 from cocotb_tools.runner import get_results, get_runner
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 HOST = os.path.dirname(os.path.dirname(HERE))
-BUILD = os.path.join(os.path.dirname(HOST), "build", "host_rtl")
+ROOT = os.path.dirname(HOST)
+BUILD = os.path.join(ROOT, "build", "host_rtl")
+PINS = os.path.join(ROOT, "verif", "chip")
+
+
+def sources():
+    text = open(os.path.join(ROOT, "info_chip.yaml")).read()
+    block = text.split("source_files:")[1].split("\n\n")[0]
+    names = re.findall(r'^\s*-\s*"([^"]+)"', block, re.M)
+    src = [os.path.join(ROOT, "src", n) for n in names if n != "tse_sram_bb.v"]
+    return src + [os.path.join(ROOT, "src", "tse_sram_model.v")]
 
 
 def main():
-    os.environ["PYTHONPATH"] = os.pathsep.join([HERE, HOST, os.environ.get("PYTHONPATH", "")])
-    sys.path[:0] = [HERE, HOST]
+    os.environ["PYTHONPATH"] = os.pathsep.join([HERE, HOST, PINS, os.environ.get("PYTHONPATH", "")])
+    os.environ["PYTHONDONTWRITEBYTECODE"] = "1"
+    sys.path[:0] = [HERE, HOST, PINS]
     r = get_runner("icarus")
-    r.build(sources=[os.path.join(HERE, "tse_loader.sv")], hdl_toplevel="tse_loader",
-            build_dir=BUILD, build_args=["-g2012"], timescale=("1ps", "1ps"), always=True)
-    results = r.test(hdl_toplevel="tse_loader", test_module="proto_loader", build_dir=BUILD,
+    r.build(sources=sources(), hdl_toplevel="tse_chip", build_dir=BUILD,
+            build_args=["-g2012", "-DSIM"], timescale=("1ps", "1ps"), always=True)
+    results = r.test(hdl_toplevel="tse_chip", test_module="loader_rtl", build_dir=BUILD,
                      test_dir=BUILD)
     total, failed = get_results(results)
     print("rtl: %d tests, %d failed" % (total, failed))

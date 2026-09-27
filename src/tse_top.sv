@@ -1,17 +1,30 @@
 `default_nettype none
-// TSE chip core: LANES lanes (3 in 6x4, 4 in 8x4), one SRAM, config banks,
-// crossbar, event unit, loader, self-test and runtime SPI.
-// Chip config bank (bank 15) words: 0 {spi_en[8], lane_en[3:0]},
-// 1..16 output pad p {idle_oe, idle, en, od, inv, src}, 17..20 sink inputs (one byte each,
-// 4 per word), 21..24 sink sample delays (one byte each), 25..28 trigger
-// stages, 29 trigger length, 31 run key.
-// Runtime SPI map: 0x0LRR lane L register RR, 0x1L0x lane L mailbox,
-// 0x200x event unit (read of 0x2000 pops), 0x3000 status, 0x4BWW config bank B
-// word WW (a lane bank only while that lane is stopped).
+// TSE chip core: LANES lanes (3 in 6x4, 4 in 8x4), one SRAM, configuration
+// banks, crossbar, event unit, self-test, and one host bus driven by the
+// command decoder from the load-mode byte bus or the run-mode SPI target.
+// Host map (16-bit word addresses, every name from tse_regs_pkg):
+//   0x0000 program SRAM, window w at 0x80 x w; 0x0400 data window (window 3,
+//   3 lanes only); 0x1000 + 0x100 x lane + reg lane registers; 0x2000
+//   crossbar; 0x3000 event unit; 0x4000 chip registers and mailboxes.
+//   Unmapped addresses read 0 and ignore writes.
+// Refused, setting the sticky host error: a class L or P lane write while
+// that lane runs or is about to; an SRAM write into a window a running lane
+// uses; any SRAM access during the self-test, or while lanes run with 4
+// lanes (no system slot); RUN in run mode while not loaded (in load mode
+// the runtime flops are in reset and a RUN write does nothing). A refused
+// read returns 0.
+// Chip configuration words (class L) live in CHIP_BANKS (1 or 2) banks of
+// 64 / CHIP_BANKS words, numbered in host address order: PAD_OUT, LANE_IN of the
+// lanes built, PIN_OPT, EV_CTL, TRIG_MATCH, TRIG_WIN, TRIG_CTL (39 words for 3
+// lanes, 43 for 4). chip_word() and chip_mask() derive the numbering and the
+// stored bits from the register package. Package names are written out in
+// full (pkg::NAME) because Yosys takes neither a wildcard nor a header import.
+// RUN takes effect at the next frame end and only while loaded.
 module tse_top #(
-    parameter int          LANES     = 3,
-    parameter bit          CFG_LATCH = 1,
-    parameter logic [15:0] KEY       = 16'h7E5A
+    parameter int LANES      = 3,
+    parameter bit CFG_LATCH  = 1,
+    parameter int EVQ_DEPTH  = 4,
+    parameter int CHIP_BANKS = 2
 ) (
     input  logic        clk,
     input  logic        rst_n,
@@ -25,94 +38,219 @@ module tse_top #(
 );
     localparam int V  = 4;
     localparam int NI = LANES * V;
-    localparam int NS = NI + 1;           // lane pins plus trigger-out
-    localparam int SW = $clog2(NS);
 
-    // Bits that exist in each config bank (to be generated from the config
-    // config table). Word 31 is first in each concatenation.
-    localparam logic [31:0] PADM = 32'((1 << (SW + 5)) - 1);
-    localparam logic [1023:0] LANE_MASK = {
+    // The lanes still decode their configuration in their own word layout, so
+    // the lane bank stores that layout's bits plus the program register.
+    localparam logic [1023:0] LANE_OWN = {
         {8{32'h0}},
         32'h0000_1FFF, 32'h01FF_FFFF, 32'h0000_0000, 32'hFFFF_FFFF,    // rule 1
         32'h0000_1FFF, 32'h01FF_FFFF, 32'h0000_0000, 32'hFFFF_FFFF,    // rule 0
         {2{32'h0}}, 32'h0FC0_0000, 32'h0000_0FFF,                     // WAIT alternate, RULE_CLK
-        32'h0007_FFFF, 32'h00FF_FFFF, 32'h03FF_FFFF,                     // timer, lane
-        32'h000F_FFFF, 32'h000F_FFFF, 32'h000F_FFFF,                     // DPLL
-        32'h0000_0F3F, 32'h0000_007F, {4{32'hFFFF_FFFF}}                // line, CRC
+        32'h0007_FFFF, 32'h00FF_FFFF, 32'h03FF_FFFF,                   // timer, lane
+        32'h000F_FFFF, 32'h000F_FFFF, 32'h000F_FFFF,                   // DPLL
+        32'h0000_0F3F, 32'h0000_007F, {4{32'hFFFF_FFFF}}              // line, CRC
     };
-    localparam logic [1023:0] CHIP_MASK = {
-        32'h0000_FFFF, 32'h0, 32'h0000_00FF,                             // key, trigger length
-        {4{32'h8FFF_FFFF}}, {4{32'h0707_0707}}, {4{32'h1F1F_1F1F}},     // stages, delays, sinks
-        {16{PADM}}, 32'h0000_010F                                         // pads, enables
-    };
+    localparam logic [1023:0] LANE_MASK = LANE_OWN | (1024'(tse_regs_pkg::LR_LANE_PROG_MASK) << (32 * tse_regs_pkg::LW_LANE_PROG));
+
+    localparam int CW_PAD_OUT    = 0;
+    localparam int CW_LANE_IN    = CW_PAD_OUT + tse_regs_pkg::HR_PAD_OUT_COUNT;
+    localparam int CW_PIN_OPT    = CW_LANE_IN + NI;
+    localparam int CW_EV_CTL     = CW_PIN_OPT + 1;
+    localparam int CW_TRIG_MATCH = CW_EV_CTL + 1;
+    localparam int CW_TRIG_WIN   = CW_TRIG_MATCH + tse_regs_pkg::HR_TRIG_MATCH_COUNT;
+    localparam int CW_TRIG_CTL   = CW_TRIG_WIN + tse_regs_pkg::HR_TRIG_WIN_COUNT;
+    localparam int CHIP_WORDS    = CW_TRIG_CTL + 1;
+    localparam int CBW           = 64 / CHIP_BANKS;
+    localparam int CAW           = $clog2(CBW);
+
+    // {hit, chip word} of a host address
+    function automatic logic [6:0] chip_word(input logic [15:0] a);
+        int i;
+        chip_word = '0;
+        i = int'(a) - int'(tse_regs_pkg::HR_PAD_OUT);
+        if (i >= 0 && i < tse_regs_pkg::HR_PAD_OUT_COUNT)   chip_word = {1'b1, 6'(CW_PAD_OUT + i)};
+        i = int'(a) - int'(tse_regs_pkg::HR_LANE_IN);
+        if (i >= 0 && i < NI)                 chip_word = {1'b1, 6'(CW_LANE_IN + i)};
+        if (a == tse_regs_pkg::HR_PIN_OPT)                  chip_word = {1'b1, 6'(CW_PIN_OPT)};
+        if (a == tse_regs_pkg::HR_EV_CTL)                   chip_word = {1'b1, 6'(CW_EV_CTL)};
+        i = int'(a) - int'(tse_regs_pkg::HR_TRIG_MATCH);
+        if (i >= 0 && i < tse_regs_pkg::HR_TRIG_MATCH_COUNT) chip_word = {1'b1, 6'(CW_TRIG_MATCH + i)};
+        i = int'(a) - int'(tse_regs_pkg::HR_TRIG_WIN);
+        if (i >= 0 && i < tse_regs_pkg::HR_TRIG_WIN_COUNT)   chip_word = {1'b1, 6'(CW_TRIG_WIN + i)};
+        if (a == tse_regs_pkg::HR_TRIG_CTL)                 chip_word = {1'b1, 6'(CW_TRIG_CTL)};
+    endfunction
+
+    function automatic logic [64*32-1:0] chip_mask();
+        logic [64*32-1:0] m;
+        m = '0;
+        for (int p = 0; p < tse_regs_pkg::HR_PAD_OUT_COUNT; p++) m[32*(CW_PAD_OUT + p) +: 32] = tse_regs_pkg::HR_PAD_OUT_MASK;
+        for (int i = 0; i < NI; i++)               m[32*(CW_LANE_IN + i) +: 32] = tse_regs_pkg::HR_LANE_IN_MASK;
+        m[32*CW_PIN_OPT +: 32] = tse_regs_pkg::HR_PIN_OPT_MASK;
+        m[32*CW_EV_CTL +: 32]  = tse_regs_pkg::HR_EV_CTL_MASK;
+        for (int s = 0; s < tse_regs_pkg::HR_TRIG_MATCH_COUNT; s++) m[32*(CW_TRIG_MATCH + s) +: 32] = tse_regs_pkg::HR_TRIG_MATCH_MASK;
+        for (int s = 0; s < tse_regs_pkg::HR_TRIG_WIN_COUNT; s++)   m[32*(CW_TRIG_WIN + s) +: 32]   = tse_regs_pkg::HR_TRIG_WIN_MASK;
+        m[32*CW_TRIG_CTL +: 32] = tse_regs_pkg::HR_TRIG_CTL_MASK;
+        chip_mask = m;
+    endfunction
+    localparam logic [64*32-1:0] CHIP_MASK = chip_mask();
+
+    if (CHIP_WORDS > 64 || CHIP_BANKS < 1 || CHIP_BANKS > 2) begin : g_bad_chip_words
+        tse_top_bad_chip_words u_stop ();         // does not exist: elaboration stops here
+    end
 
     // ---------------- resets and mode
     logic eng_rst_n, ld_rst_n, sys_rst_n;
     tse_rst_sync u_rst (.clk, .rst_n, .eng_rst_n, .ld_rst_n, .sys_rst_n, .load_mode);
 
-    // ---------------- chip config bank
-    logic [1023:0] chip;
-    logic [31:0]   chip_rd;
-    logic          key_ok;
-    logic          chip_busy, pm_h_gnt;
-    logic [LANES-1:0] lane_busy;           // unused: write spacing is guaranteed by construction
-    logic [3:0]    lane_en;
-    assign key_ok  = chip[32*31 +: 16] == KEY;
-    assign lane_en = chip[3:0];
-    assign spi_en  = chip[8] && !load_mode;
+    // ---------------- host bus
+    logic        h_we, h_re, h_err, h_rvalid;
+    logic [15:0] h_addr;
+    logic [31:0] h_wdata, h_rdata, rmux;
+    logic        loaded, host_err, cfg_clr, bist_start;
+    logic [31:0] load_crc;
+    logic        s_valid, s_first;
+    logic [7:0]  s_data;
 
-    // loader, self-test and host SPI buses
-    logic        ld_p_req, ld_p_we, ld_c_we, ld_c_clr, st_start, st_busy, st_done, st_pass;
-    logic [8:0]  ld_p_addr;
-    logic [31:0] ld_p_wdata, ld_c_wdata, ld_c_rdata, st_info, pm_h_rdata;
-    logic [3:0]  ld_c_bank;
-    logic [4:0]  ld_c_word;
-    logic        hs_we, hs_re;
-    logic [15:0] hs_addr;
-    logic [31:0] hs_wdata, hs_rdata;
-    logic        hs_cfg_we;
-    assign hs_cfg_we = hs_we && hs_addr[15:12] == 4'd4;
+    logic [3:0]       run_q;
+    logic [LANES-1:0] lane_live, lane_run;
+    logic             st_busy, st_done, st_pass;
+    logic [13:0]      st_result;
 
-    tse_cfg_bank #(.WORDS(32), .LATCH(CFG_LATCH), .MASK(CHIP_MASK)) u_chip_cfg (
-        .clk, .rst_n(sys_rst_n), .clr(ld_c_clr),
-        .we(load_mode ? (ld_c_we && ld_c_bank == 4'hF) : (hs_cfg_we && hs_addr[11:8] == 4'hF)),
-        .addr(load_mode ? ld_c_word : hs_addr[4:0]),
-        .wdata(load_mode ? ld_c_wdata : hs_wdata), .busy(chip_busy),
-        .rd_addr(load_mode ? ld_c_word : hs_addr[4:0]), .rd_data(chip_rd), .q(chip)
+    assign lane_run = run_q[LANES-1:0] | lane_live;
+
+    tse_loader u_loader (
+        .clk, .rst_n(sys_rst_n), .load_mode,
+        .ld_data(pad_in[7:0]), .ld_strobe(pad_in[8]), .ld_frame(pad_in[9]), .ld_dout,
+        .s_valid, .s_first, .s_data,
+        .h_we, .h_re, .h_addr, .h_wdata, .h_rdata, .h_rvalid, .h_err,
+        .lanes_idle(lane_run == '0), .bist_done(st_done), .bist_pass(st_pass), .halted(4'd0),
+        .loaded, .host_err, .load_crc, .cfg_clr, .bist_start
     );
 
-    // ---------------- lanes and their config banks
+    // address decode
+    logic [7:0]  hreg;
+    logic [1:0]  hl;
+    tse_regs_pkg::rclass_t     hcls;
+    logic [4:0]  hword;
+    logic [6:0]  cw;
+    logic        a_sram, a_dwin, a_lane;
+    logic [1:0]  a_win;
+    logic [3:0]  busy_win;
+    assign hreg   = h_addr[7:0];
+    assign hl     = h_addr[9:8];
+    assign hcls   = tse_regs_pkg::lane_reg_class(hreg);
+    assign hword  = tse_regs_pkg::lane_reg_word(hreg);
+    assign cw     = chip_word(h_addr);
+    assign a_sram = h_addr < tse_regs_pkg::REGION_SRAM_BASE + tse_regs_pkg::REGION_SRAM_SIZE;
+    assign a_dwin = LANES < 4 && h_addr >= tse_regs_pkg::REGION_DATA_BASE && h_addr < tse_regs_pkg::REGION_DATA_BASE + tse_regs_pkg::REGION_DATA_SIZE;
+    assign a_lane = h_addr >= tse_regs_pkg::LANE_HOST_BASE && 32'(h_addr) < 32'(tse_regs_pkg::LANE_HOST_BASE) + LANES * 32'(tse_regs_pkg::LANE_HOST_STRIDE);
+    assign a_win  = a_dwin ? 2'd3 : h_addr[8:7];
+
+    logic [LANES*2-1:0] l_win;
     logic [LANES*1024-1:0] lcfg;
+    always_comb begin
+        busy_win = '0;
+        for (int i = 0; i < LANES; i++) begin
+            l_win[2*i +: 2] = lcfg[1024*i + 32*tse_regs_pkg::LW_LANE_PROG + tse_regs_pkg::LR_LANE_PROG_WINDOW_LO +: 2];
+            if (lane_run[i]) busy_win[l_win[2*i +: 2]] = 1'b1;
+        end
+    end
+
+    logic acc, err_sram, err_lane, err_run, sram_go;
+    assign acc      = h_we || h_re;
+    assign err_sram = (a_sram || a_dwin) && (st_busy || (LANES == 4 && lane_run != '0) || (h_we && busy_win[a_win]));
+    assign err_lane = a_lane && h_we && (hcls == tse_regs_pkg::RC_L || hcls == tse_regs_pkg::RC_P) && lane_run[hl];
+    assign err_run  = h_we && h_addr == tse_regs_pkg::HR_RUN && !loaded && !load_mode;
+    assign h_err    = acc && (err_sram || err_lane || err_run);
+    assign sram_go  = acc && (a_sram || a_dwin) && !err_sram;
+
+    logic h_wr;                                   // an accepted register write
+    assign h_wr = h_we && !h_err;
+
+    // ---------------- program memory and self-test
+    logic        pm_pend, pm_we, pm_gnt, pm_rd_q, pm_h_gnt;
+    logic [8:0]  pm_addr;
+    logic [31:0] pm_wdata, pm_rdata;
+    logic        st_m_req, st_m_we, frame_end;
+    logic [8:0]  st_m_addr;
+    logic [31:0] st_m_wdata;
+    logic [LANES-1:0]   l_req, l_gnt;
+    logic [LANES*7-1:0] l_addr;
+    logic [31:0]        l_rdata;
+    assign pm_gnt = pm_h_gnt && !st_busy;
+
+    always_ff @(posedge clk or negedge sys_rst_n)
+        if (!sys_rst_n) begin
+            pm_pend <= 1'b0; pm_we <= 1'b0; pm_addr <= '0; pm_wdata <= '0; pm_rd_q <= 1'b0;
+        end else begin
+            pm_rd_q <= pm_gnt && !pm_we;
+            if (pm_gnt) pm_pend <= 1'b0;
+            if (sram_go) begin
+                pm_pend <= 1'b1; pm_we <= h_we; pm_wdata <= h_wdata;
+                pm_addr <= a_dwin ? {2'd3, h_addr[6:0]} : h_addr[8:0];
+            end
+        end
+
+    tse_prog_mem #(.LANES(LANES)) u_pmem (
+        .clk, .rst_n(sys_rst_n), .run(lane_live != '0),
+        .l_req, .l_addr, .l_win, .l_gnt, .l_rdata,
+        .h_req(st_busy ? st_m_req : pm_pend), .h_we(st_busy ? st_m_we : pm_we),
+        .h_addr(st_busy ? st_m_addr : pm_addr), .h_wdata(st_busy ? st_m_wdata : pm_wdata),
+        .h_gnt(pm_h_gnt), .h_rdata(pm_rdata), .frame_end
+    );
+
+    logic        lb_en;
+    logic [15:0] lb_pat, pad_p, pad_n;
+    tse_selftest u_st (
+        .clk, .rst_n(sys_rst_n), .start(bist_start), .clr(cfg_clr),
+        .m_req(st_m_req), .m_we(st_m_we), .m_addr(st_m_addr), .m_wdata(st_m_wdata), .m_rdata(pm_rdata),
+        .lb_en, .lb_pat, .pad_p, .pad_n, .busy(st_busy), .done(st_done), .pass(st_pass), .result(st_result)
+    );
+
+    // ---------------- chip configuration banks
+    logic [64*32-1:0] chip_q;
+    logic [31:0]      chip_rd [CHIP_BANKS];
+    logic [31:0]      chip_rdata;
+    logic [CHIP_BANKS-1:0] chip_busy;
+    logic             cbank;
+    assign cbank = CHIP_BANKS == 2 && cw[5];
+    for (genvar b = 0; b < CHIP_BANKS; b++) begin : g_chip
+        tse_cfg_bank #(.WORDS(CBW), .LATCH(CFG_LATCH), .MASK(CHIP_MASK[CBW*32*b +: CBW*32])) u_cfg (
+            .clk, .rst_n(sys_rst_n), .clr(cfg_clr),
+            .we(h_wr && cw[6] && cbank == (b == 1)), .addr(cw[CAW-1:0]), .wdata(h_wdata),
+            .busy(chip_busy[b]), .rd_addr(cw[CAW-1:0]), .rd_data(chip_rd[b]),
+            .q(chip_q[CBW*32*b +: CBW*32])
+        );
+    end
+    assign chip_rdata = chip_rd[CHIP_BANKS == 2 ? 32'(cbank) : 0];
+
+    logic [3:0] pin_opt;
+    assign pin_opt = chip_q[32*CW_PIN_OPT +: 4];
+    assign spi_en  = !pin_opt[tse_regs_pkg::HR_PIN_OPT_HOST_SPI_OFF_LO] && !load_mode;
+
+    // ---------------- lanes and their configuration banks
     logic [31:0]           lane_rd [LANES];
-    logic [LANES-1:0]      l_cfg_we, l_req, l_gnt, ev_valid;
+    logic [LANES-1:0]      l_cfg_we, ev_valid, lane_busy;
     logic [LANES*5-1:0]    l_cfg_word;
     logic [LANES*32-1:0]   l_cfg_wdata;
-    logic [LANES*7-1:0]    l_addr;
-    logic [LANES-1:0]      lane_live;          // registered run: one cycle at idle after reset
-    logic [NI-1:0]         live_pins;
-    always_ff @(posedge clk or negedge eng_rst_n)
-        if (!eng_rst_n) lane_live <= '0;
-        else            lane_live <= {LANES{key_ok}} & lane_en[LANES-1:0];
     logic [LANES*4-1:0]    ev_code;
-    logic [31:0]           l_rdata;
-    logic [NI-1:0]         vin_p, vin_n, vout, voe;
+    logic [NI-1:0]         vin_p, vin_n, vout, voe, live_pins;
     logic [31:0]           lane_h_rdata [LANES];
     logic [31:0]           lane_rx [LANES];
     logic [1:0]            lane_flags [LANES];
 
     for (genvar i = 0; i < LANES; i++) begin : g_lane
-        logic sel_ld, sel_hs, own;
-        assign sel_ld = ld_c_bank == 4'(i);
-        assign sel_hs = hs_addr[11:8] == 4'(i);
-        assign own    = lane_en[i];                      // a running lane owns its bank
+        logic hb_we, sel;
+        assign sel   = a_lane && hl == 2'(i);
+        assign hb_we = h_wr && sel && hcls == tse_regs_pkg::RC_L;
         assign live_pins[V*i +: V] = {V{lane_live[i]}};
 
         tse_cfg_bank #(.WORDS(32), .LATCH(CFG_LATCH), .MASK(LANE_MASK)) u_cfg (
-            .clk, .rst_n(sys_rst_n), .clr(ld_c_clr),
-            .we(load_mode ? (ld_c_we && sel_ld) : own ? l_cfg_we[i] : (hs_cfg_we && sel_hs)),
-            .addr(load_mode ? ld_c_word : own ? l_cfg_word[5*i +: 5] : hs_addr[4:0]),
-            .wdata(load_mode ? ld_c_wdata : own ? l_cfg_wdata[32*i +: 32] : hs_wdata),
-            .busy(lane_busy[i]), .rd_addr(load_mode ? ld_c_word : hs_addr[4:0]), .rd_data(lane_rd[i]),
+            .clk, .rst_n(sys_rst_n), .clr(cfg_clr),
+            .we(lane_live[i] ? l_cfg_we[i] : hb_we),
+            .addr(lane_live[i] ? l_cfg_word[5*i +: 5] : hword),
+            .wdata(lane_live[i] ? l_cfg_wdata[32*i +: 32] : h_wdata),
+            .busy(lane_busy[i]), .rd_addr(hword), .rd_data(lane_rd[i]),
             .q(lcfg[1024*i +: 1024])
         );
 
@@ -120,12 +258,11 @@ module tse_top #(
             .clk, .rst_n(eng_rst_n), .run(lane_live[i]),
             .cfg(lcfg[1024*i +: 1024]), .cfg_we(l_cfg_we[i]), .cfg_word(l_cfg_word[5*i +: 5]),
             .cfg_wdata(l_cfg_wdata[32*i +: 32]),
-            .h_we(hs_we && hs_addr[15:12] == 4'd0 && hs_addr[9:8] == 2'(i)),
-            .h_re(hs_re && hs_addr[15:12] == 4'd0 && hs_addr[9:8] == 2'(i)),
-            .h_addr(hs_addr[7:0]), .h_wdata(hs_wdata), .h_rdata(lane_h_rdata[i]),
-            .h_tx_we(hs_we && hs_addr[15:12] == 4'd1 && hs_addr[9:8] == 2'(i) && !hs_addr[0]),
-            .h_tx_data(hs_wdata),
-            .h_rx_re(hs_re && hs_addr[15:12] == 4'd1 && hs_addr[9:8] == 2'(i) && !hs_addr[0]),
+            .h_we(h_wr && sel && (hcls == tse_regs_pkg::RC_F || hcls == tse_regs_pkg::RC_P)),
+            .h_re(h_re && sel && hcls != tse_regs_pkg::RC_L),
+            .h_addr(hreg), .h_wdata, .h_rdata(lane_h_rdata[i]),
+            .h_tx_we(h_wr && h_addr == tse_regs_pkg::HR_MBOX_TX + 16'(i)), .h_tx_data(h_wdata),
+            .h_rx_re(h_re && h_addr == tse_regs_pkg::HR_MBOX_RX + 16'(i)),
             .h_rx_data(lane_rx[i]), .h_flags(lane_flags[i]),
             .ev_valid(ev_valid[i]), .ev_code(ev_code[4*i +: 4]),
             .imem_req(l_req[i]), .imem_addr(l_addr[7*i +: 7]), .imem_gnt(l_gnt[i]), .imem_rdata(l_rdata),
@@ -133,104 +270,112 @@ module tse_top #(
         );
     end
 
-    // ---------------- program memory (fixed slots), loader or self-test port
-    logic       st_m_req, st_m_we;
-    logic [8:0] st_m_addr;
-    logic [31:0] st_m_wdata;
-    tse_prog_mem #(.LANES(LANES)) u_pmem (
-        .clk, .rst_n(sys_rst_n), .run(!load_mode),
-        .l_req, .l_addr, .l_gnt, .l_rdata,
-        .h_req(st_busy ? st_m_req : ld_p_req), .h_we(st_busy ? st_m_we : ld_p_we),
-        .h_addr(st_busy ? st_m_addr : ld_p_addr), .h_wdata(st_busy ? st_m_wdata : ld_p_wdata),
-        .h_gnt(pm_h_gnt), .h_rdata(pm_h_rdata)
-    );
-
-    // ---------------- loader and self-test (load mode only)
-    always_comb begin
-        ld_c_rdata = '0;
-        if (ld_c_bank == 4'hF) ld_c_rdata = chip_rd;
-        for (int i = 0; i < LANES; i++) if (ld_c_bank == 4'(i)) ld_c_rdata = lane_rd[i];
-    end
-
-    tse_loader #(.KEY(KEY)) u_loader (
-        .clk, .rst_n(ld_rst_n), .din(pad_in[7:0]), .dout(ld_dout),
-        .p_req(ld_p_req), .p_we(ld_p_we), .p_addr(ld_p_addr), .p_wdata(ld_p_wdata), .p_rdata(pm_h_rdata),
-        .c_we(ld_c_we), .c_clr(ld_c_clr), .c_bank(ld_c_bank), .c_word(ld_c_word),
-        .c_wdata(ld_c_wdata), .c_rdata(ld_c_rdata),
-        .st_start, .st_busy, .st_done, .st_pass, .st_info, .key_ok
-    );
-
-    logic        lb_en;
-    logic [15:0] lb_pat, pad_p, pad_n;
-    tse_selftest u_st (
-        .clk, .rst_n(ld_rst_n), .start(st_start),
-        .m_req(st_m_req), .m_we(st_m_we), .m_addr(st_m_addr), .m_wdata(st_m_wdata), .m_rdata(pm_h_rdata),
-        .lb_en, .lb_pat, .pad_p, .pad_n, .busy(st_busy), .done(st_done), .pass(st_pass), .info(st_info)
-    );
+    // ---------------- RUN, interrupts
+    logic [3:0]         trig_stop;
+    logic [4*LANES-1:0] irq_q;
+    always_ff @(posedge clk or negedge eng_rst_n)
+        if (!eng_rst_n) begin
+            run_q <= '0; lane_live <= '0; irq_q <= '0;
+        end else begin
+            if (h_wr && h_addr == tse_regs_pkg::HR_RUN) run_q <= h_wdata[3:0];
+            if (cfg_clr)                  run_q <= '0;
+            else if (trig_stop != '0)     run_q <= run_q & ~trig_stop;
+            if (frame_end) lane_live <= run_q[LANES-1:0] & {LANES{loaded}};
+            begin
+                logic [4*LANES-1:0] set;
+                for (int i = 0; i < LANES; i++) set[4*i +: 4] = ev_valid[i] ? ev_code[4*i +: 4] : 4'd0;
+                irq_q <= ((h_re && h_addr == tse_regs_pkg::HR_IRQ) ? '0 : irq_q) | set;
+            end
+        end
 
     // ---------------- crossbar and sample delay
-    logic        trig_out;
-    logic [NI-1:0] sink_p, sink_n;
-    logic [16*(SW+5)-1:0] x_out;
-    logic [NI*5-1:0]      x_in;
-    logic [NI*3-1:0]      x_dly;
+    logic [16*9-1:0] x_out;
+    logic [NI*6-1:0] x_in;
+    logic [NI*3-1:0] x_dly;
+    logic [NI-1:0]   sink_p;
+    logic            trig_level;
     always_comb begin
-        for (int p = 0; p < 16; p++) x_out[(SW+5)*p +: SW+5] = chip[32*(1+p) +: SW+5];
+        for (int p = 0; p < 16; p++) x_out[9*p +: 9] = chip_q[32*(CW_PAD_OUT + p) +: 9];
         for (int i = 0; i < NI; i++) begin
-            x_in[5*i +: 5]  = chip[32*(17 + i/4) + 8*(i%4) +: 5];
-            x_dly[3*i +: 3] = chip[32*(21 + i/4) + 8*(i%4) +: 3];
+            x_in[6*i +: 6]  = chip_q[32*(CW_LANE_IN + i) +: 6];
+            x_dly[3*i +: 3] = chip_q[32*(CW_LANE_IN + i) + tse_regs_pkg::HR_LANE_IN_DELAY_LO +: 3];
         end
     end
 
-    tse_xbar #(.NS(NS), .NI(NI), .P(16), .PO(16)) u_xbar (
-        .clk, .rst_n(sys_rst_n), .cfg_out(x_out), .cfg_in(x_in), .lb_en, .lb_pat, .pad_p, .pad_n,
-        .src_out({trig_out, vout}), .src_oe({1'b1, voe}), .src_live({key_ok, live_pins}),
-        .sink_p, .sink_n,
-        .pin_in(pad_in), .pin_out(pad_out), .pin_oe(pad_oe)
+    tse_xbar #(.NI(NI)) u_xbar (
+        .clk, .rst_n(sys_rst_n), .cfg_out(x_out), .cfg_in(x_in),
+        .loopback(pin_opt[tse_regs_pkg::HR_PIN_OPT_LOOPBACK_LO]), .lb_test(lb_en), .lb_pat,
+        .ovr_en({8'd0, pin_opt[tse_regs_pkg::HR_PIN_OPT_TRIG_PAD_LO], pin_opt[tse_regs_pkg::HR_PIN_OPT_IRQ_PAD_LO], 6'd0}),
+        .ovr_val({8'd0, trig_level, irq_q != '0, 6'd0}),
+        .pad_p, .pad_n, .src_out(16'(vout)), .src_oe(16'(voe)), .src_live(16'(live_pins)),
+        .sink_p, .sink_n(vin_n), .pin_in(pad_in), .pin_out(pad_out), .pin_oe(pad_oe)
     );
 
-    tse_pin_delay #(.N(NI), .D(8)) u_dly (
-        .clk, .rst_n(sys_rst_n), .cfg_dly(x_dly), .in_p(sink_p), .in_n(sink_n),
-        .out_p(vin_p), .out_n(vin_n)
+    tse_pin_delay #(.N(NI)) u_dly (
+        .clk, .rst_n(sys_rst_n), .cfg_dly(x_dly), .in_p(sink_p), .in_n(vin_n), .out_p(vin_p)
     );
 
     // ---------------- event unit
-    logic [31:0] ev_head, ev_ts, ev_trig_ts;
-    logic        ev_empty, ev_ovf;
-    tse_event_unit #(.LANES(LANES), .DEPTH(8), .STAGES(4)) u_ev (
-        .clk, .rst_n(eng_rst_n), .run(key_ok), .cfg_stage(chip[32*25 +: 128]),
-        .cfg_trig_len(chip[32*29 +: 8]), .ev_valid, .ev_code,
-        .pop(hs_re && hs_addr == 16'h2000), .head(ev_head), .empty(ev_empty), .overflow(ev_ovf),
-        .ts(ev_ts), .trig_ts(ev_trig_ts), .trig_out
-    );
+    logic [31:0] ev_head, ev_ts;
+    logic [15:0] ev_status;
+    logic [5:0]  chip_flags;
+    logic [4*16-1:0] ev_win;
+    logic [LANES*6-1:0] ev_code6;
+    always_comb begin
+        for (int s = 0; s < 4; s++) ev_win[16*s +: 16] = chip_q[32*(CW_TRIG_WIN + s) +: 16];
+        for (int i = 0; i < LANES; i++) ev_code6[6*i +: 6] = {2'd0, ev_code[4*i +: 4]};
+    end
 
-    wire _unused = &{chip_busy, lane_busy, pm_h_gnt, chip[1023:32*29+8], 1'b0};
+    tse_event_unit #(.LANES(LANES), .DEPTH(EVQ_DEPTH)) u_ev (
+        .clk, .rst_n(eng_rst_n),
+        .cfg_ctl(chip_q[32*CW_EV_CTL +: 10]), .cfg_match(chip_q[32*CW_TRIG_MATCH +: 128]),
+        .cfg_win(ev_win), .cfg_trig(chip_q[32*CW_TRIG_CTL +: 17]),
+        .ev_valid, .ev_code(ev_code6), .ev_data('0), .cf_we('0), .cf_mask('0), .cf_val('0),
+        .pop(h_re && h_addr == tse_regs_pkg::HR_EV_POP),
+        .clr_fifo(h_wr && h_addr == tse_regs_pkg::HR_EV_CLEAR && h_wdata[tse_regs_pkg::HR_EV_CLEAR_FIFO_LO]),
+        .clr_drop(h_wr && h_addr == tse_regs_pkg::HR_EV_CLEAR && h_wdata[tse_regs_pkg::HR_EV_CLEAR_DROPS_LO]),
+        .arm(h_wr && h_addr == tse_regs_pkg::HR_TRIG_ARM && h_wdata[tse_regs_pkg::HR_TRIG_ARM_ARM_LO]),
+        .head(ev_head), .status(ev_status), .ts(ev_ts), .chip_flags, .trig_level, .trig_stop
+    );
 
     // ---------------- runtime host SPI
     tse_host_spi u_spi (
         .clk, .rst_n(eng_rst_n), .cs_n(!spi_en || pad_p[0]), .sck(pad_p[1]), .mosi(pad_p[2]),
-        .miso(spi_miso), .h_we(hs_we), .h_re(hs_re), .h_addr(hs_addr), .h_wdata(hs_wdata),
-        .h_rdata(hs_rdata)
+        .miso(spi_miso), .s_valid, .s_first, .s_data, .dout(ld_dout)
     );
 
+    // ---------------- read data
     always_comb begin
-        logic [1:0] l;
-        l = hs_addr[9:8];
-        hs_rdata = '0;
-        unique case (hs_addr[15:12])
-            4'd0: if (32'(l) < LANES) hs_rdata = lane_h_rdata[l];
-            4'd1: if (32'(l) < LANES) hs_rdata = hs_addr[0] ? {30'd0, lane_flags[l]} : lane_rx[l];
-            4'd2: unique case (hs_addr[1:0])
-                            2'd0:    hs_rdata = ev_head;
-                            2'd1:    hs_rdata = ev_ts;
-                            2'd2:    hs_rdata = ev_trig_ts;
-                            default: hs_rdata = {30'd0, ev_ovf, ev_empty};
-                        endcase
-            4'd3: hs_rdata = {27'd0, key_ok, lane_en};
-            4'd4: if (hs_addr[11:8] == 4'hF) hs_rdata = chip_rd;
-                        else if (32'(hs_addr[11:8]) < LANES) hs_rdata = lane_rd[hs_addr[9:8]];
-            default: ;
-        endcase
+        logic [7:0] mbox;
+        mbox = '0;
+        for (int i = 0; i < LANES; i++) mbox[2*i +: 2] = lane_flags[i];
+        rmux = '0;
+        if (a_lane)     rmux = hcls == tse_regs_pkg::RC_L ? lane_rd[hl] : lane_h_rdata[hl];
+        else if (cw[6]) rmux = chip_rdata;
+        else begin
+            if (h_addr == tse_regs_pkg::HR_ID)          rmux = {12'd0, 4'(EVQ_DEPTH), CFG_LATCH, 3'(LANES), 4'(tse_isa_pkg::ISA_VERSION), 8'h54};
+            if (h_addr == tse_regs_pkg::HR_RUN)         rmux = {28'd0, run_q};
+            if (h_addr == tse_regs_pkg::HR_STATUS)      rmux = {20'd0, 4'(lane_live), 4'd0, host_err, st_pass, st_done, loaded};
+            if (h_addr == tse_regs_pkg::HR_BIST)        rmux = {18'd0, st_result};
+            if (h_addr == tse_regs_pkg::HR_LOAD_CRC)    rmux = load_crc;
+            if (h_addr == tse_regs_pkg::HR_IRQ)         rmux = 32'(irq_q);
+            if (h_addr == tse_regs_pkg::HR_MBOX_STATUS) rmux = {24'd0, mbox};
+            if (h_addr == tse_regs_pkg::HR_EV_STATUS)   rmux = {16'd0, ev_status};
+            if (h_addr == tse_regs_pkg::HR_EV_POP)      rmux = ev_head;
+            if (h_addr == tse_regs_pkg::HR_TS)          rmux = ev_ts;
+            for (int i = 0; i < LANES; i++) if (h_addr == tse_regs_pkg::HR_MBOX_RX + 16'(i)) rmux = lane_rx[i];
+        end
     end
+
+    always_ff @(posedge clk or negedge sys_rst_n)
+        if (!sys_rst_n) begin
+            h_rvalid <= 1'b0; h_rdata <= '0;
+        end else begin
+            h_rvalid <= pm_rd_q || (h_re && !sram_go);
+            if (pm_rd_q)                h_rdata <= pm_rdata;
+            else if (h_re && !sram_go)  h_rdata <= h_err ? 32'd0 : rmux;
+        end
+
+    wire _unused = &{lane_busy, chip_busy, chip_flags, ld_rst_n, chip_q, 1'b0};
 endmodule
 `default_nettype wire

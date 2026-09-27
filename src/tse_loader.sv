@@ -1,143 +1,179 @@
 `default_nettype none
-// Byte-bus loader. Active while rst_n is low (its own reset is asserted in
-// run mode). The RP2350 PIO presents one byte on ui_in per clock, changing on
-// the falling edge, so din is sampled by one flop with half a period of
-// margin (no synchronizer: the host drives the clock).
-// Packet: 0xA5, CMD, then arguments. Bytes outside a packet are ignored.
-//   0x01 WRITE  AH AL N  then 4*(N+1) bytes, words MSB first, address += 1
-//   0x02 READ   AH AL N  then the loader streams 4*(N+1) bytes on dout
-//   0x03 CHECK  CH CL    crc_ok = (CRC-16/CCITT-FALSE of all WRITE data == C)
-//   0x04 CLEAR           clear config banks (and so the run key), CRC, crc_ok
-//   0x05 SELFTEST        start the boot self-test
-//   0x06 COMMIT          if crc_ok, write KEY to chip bank word 31 (lanes may run)
-// Load-mode start: the first cycle after the loader leaves reset pulses
-// c_clr, so the run key (loaded) and all config are cleared before any packet.
-// Address: [15:12] 0 program word [8:0], 1 config bank [11:8] word [4:0],
-// 2 status word [1:0]. Idle dout = status {key, crc_ok, st_done, st_pass,
-// st_busy, 3'b101}; the fixed low bits let the host see the loader is alive.
-module tse_loader #(
-    parameter logic [15:0] KEY = 16'h7E5A
-) (
+// Host command decoder: one parser for both front ends.
+// Load mode (rst_n low): the byte bus. ld_data carries a byte, every change of
+// ld_strobe delivers it, ld_frame = 1 marks a command byte, ld_dout shows the
+// current readback byte. The strobe is synchronized and edge detected; data
+// and frame are read on that edge, after the host has held them stable.
+// Run mode: the same bytes arrive from the SPI target (s_valid, s_first =
+// first byte after CS falls) and ld_dout feeds its MISO shift register.
+// Commands, multi-byte fields most significant byte first:
+//   0x01 WR   addr(2) data(4)          0x02 RD   addr(2), then 4 strobes
+//   0x03 WRB  addr(2) n(2) data(4n)    0x04 RDB  addr(2) n(2), then 4n strobes
+//   0x10 BEGIN   clear loaded and host error, stop lanes, CRC to all ones, clear config
+//   0x11 BIST    start the SRAM self-test
+//   0x12 COMMIT  crc(4): loaded = (crc == running CRC-32 of every WR/WRB address and data byte)
+//   0x13 STAT    present STATUS[7:0]
+// A command byte always restarts the parser, so a random power-up state, a
+// truncated command or a strobe outside a command does nothing. A read word
+// is fetched as soon as its address is known (and the next one of a burst
+// when the last byte of the previous one is presented), so every strobe
+// presents its byte the next cycle. In run mode BEGIN, BIST and COMMIT are
+// refused unless every lane is stopped; a refusal sets the sticky host error.
+// loaded, host_err and the CRC have no reset: loaded clears on the first
+// cycle of load mode, the other two at BEGIN. The parser is reset for two
+// cycles at every mode switch and the strobe synchronizer then refills, so
+// a strobe edge less than 3 clocks after rst_n falls is lost; hosts wait 4
+// or more.
+module tse_loader (
     input  logic        clk,
     input  logic        rst_n,
-    input  logic [7:0]  din,
-    output logic [7:0]  dout,
-    output logic        p_req,
-    output logic        p_we,
-    output logic [8:0]  p_addr,
-    output logic [31:0] p_wdata,
-    input  logic [31:0] p_rdata,
-    output logic        c_we,
-    output logic        c_clr,
-    output logic [3:0]  c_bank,
-    output logic [4:0]  c_word,
-    output logic [31:0] c_wdata,
-    input  logic [31:0] c_rdata,
-    output logic        st_start,
-    input  logic        st_busy,
-    input  logic        st_done,
-    input  logic        st_pass,
-    input  logic [31:0] st_info,
-    input  logic        key_ok
+    input  logic        load_mode,
+    input  logic [7:0]  ld_data,
+    input  logic        ld_strobe,
+    input  logic        ld_frame,
+    output logic [7:0]  ld_dout,
+    input  logic        s_valid,
+    input  logic        s_first,
+    input  logic [7:0]  s_data,
+    output logic        h_we,
+    output logic        h_re,
+    output logic [15:0] h_addr,
+    output logic [31:0] h_wdata,
+    input  logic [31:0] h_rdata,
+    input  logic        h_rvalid,
+    input  logic        h_err,
+    input  logic        lanes_idle,
+    input  logic        bist_done,
+    input  logic        bist_pass,
+    input  logic [3:0]  halted,
+    output logic        loaded,
+    output logic        host_err,
+    output logic [31:0] load_crc,
+    output logic        cfg_clr,
+    output logic        bist_start
 );
-    typedef enum logic [2:0] {IDLE, CMD, ARG, WDATA, RDATA} state_t;
-    state_t      state;
-    logic [7:0]  b, cmd, n;
-    logic [15:0] addr, crc, arg16;
-    logic [1:0]  ac;                       // argument byte counter
-    logic [9:0]  bi;                       // byte counter inside a data phase
-    logic [31:0] sr, obuf, tmp;
-    logic        crc_ok, started;
-    logic [7:0]  status;
+    localparam logic [7:0] C_WR = 8'h01, C_RD = 8'h02, C_WRB = 8'h03, C_RDB = 8'h04;
+    localparam logic [7:0] C_BEGIN = 8'h10, C_BIST = 8'h11, C_COMMIT = 8'h12, C_STAT = 8'h13;
+    localparam logic [2:0] P_IDLE = 3'd0, P_AHI = 3'd1, P_ALO = 3'd2, P_NHI = 3'd3,
+                           P_NLO = 3'd4, P_DATA = 3'd5, P_READ = 3'd6, P_CRC = 3'd7;
 
-    function automatic logic [15:0] crc16_byte(input logic [15:0] c, input logic [7:0] d);
-        logic [15:0] x;
-        x = c ^ {d, 8'h00};
-        for (int i = 0; i < 8; i++) x = x[15] ? {x[14:0], 1'b0} ^ 16'h1021 : {x[14:0], 1'b0};
-        crc16_byte = x;
+    // CRC-32/ISO-HDLC, reflected: poly 0xEDB88320, init and final XOR all ones
+    function automatic logic [31:0] crc32_byte(input logic [31:0] c, input logic [7:0] b);
+        logic [31:0] x;
+        x = c ^ {24'h0, b};
+        for (int i = 0; i < 8; i++) x = x[0] ? ((x >> 1) ^ 32'hEDB88320) : (x >> 1);
+        crc32_byte = x;
     endfunction
 
-    assign status  = {key_ok, crc_ok, st_done, st_pass, st_busy, 3'b101};
-    assign p_addr  = addr[8:0];
-    assign c_bank  = addr[11:8];
-    assign c_word  = addr[4:0];
-    assign p_wdata = sr;
-    assign c_wdata = sr;
+    logic [2:0]  st_sync;
+    logic [1:0]  prime;                  // edges ignored until the synchronizer has filled
+    logic        bv, bf;
+    logic [7:0]  bd;
+    logic [2:0]  ph;
+    logic [7:0]  cmd;
+    logic [15:0] count;
+    logic [1:0]  nbyte;
+    logic [23:0] wbuf;
+    logic [31:0] rbuf, rsrc, crc;
+    logic        lm_q;
 
-    logic [9:0] total;                     // 4 * (N + 1) bytes
-    logic [1:0] bc;
-    logic [7:0] wi;
-    assign total = {n, 2'b00} + 10'd4;
-    assign bc    = bi[1:0];
-    assign wi    = bi[9:2];
+    assign bv = load_mode ? (prime == 2'd3 && (st_sync[2] ^ st_sync[1])) : s_valid;
+    assign bf = load_mode ? ld_frame : s_first;
+    assign bd = load_mode ? ld_data : s_data;
+    assign load_crc = ~crc;
+    assign rsrc     = h_rvalid ? h_rdata : rbuf;   // a word may arrive with the strobe that shows it
+
+    logic is_wr, is_burst, may_ctl, c_begin, c_commit_ok, c_refuse, crc_byte;
+    assign is_wr    = cmd == C_WR || cmd == C_WRB;
+    assign is_burst = cmd == C_WRB || cmd == C_RDB;
+    assign may_ctl  = load_mode || lanes_idle;
+    assign c_begin  = bv && bf && bd == C_BEGIN && may_ctl;
+    assign c_refuse = bv && bf && (bd == C_BEGIN || bd == C_BIST || bd == C_COMMIT) && !may_ctl;
+    assign crc_byte = bv && !bf && (ph == P_DATA || (is_wr && (ph == P_AHI || ph == P_ALO)));
+    assign c_commit_ok = bv && !bf && ph == P_CRC && nbyte == 2'd3;
 
     always_ff @(posedge clk or negedge rst_n)
         if (!rst_n) begin
-            state <= IDLE; b <= '0; cmd <= '0; n <= '0; addr <= '0; crc <= 16'hffff; arg16 <= '0;
-            ac <= '0; bi <= '0; sr <= '0; obuf <= '0; tmp <= '0; crc_ok <= 1'b0; started <= 1'b0;
-            dout <= '0; p_req <= 1'b0; p_we <= 1'b0; c_we <= 1'b0; c_clr <= 1'b0; st_start <= 1'b0;
+            st_sync <= '0; prime <= '0; ph <= P_IDLE; cmd <= '0; count <= '0; nbyte <= '0;
+            wbuf <= '0; rbuf <= '0; ld_dout <= '0; h_we <= 1'b0; h_re <= 1'b0; h_addr <= '0;
+            h_wdata <= '0; cfg_clr <= 1'b0; bist_start <= 1'b0;
         end else begin
-            b <= din;
-            p_req <= 1'b0; p_we <= 1'b0; c_we <= 1'b0; c_clr <= 1'b0; st_start <= 1'b0;
-            if (state != RDATA) dout <= status;
-            unique case (state)
-                IDLE: if (b == 8'hA5) state <= CMD;
-                CMD: begin
-                    cmd <= b; ac <= '0;
-                    unique case (b)
-                        8'h01, 8'h02, 8'h03: state <= ARG;
-                        8'h04: begin c_clr <= 1'b1; crc <= 16'hffff; crc_ok <= 1'b0; state <= IDLE; end
-                        8'h05: begin st_start <= 1'b1; state <= IDLE; end
-                        8'h06: begin                          // key lives in chip bank word 31
-                            if (crc_ok) begin c_we <= 1'b1; addr <= 16'h1F1F; sr <= {16'd0, KEY}; end
-                            state <= IDLE;
+            st_sync    <= {st_sync[1:0], ld_strobe};
+            if (prime != 2'd3) prime <= prime + 2'd1;
+            h_we       <= 1'b0;
+            h_re       <= 1'b0;
+            cfg_clr    <= 1'b0;
+            bist_start <= 1'b0;
+            if (h_rvalid) rbuf <= h_rdata;
+            if (h_we || h_re) h_addr <= h_addr + 16'd1;    // bursts advance after each word
+            if (bv && bf) begin
+                cmd   <= bd;
+                nbyte <= 2'd0;
+                ph    <= P_IDLE;
+                unique case (bd)
+                    C_WR, C_RD, C_WRB, C_RDB: ph <= P_AHI;
+                    C_BEGIN:  cfg_clr <= may_ctl;
+                    C_BIST:   bist_start <= may_ctl;
+                    C_COMMIT: if (may_ctl) ph <= P_CRC;
+                    C_STAT:   ld_dout <= {halted, host_err, bist_pass, bist_done, loaded};
+                    default:  ;
+                endcase
+            end else if (bv) begin
+                unique case (ph)
+                    P_AHI: begin h_addr[15:8] <= bd; ph <= P_ALO; end
+                    P_ALO: begin
+                        h_addr[7:0] <= bd;
+                        count <= 16'd1;
+                        if (is_burst)   ph <= P_NHI;
+                        else if (is_wr) ph <= P_DATA;
+                        else begin h_re <= 1'b1; ph <= P_READ; end
+                    end
+                    P_NHI: begin count[15:8] <= bd; ph <= P_NLO; end
+                    P_NLO: begin
+                        count[7:0] <= bd;
+                        if ({count[15:8], bd} == 16'd0) ph <= P_IDLE;
+                        else if (is_wr)                 ph <= P_DATA;
+                        else begin h_re <= 1'b1; ph <= P_READ; end
+                    end
+                    P_DATA: begin
+                        nbyte <= nbyte + 2'd1;
+                        wbuf  <= {wbuf[15:0], bd};
+                        if (nbyte == 2'd3) begin
+                            h_we    <= 1'b1;
+                            h_wdata <= {wbuf, bd};
+                            count   <= count - 16'd1;
+                            if (count == 16'd1) ph <= P_IDLE;
                         end
-                        default: state <= IDLE;
-                    endcase
-                end
-                ARG: begin
-                    ac    <= ac + 2'd1;
-                    arg16 <= {arg16[7:0], b};
-                    if (cmd == 8'h03 && ac == 2'd1) begin
-                        crc_ok <= {arg16[7:0], b} == crc; state <= IDLE;
-                    end else if (ac == 2'd2) begin
-                        addr <= arg16; n <= b; bi <= '0;
-                        if (cmd == 8'h01) state <= WDATA;
-                        else              state <= RDATA;
                     end
-                end
-                WDATA: begin
-                    sr  <= {sr[23:0], b};
-                    crc <= crc16_byte(crc, b);
-                    bi  <= bi + 10'd1;
-                    if (bc == 2'd3) begin
-                        p_req <= addr[15:12] == 4'd0; p_we <= addr[15:12] == 4'd0;
-                        c_we  <= addr[15:12] == 4'd1;
-                        if (bi + 10'd1 == total) state <= IDLE;
+                    P_READ: begin
+                        nbyte   <= nbyte + 2'd1;
+                        ld_dout <= rsrc[31:24];
+                        rbuf    <= {rsrc[23:0], 8'h00};
+                        if (nbyte == 2'd3) begin
+                            count <= count - 16'd1;
+                            if (count == 16'd1) ph <= P_IDLE;
+                            else                h_re <= 1'b1;
+                        end
                     end
-                end
-                RDATA: begin
-                    bi <= bi + 10'd1;
-                    if (bc == 2'd0 && 10'(wi) <= 10'(n)) begin
-                        p_req <= addr[15:12] == 4'd0;
-                        unique case (addr[15:12])
-                            4'd1:    tmp <= c_rdata;
-                            4'd2:    tmp <= (addr[1:0] == 2'd0) ? {24'd0, status}
-                                                        : (addr[1:0] == 2'd1) ? st_info : {16'd0, crc};
-                            default: tmp <= '0;
-                        endcase
+                    P_CRC: begin
+                        nbyte <= nbyte + 2'd1;
+                        wbuf  <= {wbuf[15:0], bd};
+                        if (nbyte == 2'd3) ph <= P_IDLE;
                     end
-                    if (bc == 2'd2 && 10'(wi) <= 10'(n)) begin      // SRAM data valid two cycles after p_req is set
-                        obuf <= (addr[15:12] == 4'd0) ? p_rdata : tmp;
-                        addr <= addr + 16'd1;
-                    end else obuf <= {obuf[23:0], 8'h00};
-                    if (bi >= 10'd3) dout <= obuf[31:24];
-                    if (bi == total + 10'd2) state <= IDLE;
-                end
-                default: state <= IDLE;
-            endcase
-            if (state == WDATA && bc == 2'd0 && bi != 10'd0) addr <= addr + 16'd1;
-            if (!started) begin started <= 1'b1; c_clr <= 1'b1; end
+                    default: ph <= P_IDLE;
+                endcase
+            end
         end
+
+    always_ff @(posedge clk) begin
+        lm_q <= load_mode;
+        if (load_mode && !lm_q) loaded <= 1'b0;
+        else if (c_begin)       loaded <= 1'b0;
+        else if (c_commit_ok)   loaded <= {wbuf, bd} == ~crc;
+        if (c_begin)                host_err <= 1'b0;
+        else if (c_refuse || h_err) host_err <= 1'b1;
+        if (c_begin)       crc <= 32'hFFFFFFFF;
+        else if (crc_byte) crc <= crc32_byte(crc, bd);
+    end
 endmodule
 `default_nettype wire

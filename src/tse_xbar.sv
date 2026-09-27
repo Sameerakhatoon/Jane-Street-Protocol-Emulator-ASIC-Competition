@@ -1,47 +1,48 @@
 `default_nettype none
-// Pin crossbar (config as inputs, plus a self-test loopback).
-// NS output sources (lane virtual pins plus extras such as trigger-out),
-// NI sink inputs (lane virtual pins), P input pads, PO output pads.
-// Output pad config {idle_oe, idle, en, od, inv, src} (for
-// 3 lanes src is 4 bits and the layout is bit-exact). Open drain drives 0 or
-// releases; a pad that is not enabled outputs 0 and is released. A pad is
-// idle while its source is not live (lane stopped) or the
-// source pin's output enable is 0: it then shows idle with oe = idle_oe
-// (open drain: released when idle is 1, driven low when 0). The output
-// registers have no reset, so the idle level holds through the reset at
-// every mode switch, the first cycle after power-up excepted.
-// Input sink config {inv, pad}. Every pad is synchronized exactly once
-// (two rising-edge flops, plus a falling-edge capture half a cycle earlier
-// for dual-edge timing) and then multiplexed to the sinks.
+// Pin crossbar. Sources are the 16 lane virtual pins (lane x 4 + vpin; lanes
+// that are not built read 0 and are never live), sinks are the NI lane inputs,
+// pads are uo_out[7:0] (pads 0 to 7) and uio[7:0] (pads 8 to 15).
+// Input side: 24 input sources, ui_in (0 to 7), uio_in (8 to 15) and the
+// chip's own uo_out values (16 to 23), each synchronized exactly once: two
+// rising-edge flops (sp) and a falling-edge capture plus two flops (sn, the
+// same pin half a cycle earlier, for dual-edge timing). Sink config
+// {inv, src[4:0]}; sources 24 to 31 read 0. With loopback (or the self-test
+// pattern) the pad outputs replace ui_in and uio_in, pad p feeding source p.
+// Output side, pad config {idle_oe, idle, en, od, inv, src[3:0]}: a pad
+// that is not enabled outputs 0 and is released; a pad is idle while its
+// source lane is not live or the source pin's output enable is 0, and then
+// shows idle with oe = idle_oe (open drain: released when idle is 1, driven
+// low when 0); open drain drives 0 or releases. ovr_en replaces a pad's
+// value (trigger-out, interrupt) and drives it. Out and oe are registered
+// with no reset, so the idle level holds through the reset at every mode
+// switch.
 module tse_xbar #(
-    parameter int NS = 16,
-    parameter int NI = 16,
-    parameter int P  = 16,
-    parameter int PO = 16,
-    localparam int SW = $clog2(NS),
-    localparam int PW = $clog2(P)
+    parameter int NI = 12
 ) (
-    input  logic               clk,
-    input  logic               rst_n,
-    input  logic [PO*(SW+5)-1:0] cfg_out,
-    input  logic [NI*(PW+1)-1:0] cfg_in,
-    input  logic               lb_en,       // self-test: pads read lb_pat, pads not driven
-    input  logic [PO-1:0]      lb_pat,
-    output logic [P-1:0]       pad_p,       // synchronized pads, for self-test and host SPI
-    output logic [P-1:0]       pad_n,
-    input  logic [NS-1:0]      src_out,
-    input  logic [NS-1:0]      src_oe,
-    input  logic [NS-1:0]      src_live,
-    output logic [NI-1:0]      sink_p,
-    output logic [NI-1:0]      sink_n,
-    input  logic [P-1:0]       pin_in,
-    output logic [PO-1:0]      pin_out,
-    output logic [PO-1:0]      pin_oe
+    input  logic          clk,
+    input  logic          rst_n,
+    input  logic [16*9-1:0] cfg_out,
+    input  logic [NI*6-1:0] cfg_in,
+    input  logic          loopback,
+    input  logic          lb_test,      // self-test: pads show lb_pat, not driven
+    input  logic [15:0]   lb_pat,
+    input  logic [15:0]   ovr_en,
+    input  logic [15:0]   ovr_val,
+    output logic [15:0]   pad_p,        // synchronized ui_in, uio_in (self-test, host SPI)
+    output logic [15:0]   pad_n,
+    input  logic [15:0]   src_out,
+    input  logic [15:0]   src_oe,
+    input  logic [15:0]   src_live,
+    output logic [NI-1:0] sink_p,
+    output logic [NI-1:0] sink_n,
+    input  logic [15:0]   pin_in,       // {uio_in, ui_in}
+    output logic [15:0]   pin_out,      // {uio_out, uo_out}
+    output logic [15:0]   pin_oe
 );
-    logic [P-1:0] pin_eff, p1, sp, n1, n2, sn;
+    logic [23:0] pin_eff, p1, sp, n1, n2, sn;
+    logic [31:0] spx, snx;
 
-    always_comb
-        for (int p = 0; p < P; p++) pin_eff[p] = lb_en ? pin_out[p % PO] : pin_in[p];
+    assign pin_eff = {pin_out[7:0], (loopback || lb_test) ? pin_out : pin_in};
 
     always_ff @(posedge clk or negedge rst_n)
         if (!rst_n) begin
@@ -49,37 +50,41 @@ module tse_xbar #(
         end else begin
             p1 <= pin_eff; sp <= p1; n2 <= n1; sn <= n2;
         end
-    assign pad_p = sp;
-    assign pad_n = sn;
     always_ff @(negedge clk or negedge rst_n)
         if (!rst_n) n1 <= '0;
         else        n1 <= pin_eff;
 
+    assign pad_p = sp[15:0];
+    assign pad_n = sn[15:0];
+    assign spx   = {8'd0, sp};
+    assign snx   = {8'd0, sn};
+
     always_comb
         for (int i = 0; i < NI; i++) begin
-            logic [PW:0] c;
-            c = cfg_in[(PW+1)*i +: PW+1];
-            sink_p[i] = sp[c[PW-1:0]] ^ c[PW];
-            sink_n[i] = sn[c[PW-1:0]] ^ c[PW];
+            logic [5:0] c;
+            c = cfg_in[6*i +: 6];
+            sink_p[i] = spx[c[4:0]] ^ c[5];
+            sink_n[i] = snx[c[4:0]] ^ c[5];
         end
 
     always_ff @(posedge clk)
-        if (lb_en) begin
+        if (lb_test) begin
             pin_out <= lb_pat; pin_oe <= '0;
         end else begin
-            for (int p = 0; p < PO; p++) begin
-                logic [SW+4:0] c;
-                logic          o, idle;
-                c    = cfg_out[(SW+5)*p +: SW+5];
-                o    = src_out[c[SW-1:0]] ^ c[SW];
-                idle = !src_live[c[SW-1:0]] || !src_oe[c[SW-1:0]];
-                if (!c[SW+2])    begin pin_out[p] <= 1'b0;      pin_oe[p] <= 1'b0;       end
+            for (int p = 0; p < 16; p++) begin
+                logic [8:0] c;
+                logic       o, idle;
+                c    = cfg_out[9*p +: 9];
+                o    = src_out[c[3:0]] ^ c[4];
+                idle = !src_live[c[3:0]] || !src_oe[c[3:0]];
+                if (ovr_en[p])  begin pin_out[p] <= ovr_val[p]; pin_oe[p] <= 1'b1;  end
+                else if (!c[6]) begin pin_out[p] <= 1'b0;       pin_oe[p] <= 1'b0;  end
                 else if (idle) begin
-                    if (c[SW+1])   begin pin_out[p] <= 1'b0;      pin_oe[p] <= !c[SW+3];  end
-                    else           begin pin_out[p] <= c[SW+3];  pin_oe[p] <= c[SW+4];   end
+                    if (c[5])     begin pin_out[p] <= 1'b0;     pin_oe[p] <= !c[7]; end
+                    else          begin pin_out[p] <= c[7];     pin_oe[p] <= c[8];  end
                 end
-                else if (c[SW+1]) begin pin_out[p] <= 1'b0;     pin_oe[p] <= !o;        end
-                else             begin pin_out[p] <= o;        pin_oe[p] <= 1'b1;       end
+                else if (c[5])  begin pin_out[p] <= 1'b0;       pin_oe[p] <= !o;    end
+                else            begin pin_out[p] <= o;          pin_oe[p] <= 1'b1;  end
             end
         end
 endmodule

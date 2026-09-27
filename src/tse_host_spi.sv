@@ -2,57 +2,48 @@
 // Runtime host interface: SPI target, mode 0, MSB first, on the RP2350's
 // hardware SPI0 pins (ui_in[0] CS, ui_in[1] SCK, ui_in[2] MOSI, uo_out[3]
 // MISO). The pins arrive already synchronized (from the crossbar's pad
-// synchronizers, so each pin is synchronized exactly once). Oversampling
-// limits SCK to about f_clk / 12 (5 MHz at 60 MHz): MISO changes about
-// five cycles after the SCK falling edge at the pin, and must be valid half a
-// period later.
-// Frame: cmd[7:0] (bit 7 = write), addr[15:0], data[31:0]. A read fetches
-// the register after the address and returns it in the data phase.
+// synchronizers, so each pin is synchronized exactly once) and are
+// oversampled by clk. This block only turns bits into bytes: every 8 SCK
+// rising edges deliver one byte to the command decoder (s_first marks the
+// first byte after CS falls), and on the falling edge that ends a byte the
+// decoder's current output byte is loaded for MISO. A read therefore sends one
+// dummy byte after the address (the decoder fetches the word while it
+// shifts) and then clocks out the data, as the byte bus does with strobes.
+// The decoder updates its byte one or two cycles after s_valid, so half an
+// SCK period must cover the synchronizer and that update: SCK up to about
+// f_clk / 8.
 module tse_host_spi (
-    input  logic        clk,
-    input  logic        rst_n,
-    input  logic        cs_n,
-    input  logic        sck,
-    input  logic        mosi,
-    output logic        miso,
-    output logic        h_we,
-    output logic        h_re,
-    output logic [15:0] h_addr,
-    output logic [31:0] h_wdata,
-    input  logic [31:0] h_rdata
+    input  logic       clk,
+    input  logic       rst_n,
+    input  logic       cs_n,
+    input  logic       sck,
+    input  logic       mosi,
+    output logic       miso,
+    output logic       s_valid,
+    output logic       s_first,
+    output logic [7:0] s_data,
+    input  logic [7:0] dout
 );
-    logic       sck_q, rise, fall, wr, rd_pend;
-    logic [5:0] cnt;
-    logic [31:0] sr;
-    logic [31:0] obuf;
-    logic [15:0] addr_q;
-
-    assign rise    = sck && !sck_q;
-    assign fall    = !sck && sck_q;
-    assign h_addr  = addr_q;
-    assign h_wdata = sr[31:0];
+    logic       sck_q, first;
+    logic [2:0] bcnt;
+    logic [6:0] osr;
 
     always_ff @(posedge clk or negedge rst_n)
         if (!rst_n) begin
-            sck_q <= 1'b0; cnt <= '0; sr <= '0; obuf <= '0; miso <= 1'b0; addr_q <= '0;
-            wr <= 1'b0; rd_pend <= 1'b0; h_we <= 1'b0; h_re <= 1'b0;
+            sck_q <= 1'b0; first <= 1'b1; bcnt <= '0; osr <= '0; miso <= 1'b0;
+            s_valid <= 1'b0; s_first <= 1'b0; s_data <= '0;
         end else begin
-            sck_q <= sck;
-            h_we  <= 1'b0;
-            h_re  <= 1'b0;
-            if (rd_pend) begin obuf <= h_rdata; rd_pend <= 1'b0; end
+            sck_q   <= sck;
+            s_valid <= 1'b0;
             if (cs_n) begin
-                cnt <= '0;
-            end else if (rise) begin
-                sr  <= {sr[30:0], mosi};
-                cnt <= cnt + 6'd1;
-                if (cnt == 6'd7)  wr <= sr[6];                 // bit 7 of cmd just completed
-                if (cnt == 6'd23) addr_q <= {sr[14:0], mosi};
-                if (cnt == 6'd23 && !wr) begin h_re <= 1'b1; rd_pend <= 1'b1; end
-                if (cnt == 6'd55 && wr) h_we <= 1'b1;
-            end else if (fall && cnt >= 6'd24) begin
-                miso <= obuf[31];
-                obuf <= {obuf[30:0], 1'b0};
+                bcnt <= '0; first <= 1'b1;
+            end else if (sck && !sck_q) begin
+                s_data <= {s_data[6:0], mosi};
+                bcnt   <= bcnt + 3'd1;
+                if (bcnt == 3'd7) begin s_valid <= 1'b1; s_first <= first; first <= 1'b0; end
+            end else if (!sck && sck_q) begin
+                if (bcnt == 3'd0) begin miso <= dout[7]; osr <= dout[6:0]; end
+                else              begin miso <= osr[6];  osr <= {osr[5:0], 1'b0}; end
             end
         end
 endmodule
