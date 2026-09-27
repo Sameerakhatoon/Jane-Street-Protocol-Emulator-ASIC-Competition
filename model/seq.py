@@ -116,7 +116,7 @@ class Seq:
         self.cycle += 1
         return o
 
-    # -- conditions -------------------------------------------------------
+    # conditions
 
     def _sel(self, i, src, idx):
         if src == 0:
@@ -175,7 +175,7 @@ class Seq:
         self.osr = self.tx_data
         self._tx_take = 1
 
-    # -- dispatch ---------------------------------------------------------
+    # dispatch
 
     def _dispatch(self, i, o):
         c, pc = self.cycle, self.pc
