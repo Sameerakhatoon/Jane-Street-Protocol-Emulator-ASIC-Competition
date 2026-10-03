@@ -24,9 +24,7 @@ $A tse_timer "" $(s tse_timer.sv tse_nco.sv)
 $A tse_prog_mem "" $(s tse_prog_mem.sv tse_sram_512x32.sv tse_sram_bb.v)
 $A tse_lane "" $(s $lane)
 
-mkdir -p build/pkg
-for p in tse_isa_pkg tse_regs_pkg; do python3 tools/pd/yosys_pkg.py src/$p.sv build/pkg/$p.sv; done
-chip="build/pkg/tse_isa_pkg.sv build/pkg/tse_regs_pkg.sv "$(s tse_chip.sv tse_top.sv tse_rst_sync.sv tse_cfg_bank.sv $lane tse_xbar.sv tse_pin_delay.sv \
+chip=$(s tse_isa_pkg.sv tse_regs_pkg.sv tse_chip.sv tse_top.sv tse_rst_sync.sv tse_cfg_bank.sv $lane tse_xbar.sv tse_pin_delay.sv \
          tse_prog_mem.sv tse_sram_512x32.sv tse_loader.sv tse_selftest.sv tse_event_unit.sv \
          tse_host_spi.sv tse_sram_bb.v)
 for l in 3 4; do

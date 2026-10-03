@@ -63,6 +63,8 @@ def broken(mutate):
     ("unknown keys", lambda s: s["instructions"]["MOV"]["fields"]["src"].update(bitz=1)),
     ("share a value", lambda s: s["enums"]["wsrc"].update(PIN2=0)),
     ("not a string", lambda s: s["enums"]["outdst"].update({None: 6})),
+    ("unknown cycles term", lambda s: s["instructions"]["SIG"]["cycles"].update(stall=1)),
+    ("dslot must be load or store", lambda s: s["instructions"]["LDW"]["cycles"].update(dslot="read")),
 ])
 def test_04_broken_tables_fail(tmp_path, what, mutate):
     with pytest.raises(gen_isa.GenError, match=what):

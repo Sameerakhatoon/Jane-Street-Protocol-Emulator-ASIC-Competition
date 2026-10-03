@@ -4,8 +4,9 @@
 The table is checked before anything is written. It stops with a message on a
 field that leaves the word or overlaps another, a match or enum value that does
 not fit its field, two instructions that can decode the same word, an event
-name that does not fit idx, and a constraint or cycle formula that names an
-unknown field.
+name that does not fit idx, a constraint or cycle formula that names an
+unknown field, and an unknown cycles term. The SV package also gets the
+cycles column as functions (tse_delay, tse_may_wait, tse_dslot, tse_cfgword).
 
 usage: gen_isa.py isa/tse_isa.yaml src/tse_isa_pkg.sv tools/tseasm/isa_table.py
 """
@@ -18,6 +19,7 @@ HEADER_KEYS = ("isa", "version", "word_bits", "frame_slots", "fetch_entries",
                "fetch_latency", "data_frame")
 FIELD_KEYS = {"bits", "enum", "kind", "flag", "key", "set_by", "token", "enum_by", "asm_max", "doc"}
 INSTR_KEYS = {"match", "fields", "cycles", "constraints", "doc"}
+CYCLE_KEYS = {"base", "delay", "wait", "cfgword", "dslot"}
 
 
 class GenError(Exception):
@@ -84,6 +86,10 @@ def build_instr(name, ins, common, enums, width):
             if fname not in fields:
                 raise GenError(f"{name}: constraint names unknown field {fname}")
     for k, v in ins["cycles"].items():
+        if k not in CYCLE_KEYS:
+            raise GenError(f"{name}: unknown cycles term {k}")
+        if k == "dslot" and v not in ("load", "store"):
+            raise GenError(f"{name}: cycles.dslot must be load or store")
         if k in ("delay", "wait") and isinstance(v, str) and v not in fields:
             raise GenError(f"{name}: cycles.{k} names unknown field {v}")
     for fname, f in fields.items():
@@ -180,8 +186,10 @@ def emit_sv(tab, src_name):
            f"  localparam int FETCH_LATENCY = {tab['fetch_latency']};",
            f"  localparam int DATA_FRAME    = {tab['data_frame']};"]
     out += [f"  localparam int LAT_{k.upper()} = {v};" for k, v in tab["latency"].items()]
-    out += ["", "  typedef enum logic [4:0] {"]
-    out += [f"    I_{n}," for n in names] + ["    I_ILLEGAL", "  } iclass_t;", ""]
+    out += ["", "  // instruction classes (plain constants, not an enum, so Yosys reads the package)",
+            "  typedef logic [4:0] iclass_t;"]
+    out += [f"  localparam iclass_t I_{n} = 5'd{i};" for i, n in enumerate(names)]
+    out += [f"  localparam iclass_t I_ILLEGAL = 5'd{len(names)};", ""]
     for k, (hi, lo) in tab["common"].items():
         out.append(f"  localparam int {k.upper()}_HI = {hi}, {k.upper()}_LO = {lo};")
     enum_width = {f["enum"]: f["hi"] - f["lo"] + 1
@@ -205,22 +213,70 @@ def emit_sv(tab, src_name):
                 out.append(f"  localparam int {n}_CYC_{k.upper()} = {v};")
     out += ["",
             "  // Reserved bits are fixed zeros in each pattern, so a corrupted word is I_ILLEGAL.",
-            f"  function automatic iclass_t tse_decode(input logic [{w - 1}:0] w);",
+            f"  function automatic logic [4:0] tse_decode(input logic [{w - 1}:0] w);",
             "    casez (w)"]
-    out += [f"      {w}'b{bits_str(t['mask'], t['value'], w)}: return I_{n};"
+    out += [f"      {w}'b{bits_str(t['mask'], t['value'], w)}: tse_decode = I_{n};"
             for n, t in tab["instrs"].items()]
-    out += ["      default: return I_ILLEGAL;", "    endcase", "  endfunction", "",
+    out += ["      default: tse_decode = I_ILLEGAL;", "    endcase", "  endfunction", "",
             "  // tse_decode plus enumeration holes and field constraints.",
             f"  function automatic logic tse_legal(input logic [{w - 1}:0] w);",
             "    case (tse_decode(w))",
-            "      I_ILLEGAL: return 1'b0;"]
+            "      I_ILLEGAL: tse_legal = 1'b0;"]
     for n, t in tab["instrs"].items():
         terms = legal_terms(n, t, tab["enums"])
         if terms:
-            out.append(f"      I_{n}: return " + " && ".join(terms) + ";")
-    out += ["      default: return 1'b1;", "    endcase", "  endfunction",
-            "endpackage", "/* verilator lint_on UNUSEDPARAM */"]
+            out.append(f"      I_{n}: tse_legal = " + " && ".join(terms) + ";")
+    out += ["      default: tse_legal = 1'b1;", "    endcase", "  endfunction", ""]
+    out += emit_cost_functions(tab)
+    out += ["endpackage", "/* verilator lint_on UNUSEDPARAM */"]
     return "\n".join(out) + "\n"
+
+
+def emit_cost_functions(tab):
+    """The cycles column as functions: delay field, may wait, data slot kind, config-word extra."""
+    w = tab["word_bits"]
+    instrs = tab["instrs"]
+    dw = max(f["hi"] - f["lo"] + 1 for t in instrs.values()
+             for k, f in t["fields"].items() if k == t["cycles"].get("delay"))
+    out = [f"  localparam int DELAY_BITS = {dw};",
+           "  typedef logic [1:0] dslot_t;",
+           "  localparam dslot_t DS_NONE = 2'd0, DS_LOAD = 2'd1, DS_STORE = 2'd2;", "",
+           "  // Cycles of a legal word before waiting, data slots and fetch stalls:",
+           "  // CYC_BASE + tse_delay(w), plus tse_cfgword(w) when a CSRW targets a configuration word.",
+           f"  function automatic logic [{dw - 1}:0] tse_delay(input logic [{w - 1}:0] w);",
+           "    case (tse_decode(w))"]
+    for n, t in instrs.items():
+        d = t["cycles"].get("delay")
+        if d:
+            f = t["fields"][d]
+            out.append(f"      I_{n}: tse_delay = {dw}'({sv_field('w', f)});")
+    out += [f"      default: tse_delay = {dw}'d0;", "    endcase", "  endfunction", "",
+            "  // 1 when the instruction may stall on a condition or a mailbox",
+            f"  function automatic logic tse_may_wait(input logic [{w - 1}:0] w);",
+            "    case (tse_decode(w))"]
+    for n, t in instrs.items():
+        v = t["cycles"].get("wait")
+        if v is True:
+            out.append(f"      I_{n}: tse_may_wait = 1'b1;")
+        elif isinstance(v, str):
+            out.append(f"      I_{n}: tse_may_wait = {sv_field('w', t['fields'][v])};")
+    out += ["      default: tse_may_wait = 1'b0;", "    endcase", "  endfunction", "",
+            f"  function automatic logic [1:0] tse_dslot(input logic [{w - 1}:0] w);",
+            "    case (tse_decode(w))"]
+    for n, t in instrs.items():
+        v = t["cycles"].get("dslot")
+        if v:
+            out.append(f"      I_{n}: tse_dslot = DS_{v.upper()};")
+    out += ["      default: tse_dslot = DS_NONE;", "    endcase", "  endfunction", "",
+            "  // extra cycles of a write to a configuration word (0 for other instructions)",
+            f"  function automatic logic [1:0] tse_cfgword(input logic [{w - 1}:0] w);",
+            "    case (tse_decode(w))"]
+    for n, t in instrs.items():
+        v = t["cycles"].get("cfgword")
+        if v:
+            out.append(f"      I_{n}: tse_cfgword = 2'd{v};")
+    out += ["      default: tse_cfgword = 2'd0;", "    endcase", "  endfunction"]
+    return out
 
 
 def emit_py(tab, src_name):

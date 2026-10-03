@@ -12,25 +12,25 @@ package tse_isa_pkg;
   localparam int LAT_EMIT_TO_TRIG_PORT = 3;
   localparam int LAT_CFG_WRITE_VISIBLE = 2;
 
-  typedef enum logic [4:0] {
-    I_JMP,
-    I_WAIT,
-    I_SET,
-    I_MOV,
-    I_OUT,
-    I_IN,
-    I_PUSH,
-    I_PULL,
-    I_CSRW,
-    I_STW,
-    I_CSRR,
-    I_LDW,
-    I_DLY,
-    I_TMR,
-    I_SIG,
-    I_EMIT,
-    I_ILLEGAL
-  } iclass_t;
+  // instruction classes (plain constants, not an enum, so Yosys reads the package)
+  typedef logic [4:0] iclass_t;
+  localparam iclass_t I_JMP = 5'd0;
+  localparam iclass_t I_WAIT = 5'd1;
+  localparam iclass_t I_SET = 5'd2;
+  localparam iclass_t I_MOV = 5'd3;
+  localparam iclass_t I_OUT = 5'd4;
+  localparam iclass_t I_IN = 5'd5;
+  localparam iclass_t I_PUSH = 5'd6;
+  localparam iclass_t I_PULL = 5'd7;
+  localparam iclass_t I_CSRW = 5'd8;
+  localparam iclass_t I_STW = 5'd9;
+  localparam iclass_t I_CSRR = 5'd10;
+  localparam iclass_t I_LDW = 5'd11;
+  localparam iclass_t I_DLY = 5'd12;
+  localparam iclass_t I_TMR = 5'd13;
+  localparam iclass_t I_SIG = 5'd14;
+  localparam iclass_t I_EMIT = 5'd15;
+  localparam iclass_t I_ILLEGAL = 5'd16;
 
   localparam int OP_HI = 15, OP_LO = 13;
   localparam int SS_HI = 12, SS_LO = 11;
@@ -177,37 +177,82 @@ package tse_isa_pkg;
   localparam int EMIT_CYC_BASE = 1;
 
   // Reserved bits are fixed zeros in each pattern, so a corrupted word is I_ILLEGAL.
-  function automatic iclass_t tse_decode(input logic [15:0] w);
+  function automatic logic [4:0] tse_decode(input logic [15:0] w);
     casez (w)
-      16'b000?????????????: return I_JMP;
-      16'b001?????????????: return I_WAIT;
-      16'b010?????????????: return I_SET;
-      16'b011?????????????: return I_MOV;
-      16'b100?????????????: return I_OUT;
-      16'b101?????????????: return I_IN;
-      16'b110??00?00000000: return I_PUSH;
-      16'b110??01?00000000: return I_PULL;
-      16'b110??100????????: return I_CSRW;
-      16'b110??101????????: return I_STW;
-      16'b110??110????????: return I_CSRR;
-      16'b110??111????????: return I_LDW;
-      16'b111??00?????????: return I_DLY;
-      16'b111??01?????????: return I_TMR;
-      16'b111??100????????: return I_SIG;
-      16'b111??11?????????: return I_EMIT;
-      default: return I_ILLEGAL;
+      16'b000?????????????: tse_decode = I_JMP;
+      16'b001?????????????: tse_decode = I_WAIT;
+      16'b010?????????????: tse_decode = I_SET;
+      16'b011?????????????: tse_decode = I_MOV;
+      16'b100?????????????: tse_decode = I_OUT;
+      16'b101?????????????: tse_decode = I_IN;
+      16'b110??00?00000000: tse_decode = I_PUSH;
+      16'b110??01?00000000: tse_decode = I_PULL;
+      16'b110??100????????: tse_decode = I_CSRW;
+      16'b110??101????????: tse_decode = I_STW;
+      16'b110??110????????: tse_decode = I_CSRR;
+      16'b110??111????????: tse_decode = I_LDW;
+      16'b111??00?????????: tse_decode = I_DLY;
+      16'b111??01?????????: tse_decode = I_TMR;
+      16'b111??100????????: tse_decode = I_SIG;
+      16'b111??11?????????: tse_decode = I_EMIT;
+      default: tse_decode = I_ILLEGAL;
     endcase
   endfunction
 
   // tse_decode plus enumeration holes and field constraints.
   function automatic logic tse_legal(input logic [15:0] w);
     case (tse_decode(w))
-      I_ILLEGAL: return 1'b0;
-      I_OUT: return (w[10:8] == 3'd0 || w[10:8] == 3'd1 || w[10:8] == 3'd2 || w[10:8] == 3'd3 || w[10:8] == 3'd4 || w[10:8] == 3'd5);
-      I_IN: return (w[10:8] == 3'd0 || w[10:8] == 3'd1 || w[10:8] == 3'd2 || w[10:8] == 3'd3 || w[10:8] == 3'd4 || w[10:8] == 3'd5);
-      I_STW: return (!(w[7:7] == 1'd1) || (w[6:0] == 7'd0));
-      I_LDW: return (!(w[7:7] == 1'd1) || (w[6:0] == 7'd0));
-      default: return 1'b1;
+      I_ILLEGAL: tse_legal = 1'b0;
+      I_OUT: tse_legal = (w[10:8] == 3'd0 || w[10:8] == 3'd1 || w[10:8] == 3'd2 || w[10:8] == 3'd3 || w[10:8] == 3'd4 || w[10:8] == 3'd5);
+      I_IN: tse_legal = (w[10:8] == 3'd0 || w[10:8] == 3'd1 || w[10:8] == 3'd2 || w[10:8] == 3'd3 || w[10:8] == 3'd4 || w[10:8] == 3'd5);
+      I_STW: tse_legal = (!(w[7:7] == 1'd1) || (w[6:0] == 7'd0));
+      I_LDW: tse_legal = (!(w[7:7] == 1'd1) || (w[6:0] == 7'd0));
+      default: tse_legal = 1'b1;
+    endcase
+  endfunction
+
+  localparam int DELAY_BITS = 9;
+  typedef logic [1:0] dslot_t;
+  localparam dslot_t DS_NONE = 2'd0, DS_LOAD = 2'd1, DS_STORE = 2'd2;
+
+  // Cycles of a legal word before waiting, data slots and fetch stalls:
+  // CYC_BASE + tse_delay(w), plus tse_cfgword(w) when a CSRW targets a configuration word.
+  function automatic logic [8:0] tse_delay(input logic [15:0] w);
+    case (tse_decode(w))
+      I_WAIT: tse_delay = 9'(w[2:0]);
+      I_MOV: tse_delay = 9'(w[4:0]);
+      I_OUT: tse_delay = 9'(w[2:0]);
+      I_IN: tse_delay = 9'(w[2:0]);
+      I_DLY: tse_delay = 9'(w[8:0]);
+      I_TMR: tse_delay = 9'(w[4:0]);
+      I_EMIT: tse_delay = 9'(w[2:0]);
+      default: tse_delay = 9'd0;
+    endcase
+  endfunction
+
+  // 1 when the instruction may stall on a condition or a mailbox
+  function automatic logic tse_may_wait(input logic [15:0] w);
+    case (tse_decode(w))
+      I_WAIT: tse_may_wait = 1'b1;
+      I_PUSH: tse_may_wait = w[8:8];
+      I_PULL: tse_may_wait = w[8:8];
+      default: tse_may_wait = 1'b0;
+    endcase
+  endfunction
+
+  function automatic logic [1:0] tse_dslot(input logic [15:0] w);
+    case (tse_decode(w))
+      I_STW: tse_dslot = DS_STORE;
+      I_LDW: tse_dslot = DS_LOAD;
+      default: tse_dslot = DS_NONE;
+    endcase
+  endfunction
+
+  // extra cycles of a write to a configuration word (0 for other instructions)
+  function automatic logic [1:0] tse_cfgword(input logic [15:0] w);
+    case (tse_decode(w))
+      I_CSRW: tse_cfgword = 2'd2;
+      default: tse_cfgword = 2'd0;
     endcase
   endfunction
 endpackage

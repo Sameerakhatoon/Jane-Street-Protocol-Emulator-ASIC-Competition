@@ -12,7 +12,11 @@ CHIP = TABLE["chip"]
 LANE_WINDOW = TABLE["lane_window"]
 REGIONS = TABLE["regions"]
 LANE_BANK_WORDS = TABLE["lane_bank_words"]
+BANK_WORDS = TABLE["bank_words"]
+CHIP_BANKS = TABLE["chip_banks"]
 LANE_BY_ADDR = {r["addr"]: n for n, r in LANE.items()}
+CHIP_CFG = {r["addr"] + i: (r["bank"], r["word"] + i)
+            for r in CHIP.values() if "word" in r for i in range(r["count"])}
 
 
 class RegError(ValueError):
@@ -38,6 +42,11 @@ def lane_writable(addr):
 def lane_readable(addr):
     n = LANE_BY_ADDR.get(addr)
     return n is not None and LANE[n]["class"] in ("F", "P", "R")
+
+
+def chip_cfg(addr):
+    """(bank name, word) of a class-L host address, or None."""
+    return CHIP_CFG.get(addr)
 
 
 def host_addr(name, lane=None, index=0):

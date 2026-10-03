@@ -8,7 +8,13 @@
 # Field form: [hi, lo], or {bits: [hi, lo], min, max, enum}. A register may
 # list require rules: {if: {field: value}, then: {field: value}}.
 # count/stride: an array of registers starting at addr.
+# Configuration banks hold the class-L words, 32 words of 32 bits each (5-bit
+# word address), words given out in address order. Each lane has one lane
+# bank; the chip has the banks listed in chip_banks (index = list position),
+# which share one write port. Every class-L chip register names its bank.
 version: 1
+bank_words: 32
+chip_banks: [xbar, event]
 classes:
   L: {storage: latch, reset: 0, cleared_by: clr, lane: w3, host: rw_stopped}
   F: {storage: flop, reset: 0, cleared_by: rst_n, lane: rw, host: rw_stopped}
@@ -80,24 +86,24 @@ lane_regs:
                    require: [{if: {src: 0}, then: {tick_delay: 0}}]}
 
 chip_regs:
-  PAD_OUT:     {addr: 0x2000, count: 16, class: L, doc: "output pad p (0 to 7 uo_out, 8 to 15 uio)",
+  PAD_OUT:     {addr: 0x2000, count: 16, class: L, bank: xbar, doc: "output pad p (0 to 7 uo_out, 8 to 15 uio)",
                 fields: {src: [3, 0], inv: [4, 4], od: [5, 5], en: [6, 6], idle: [7, 7], idle_oe: [8, 8]}}
-  LANE_IN:     {addr: 0x2020, count: 16, class: L, doc: "input of lane virtual pin i = lane x 4 + vpin",
+  LANE_IN:     {addr: 0x2020, count: 16, class: L, bank: xbar, doc: "input of lane virtual pin i = lane x 4 + vpin",
                 fields: {src: {bits: [4, 0], max: 23}, inv: [5, 5], delay: [8, 6]}}
-  PIN_OPT:     {addr: 0x2030, class: L, fields: {host_spi_off: [0, 0], trig_pad: [1, 1], irq_pad: [2, 2], loopback: [3, 3]},
+  PIN_OPT:     {addr: 0x2030, class: L, bank: event, fields: {host_spi_off: [0, 0], trig_pad: [1, 1], irq_pad: [2, 2], loopback: [3, 3]},
                 doc: pin options}
-  EV_CTL:      {addr: 0x3000, class: L, fields: {log_en: [0, 0], lane_mask: [4, 1], tick_k: [9, 5]}, doc: event log control}
+  EV_CTL:      {addr: 0x3000, class: L, bank: event, fields: {log_en: [0, 0], lane_mask: [4, 1], tick_k: [9, 5]}, doc: event log control}
   EV_STATUS:   {addr: 0x3001, class: R, fields: {count: [3, 0], dropped: [11, 4], armed: [12, 12], fired: [13, 13], stage: [15, 14]},
                 doc: event FIFO and trigger status}
   EV_POP:      {addr: 0x3002, class: R, fields: {record: [31, 0]}, doc: reading pops one event record}
   TS:          {addr: 0x3003, class: R, fields: {ts: [31, 0]}, doc: chip timestamp}
-  EV_CLEAR:    {addr: 0x3005, class: P, fields: {fifo: [0, 0], drops: [1, 1]}, doc: "empty the FIFO, clear the drop counter"}
-  TRIG_MATCH:  {addr: 0x3008, count: 4, class: L, doc: trigger stage s match,
+  EV_CLEAR:    {addr: 0x3005, class: P, host: w, fields: {fifo: [0, 0], drops: [1, 1]}, doc: "empty the FIFO, clear the drop counter"}
+  TRIG_MATCH:  {addr: 0x3008, count: 4, class: L, bank: event, host: rw, doc: trigger stage s match,
                 fields: {lanes: [3, 0], code: [9, 4], code_mask: [15, 10], data: [23, 16], data_mask: [31, 24]}}
-  TRIG_WIN:    {addr: 0x300C, count: 4, class: L, fields: {window: [15, 0]}, doc: cycles allowed since the previous stage (0 no limit)}
-  TRIG_CTL:    {addr: 0x3010, class: L, doc: trigger control,
+  TRIG_WIN:    {addr: 0x300C, count: 4, class: L, bank: event, host: rw, fields: {window: [15, 0]}, doc: cycles allowed since the previous stage (0 no limit)}
+  TRIG_CTL:    {addr: 0x3010, class: L, bank: event, host: rw, doc: trigger control,
                 fields: {last: [1, 0], en: [2, 2], rearm: [3, 3], width_m1: [11, 4], pol: [12, 12], stop_mask: [16, 13]}}
-  TRIG_ARM:    {addr: 0x3011, class: P, fields: {arm: [0, 0]}, doc: "arm: stage pointer to 0, clear fired and TRIG"}
+  TRIG_ARM:    {addr: 0x3011, class: P, host: w, fields: {arm: [0, 0]}, doc: "arm: stage pointer to 0, clear fired and TRIG"}
   ID:          {addr: 0x4000, class: R, fields: {magic: [7, 0], isa_version: [11, 8], lanes: [14, 12], cfg_latch: [15, 15], evq_depth: [19, 16]},
                 doc: "chip identity (magic 0x54)"}
   RUN:         {addr: 0x4001, class: F, host: rw, fields: {run: [3, 0]}, doc: one bit per lane; takes effect at the next frame boundary}
