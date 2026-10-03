@@ -25,19 +25,21 @@ Send a byte:
 2. Set `ui_in[7:0]` to the byte, for example 0x41.
 3. Take `uio[0]` low, then high. `uo_out[1]` goes high, and `uo_out[0]` carries one 8N1 frame at 115200 baud.
 
-Watch `uo_out[0]` with a 3.3 V USB serial adapter (115200 8N1) or a logic analyzer on the output Pmod header. From the MicroPython SDK on the board:
+Watch `uo_out[0]` with a 3.3 V USB serial adapter (115200 8N1) or a logic analyzer on the output Pmod header. From the MicroPython SDK on the board (select the mode before the project, and give the released `rst_n` a moment to rise):
 
 ```python
+import time
 from ttboard.demoboard import DemoBoard
 from ttboard.mode import RPMode
 tt = DemoBoard.get()
+tt.mode = RPMode.ASIC_RP_CONTROL   # before enable(), which applies config.ini
 tt.shuttle.tt_um_tse_sk.enable()
-tt.mode = RPMode.ASIC_RP_CONTROL
-tt.clock_project_PWM(60_000_000)
+tt.clock_project_PWM(60_000_000)   # moves the RP2350 to 120 MHz
 tt.uio_oe_pico.value = 0b11      # RP2350 drives uio[1:0]
 tt.uio_in.value = 0b00
 tt.reset_project(True)
-tt.reset_project(False)
+tt.reset_project(False)          # releases rst_n to the board pull-up
+time.sleep_ms(10)
 tt.ui_in.value = 0x41
 tt.uio_in.value = 0b01           # rising edge on uio[0]: sends 'A'
 tt.uio_in.value = 0b00

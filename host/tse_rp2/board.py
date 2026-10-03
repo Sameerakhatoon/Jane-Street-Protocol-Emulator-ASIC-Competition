@@ -6,8 +6,13 @@ runtime access. BoardLink gives tse_host.session.Session the same five link
 operations the simulation provides, so the board runs the exact load
 sequence the tests run.
 
-Order matters: clock_project_PWM() moves the RP2350 system clock (60 MHz
-needs 120 MHz), which re-times PIO and SPI, so both are created after it.
+Order matters: enable() puts the RP2350 back on its default system clock and
+clock_project_PWM() then moves it (60 MHz needs 120 MHz), which re-times PIO
+and SPI, so both are created after it.
+
+reset_project(False) does not drive rst_n high: it turns GPIO14 into an input
+and the board's pull-up (through the reset button's debounce network) raises
+it, so every release waits until the pin reads high.
 """
 import rp2
 from machine import Pin, freq
@@ -17,10 +22,12 @@ from tse_rp2 import bytebus
 from tse_rp2.port import sleep_us, ticks_ms, ticks_diff
 from tse_rp2.regs import TseRegs
 
-PROJECT = "tt_um_tse"
+PROJECT = "tt_um_tse_sk_chip"   # the shuttle index names projects by top module
 UI_PINS = range(17, 25)        # ui_in[0..7]
 LOAD_UIO_PINS = (25, 26)       # uio[0] strobe, uio[1] frame: the crossbar's after loading
+PIO_BASE = 16                  # PIO window GPIO16..47 reaches ui_in, uio and uo_out
 RESET_HIGH_US = 1              # 60 clocks at 60 MHz: rst_n high before load mode, and settling after
+RESET_RISE_MS = 100            # the pull-up must win by then, or the button is held
 
 
 class BoardLink:
@@ -32,17 +39,25 @@ class BoardLink:
         self.regs = None
 
     def start_clock(self, clock_hz):
-        self.tt.clock_project_PWM(clock_hz)
+        if self.tt.clock_project_PWM(clock_hz) is None:
+            raise RuntimeError("project clock %d Hz did not start" % clock_hz)
         self.clock_hz = clock_hz
+
+    def release_reset(self):
+        self.tt.reset_project(False)
+        t0 = ticks_ms()
+        while not self.tt.rst_n():
+            if ticks_diff(ticks_ms(), t0) > RESET_RISE_MS:
+                raise RuntimeError("rst_n stays low after release")
+        sleep_us(RESET_HIGH_US)
 
     def enter_load(self):
         # high first: load mode starts on the synchronized falling edge,
         # which is what clears loaded on a freshly powered tile
-        self.tt.reset_project(False)
-        sleep_us(RESET_HIGH_US)
+        self.release_reset()
         self.tt.reset_project(True)
         sleep_us(RESET_HIGH_US)         # load mode is on before the first strobe edge
-        rp2.PIO(0).gpio_base(Pin(16))
+        set_pio_window()
         hz = bytebus.pio_freq(freq())
         self.sm_tx = rp2.StateMachine(0, bytebus.loader_tx, freq=hz,
                                       out_base=Pin(bytebus.OUT_BASE))
@@ -57,7 +72,7 @@ class BoardLink:
             Pin(n, Pin.OUT, value=1 if n == 17 else 0)     # CS_N idle high
         for n in LOAD_UIO_PINS:
             Pin(n, Pin.IN)
-        self.tt.reset_project(False)
+        self.release_reset()
         self.regs = TseRegs()
 
     def _put(self, sm, words):
@@ -95,6 +110,19 @@ class BoardLink:
         return self.regs.xfer(mosi, nread)
 
 
+def set_pio_window():
+    """Move PIO0's GPIO window to 16..47. The RP2350 refuses the move while any
+    program sits in PIO0's instruction memory, which after the first load holds
+    our own two programs with the window already moved."""
+    pio = rp2.PIO(0)
+    if not hasattr(pio, "gpio_base"):
+        raise RuntimeError("this MicroPython has no PIO.gpio_base (RP2350B support)")
+    try:
+        pio.gpio_base(Pin(PIO_BASE))
+    except OSError:
+        pass
+
+
 def stream_reads(stream):
     """True if a stream holds a command whose bytes come back (RD, RDB, STAT)."""
     for b, f in stream:
@@ -114,7 +142,13 @@ class TseBoard:
         self.session = session.Session(self.link)
 
     def select(self):
-        getattr(self.tt.shuttle, self.project).enable()
+        """ASIC_RP_CONTROL first, so enable() applies the project's config.ini
+        section and the RP2350 drives ui_in, clock and reset."""
+        from ttboard.mode import RPMode
+        if self.tt.mode != RPMode.ASIC_RP_CONTROL:
+            self.tt.mode = RPMode.ASIC_RP_CONTROL
+        if not getattr(self.tt.shuttle, self.project).enable():
+            raise RuntimeError("the SDK refused to enable %s" % self.project)
 
     def load_image(self, path, verify=True, run_mask=None):
         """Select, clock, self-test, load, verify; then run mode and RUN if run_mask.

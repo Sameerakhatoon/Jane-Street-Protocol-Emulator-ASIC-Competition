@@ -8,6 +8,8 @@ PULL, PUSH, MOV as NOP, delays, autopull, autopush, 4-deep FIFOs) clocked
 from the simulated RP2350 system clock in WORLD, which also clocks the
 Python chip model and connects GPIOs to its pins. Time only passes inside
 this module: sleep_us(), FIFO waits and machine.SPI transfers advance it.
+PIO.gpio_base() refuses to move the window while PIO0 holds a program, as
+the RP2350 does.
 """
 import types
 
@@ -37,6 +39,8 @@ class World:
         self.cpu_out = {}              # gpio -> level from machine.Pin
         self.spi_out = {}
         self.selected = None
+        self.rise_at = 0               # when a released rst_n reaches high
+        self.pio_progs = set()         # programs in PIO0 instruction memory
         self.dirty = True
 
     def level(self, n):
@@ -47,6 +51,8 @@ class World:
             return self.spi_out.get(n, 0)
         if o == "cpu":
             return self.cpu_out.get(n, 0)
+        if o == "pullup":
+            return 1 if self.t >= self.rise_at else 0
         if 33 <= n <= 40:
             return (self.chip.uo_out >> (n - 33)) & 1
         return 0
@@ -62,6 +68,8 @@ class World:
     def run(self, n):
         for _ in range(int(n)):
             self.t += 1
+            if self.t == self.rise_at:
+                self.dirty = True
             for sm in self.sms:
                 if sm.on and self.t % sm.div == 0:
                     sm.step()
@@ -99,9 +107,14 @@ class PIO:
         if n != 0:
             raise SimError("only PIO(0) is simulated")
 
-    def gpio_base(self, pin):
-        WORLD.gpio_base = pin.id
-        return pin.id
+    def gpio_base(self, pin=None):
+        if pin is not None:
+            if pin.id not in (0, 16):
+                raise ValueError("invalid GPIO base")
+            if WORLD.pio_progs:
+                raise OSError(22, "PIO0 holds programs")
+            WORLD.gpio_base = pin.id
+        return WORLD.gpio_base
 
 
 class _Ins:
@@ -220,6 +233,7 @@ class StateMachine:
                 WORLD.owner[self.out_base + i] = "pio"
                 WORLD.pio_out.setdefault(self.out_base + i, o["out_init"][i] & 1)
             WORLD.dirty = True
+        WORLD.pio_progs.add(id(prog))
         WORLD.sms = [s for s in WORLD.sms if s.id != sm_id] + [self]
 
     def active(self, v=None):
