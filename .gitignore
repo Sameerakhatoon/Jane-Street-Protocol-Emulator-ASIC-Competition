@@ -20,3 +20,4 @@ __pycache__/
 *.fst
 *.vvp
 results.xml
+docs/doc.typ
