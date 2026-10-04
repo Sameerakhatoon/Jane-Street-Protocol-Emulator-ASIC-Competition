@@ -13,8 +13,13 @@ so one run reports them together, sorted by position.
   E208 `drive 1` on an open-drain wire E218 `release` needs an open-drain wire
   E209 unknown variable                E219 a wire level is 0 or 1
   E210 shift count larger than the variable
+
+The spec-level checks (overlapping edges, timelock, datasheet contradictions,
+frames, enums, triggers) are in speccheck.py, the assist checks in assists.py.
+check() returns the warnings and raises Errors for the errors.
 """
 from . import ast as A
+from . import assists, speccheck
 from .diag import Errors, TseError
 from .units import dimname
 
@@ -26,6 +31,8 @@ class RoleChecker:
         self.sym, self.role, self.errs = sym, role, errs
         self.vars = {}
         self.states = {}
+        self.clocks = {c.text for c in getattr(role, "clocks", [])}
+        self.emits = []
 
     def err(self, code, msg, span):
         self.errs.append(TseError(code, msg, span))
@@ -75,9 +82,11 @@ class RoleChecker:
         return v
 
     def guard(self, e):
-        """Guards may name wires, variables, params and units."""
+        """Guards may name wires, variables, clocks, params and units."""
         if isinstance(e, A.Ref):
             name = e.name.text
+            if name in self.clocks and e.index is None:
+                return
             if name in self.vars or name in self.sym.wires:
                 if name in self.sym.wires:
                     self.wire(e.name)
@@ -91,13 +100,13 @@ class RoleChecker:
         elif isinstance(e, A.Binary):
             self.guard(e.left)
             self.guard(e.right)
-        elif isinstance(e, A.Num):
+        elif isinstance(e, (A.Num, A.Call)):
             self.q(e)
 
     def event(self, ev, outgoing_ok=False):
         if ev.kind != "named":
             w = self.wire(ev.name)
-            if w is not None and w.dir == "out":
+            if w is not None and w.dir == "out" and not outgoing_ok:
                 self.err("E203", f"event {ev.kind}({ev.name.text}) needs an input wire",
                          ev.name.span)
             return
@@ -110,6 +119,8 @@ class RoleChecker:
             return
         if ev.attr is None and ev.name.text in self.sym.events:
             return
+        if ev.attr is not None and ev.name.text in self.sym.assists:    # crc16.ok, bitclk.tick
+            return
         self.err("E101", f"unknown event '{ev.name.text}'", ev.name.span)
 
     # ------------------------------------------------------------ statements
@@ -117,7 +128,7 @@ class RoleChecker:
         if t.window:
             w = t.window
             lo, hi = self.q(w.lo), self.q(w.hi)
-            self.event(w.after)
+            self.event(w.after, outgoing_ok=True)      # a window may follow our own edge
             if lo is not None and hi is not None and (lo.dim != 1 or hi.dim != 1
                                                       or not 0 <= lo.v < hi.v):
                 self.err("E213", "window must be [a, b] with times 0 <= a < b", w.span)
@@ -145,9 +156,9 @@ class RoleChecker:
             if w is not None and w.dir == "in":
                 self.err("E206", f"cannot release '{w.name.text}': it is declared 'in'",
                          s.wire.span)
-            elif w is not None and not w.open_drain:
-                self.err("E218", f"'release' needs an open-drain wire; '{w.name.text}' is "
-                         "push-pull", s.wire.span)
+            elif w is not None and not w.open_drain and w.dir != "inout":
+                self.err("E218", f"'release' needs an open-drain or inout wire; '{w.name.text}' "
+                         "is a push-pull output", s.wire.span)
             self.timing(s.timing, s.span)
         elif isinstance(s, A.Shift):
             for ident in s.wires:
@@ -195,7 +206,23 @@ class RoleChecker:
             self.q(s.value)
         elif isinstance(s, A.Reset):
             for n in s.names:
-                self.var(n)
+                if n.text not in self.clocks:
+                    self.var(n)
+        elif isinstance(s, A.Emit):
+            self.emits.append(s.name)
+            for a in s.args:
+                self.guard(a)
+        elif isinstance(s, A.Send):
+            if s.name.text not in self.sym.frames:
+                self.err("E101", f"unknown frame '{s.name.text}'", s.name.span)
+            for a in s.args:
+                self.guard(a)
+            self.timing(A.Timing(s.window), s.span)
+        elif isinstance(s, A.Recv):
+            if s.name.text not in self.sym.frames:
+                self.err("E101", f"unknown frame '{s.name.text}'", s.name.span)
+            if s.into is not None:
+                self.var(s.into)
 
     def width(self, v):
         if v is None or v.type.width is None:
@@ -293,7 +320,15 @@ def check(sym):
             rc.event(it.event)
             if it.guard is not None:
                 rc.guard(it.guard)
+    sym.emits = {}
     for role in sym.roles:
-        RoleChecker(sym, role, errs).run()
+        rc = RoleChecker(sym, role, errs)
+        rc.run()
+        sym.emits[role.name.text] = rc.emits
+    warns = []
+    if not errs:            # the spec-level checks assume names and dimensions are sound
+        speccheck.run(sym, errs, warns)
+        assists.check(sym, errs)
     if errs:
         raise Errors(errs)
+    return sorted(warns, key=lambda e: (e.span.line, e.span.col))

@@ -1,0 +1,13 @@
+// an unguarded edge before a guarded one on the same event hides it
+protocol p {
+  wire clk : in;
+  wire d : in;
+  role r : target uses clk, d {
+    state idle {
+      on fall(clk) -> a;
+      on fall(clk) when d == 1 -> b;
+    }
+    state a { on rise(clk) -> idle; }
+    state b { on rise(clk) -> idle; }
+  }
+}

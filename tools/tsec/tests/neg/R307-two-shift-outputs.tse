@@ -1,0 +1,16 @@
+// OUT drives virtual pin 0 only, so two wires cannot both be shifted out
+protocol p {
+  wire a : out;
+  wire b : out;
+  wire go : in;
+  role r : controller uses a, b, go {
+    var v : bits[8];
+    state idle { on host.pull(v) -> s; }
+    state s {
+      seq {
+        shift v msb 1 -> a within [0 ns, 1 us] after fall(go);
+        shift v msb 1 -> b within [0 ns, 1 us] after rise(go);
+      } -> idle;
+    }
+  }
+}

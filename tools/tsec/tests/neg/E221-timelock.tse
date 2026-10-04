@@ -1,0 +1,10 @@
+// the invariant allows 0.9 us, the only exit needs 1 us
+protocol p {
+  wire sda : inout open_drain pull_up;
+  role r : target uses sda {
+    clock c;
+    state idle inv c <= 0.9 us {
+      after c >= 1 us -> idle;
+    }
+  }
+}

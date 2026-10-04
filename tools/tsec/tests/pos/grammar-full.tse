@@ -1,0 +1,41 @@
+// The rest of the grammar: enum, frame, assist, trigger, clock, send, recv, bytes ranges, calls.
+protocol full {
+  param bitrate : freq = 500 kHz;
+  unit  bit     = 1 / bitrate;
+  const slot    : time = max(2 us, 1 bit);
+
+  enum kind : bits[2] { data = 0, remote = 1, error = 3 }
+
+  wire rx : in;
+  wire tx : out push_pull idle 1;
+
+  assist crc15  : crc { width = 15; poly = 0x4599; init = 0; refin = false; refout = false;
+                        xorout = 0; check = 0x059E; }
+  assist stuff  : stuffer { run = 5; value = either; }
+  assist bitclk : dpll { period = 1 bit; sample = 80 %; sjw = 120 ns; dual_edge = true; }
+  assist pace   : timer { period = 2 us; }
+  assist ack    : rule { clock = bits; pattern = 1; mask = 1; pos = 98; offset = 1; len = 1;
+                         resp = 0; cond = crc_good; }
+
+  frame msg {
+    sof  : bit = 0;
+    id   : bits[11];
+    k    : kind;
+    data : bytes[0..8] if k == data;
+    crc  : bits[15] crc crc15 over sof..data;
+    del  : bit = 1 nostuff;
+    ackb : bit = 1 nostuff from node;
+    eof  : bits[7] = 0x7F nostuff;
+  }
+
+  role node : controller uses rx, tx {
+    var m : bytes[8];
+    clock c;
+    state idle { on host.pull(m) -> send_it; }
+    state send_it inv c <= 1 ms {
+      seq { reset c; send msg(m); recv msg into m; emit sent(m); } -> idle;
+    }
+  }
+
+  trigger first { match node.sent then rise(rx) within 10 us action emit late; }
+}

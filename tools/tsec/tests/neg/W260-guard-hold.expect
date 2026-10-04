@@ -1,0 +1,3 @@
+tools/tsec/tests/neg/W260-guard-hold.tse:12:27: warning: a guard reads 'd' up to 91.7 ns after fall(clk), but the datasheet keeps 'd' stable for only 0.0 ns after it; add a hold rule such as fall(clk) -> edge(d) >= 91.7 ns [W260]
+ 12 |       on fall(clk) when d == 1 do { drive q = 1 within [0 ns, 500 ns] after fall(clk); } -> b;
+    |                           ^~

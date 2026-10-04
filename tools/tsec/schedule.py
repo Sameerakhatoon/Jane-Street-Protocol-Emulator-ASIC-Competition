@@ -11,7 +11,8 @@ from fractions import Fraction as Fr
 
 from . import isa
 from .diag import TseError
-from .lower import Lowering
+from .fsmsched import Scheduler
+from .lower import Lowering, frame_shape
 from .timing import Violation, analyse
 
 STRATEGIES = ("dly", "timer")
@@ -77,6 +78,7 @@ class RoleResult:
     lane: int
     chosen: Attempt = None
     tried: list = field(default_factory=list)
+    kind: str = "frame"
 
 
 def hint(att, fm):
@@ -87,12 +89,22 @@ def hint(att, fm):
     return HINTS["timer"]
 
 
-def compile_role(sym, role, lane, fclk, fm, ppm):
+def compile_role(sym, role, lane, fclk, fm, ppm, pads=(0, 25)):
     """Try each pacing strategy in order; the first that proves every obligation wins.
+    A role outside the paced-frame shape goes to the state-machine lowering instead.
     Raises TseError for shapes and resources the lowering cannot handle (R300, R301, R307)."""
     res = RoleResult(role, lane)
+    try:
+        frame_shape(role)
+    except TseError as e:
+        if e.code != "R300":
+            raise
+        res.kind = "fsm"
+        res.chosen, res.tried = Scheduler(sym, role, lane, fclk, fm, pads).compile()
+        return res
     for mode in STRATEGIES:
         low = Lowering(sym, role, fclk, mode)
+        low.pads = (Fr(pads[0]) * fclk / 10**9, Fr(pads[1]) * fclk / 10**9)
         low.lower()
         if len(low.prog) > isa.MAX_INSTRUCTIONS:
             raise TseError("R301", f"program too large: {len(low.prog)} instructions, a lane holds "

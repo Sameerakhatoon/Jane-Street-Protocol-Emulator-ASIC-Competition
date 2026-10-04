@@ -3,8 +3,8 @@
 It pins the seam in isa.py: a swap to
 the generated tables must still give these encodings and these cycle counts.
 """
-from . import isa
-from .timing import FetchModel, base_duration, first_slot, next_dispatch
+from . import cycles, isa
+from .cycles import FetchModel, base_duration, first_slot
 
 SAMPLES = [("JMP", dict(cond="XDEC", target=6, ss=1), 0x0A06),
            ("OUT", dict(dst="PINS", n=1, delay=6), 0x8006),
@@ -53,7 +53,7 @@ def pin_runs(prog, lane, fm, frames, bit=0, ss_base=2, side=True, max_cycles=400
         if ((new ^ pins) >> bit) & 1:
             tr.append((c + 1, (new >> bit) & 1))
         pins = new
-        c, pc = next_dispatch(c, base_duration(mn, f, c, lane, fm), npc, buf, lane, fm), npc
+        c, pc = cycles.step(mn, f, c, npc, buf, lane, fm), npc
     return [(v, t1 - t0) for (t0, v), (t1, _) in zip(tr, tr[1:])]
 
 

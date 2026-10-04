@@ -1,0 +1,9 @@
+tools/tsec/tests/neg/R311-response-late.tse:7:39: error: response window not met in role 'r': drive ans late [R311]
+ 7 |       respond quick : on fall(trig) { drive ans = 1; } within [0 ns, 50 ns] -> done;
+   |                                       ^~~~~
+  obligation : OB-WIN 'drive ans after fall(trig)' (respond quick), role r, lane 0
+  window     : [0.0 ns, 50.0 ns] = [0, 3] ticks at 60 MHz
+  achieved   : 66.7 ns .. 175.0 ns: the pin changes 4.00 to 10.50 ticks after the edge, over every slot phase and every legal environment timing
+  path       : edge to synchronizer 1 to 2 ticks + program 1 to 5 cycles (least at phase 2, most at phase 2) + 2 output stages, pads 0 to 25 ns
+  late by    : 125.0 ns
+1 obligation(s) or limit(s) not met; no image written (rule R1)

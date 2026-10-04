@@ -1,0 +1,4 @@
+tools/tsec/tests/neg/E240-empty-frame.tse:2:9: error: frame 'f' has no fields [E240]
+ 2 |   frame f { }
+   |         ^
+1 error(s); nothing compiled

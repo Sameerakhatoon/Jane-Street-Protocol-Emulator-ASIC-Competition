@@ -1,0 +1,4 @@
+tools/tsec/tests/neg/E240-crc-range.tse:6:34: error: crc range 'data..sof' runs backwards [E240]
+ 6 |     crc  : bits[15] crc c15 over data..sof;
+   |                                  ^~~~
+1 error(s); nothing compiled

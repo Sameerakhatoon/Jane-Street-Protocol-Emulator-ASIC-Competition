@@ -1,0 +1,4 @@
+tools/tsec/tests/neg/E230-crc-width.tse:2:28: error: assist 'c': width 40 is outside 5..32 [E230]
+ 2 |   assist c : crc { width = 40; poly = 0x07; }
+   |                            ^~
+1 error(s); nothing compiled

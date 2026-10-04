@@ -1,0 +1,17 @@
+// two CRC assists on one lane
+protocol p {
+  wire rx : in;
+  assist a : crc { width = 8; poly = 0x07; }
+  assist b : crc { width = 16; poly = 0x1021; }
+  role r : target uses rx {
+    var b : bits[8];
+    state idle { on fall(rx) -> f; }
+    state f {
+      seq {
+        sample rx expect 0 within [4 us, 6 us] after fall(rx) for 10 us;
+        shift rx -> b lsb 8 each 10 us ~ 2 %;
+        push host b;
+      } -> idle;
+    }
+  }
+}

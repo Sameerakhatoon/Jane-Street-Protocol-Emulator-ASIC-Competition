@@ -1,0 +1,23 @@
+// tick_delay 18 + 3 is not below the 16-tick SCK period at 3.75 MHz
+protocol p {
+  param f_sck : freq = 3.75 MHz;
+  unit half = 1 / (2 * f_sck);
+  wire sck : in;
+  wire rx : in;
+  datasheet d {
+    rule lo : fall(sck) -> rise(sck) >= half;
+    rule hi : rise(sck) -> fall(sck) >= half;
+  }
+  assist ack : rule { clock = (sck, fall); tick_delay = 18; pattern = 1; pos = 7; }
+  role r : target uses rx, sck {
+    var b : bits[8];
+    state idle { on fall(rx) -> f; }
+    state f {
+      seq {
+        sample rx expect 0 within [4 us, 6 us] after fall(rx) for 10 us;
+        shift rx -> b lsb 8 each 10 us ~ 2 %;
+        push host b;
+      } -> idle;
+    }
+  }
+}

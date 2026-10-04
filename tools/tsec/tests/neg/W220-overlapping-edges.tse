@@ -1,0 +1,14 @@
+// two guarded edges on one event whose guards can both hold: the first wins
+protocol p {
+  wire clk : in;
+  wire d : in;
+  role r : target uses clk, d {
+    var v : bits[8];
+    state idle {
+      on fall(clk) when d == 1 -> a;
+      on fall(clk) when v == 3 -> b;
+    }
+    state a { on rise(clk) -> idle; }
+    state b { on rise(clk) -> idle; }
+  }
+}

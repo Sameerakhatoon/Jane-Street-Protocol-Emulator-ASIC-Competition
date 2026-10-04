@@ -1,57 +1,20 @@
-"""Stage 5b, timing: the lane cycle model and the phase-exhaustive analysis.
+"""Stage 5b, timing: the phase-exhaustive analysis of a paced frame.
 
-The cycle model: instruction durations (base_duration)
-and the two-word fetch buffer (next_dispatch). The analysis runs the expected
-path of a lowered frame from its anchor for every slot phase and for a cold
-and a warm buffer, records when each obligation's instruction issues, and
-checks it against the semantics (semantics.py). Nothing here reads the spec.
+The analysis runs the expected path of a lowered frame from its anchor for
+every slot phase and for a cold and a warm buffer, records when each
+obligation's instruction issues, and checks it against the semantics
+(semantics.py). Instruction cycles come only from cycles.py. Nothing here
+reads the spec.
 """
 import math
 from dataclasses import dataclass, field
 from fractions import Fraction as Fr
 
-from . import isa
+from . import cycles, isa
+from .cycles import FetchModel, base_duration, first_slot, next_dispatch  # noqa: F401 (re-export)
 from .diag import TseError
 from .semantics import hold_ok, rearm_ok
 from .units import drift_budget
-
-
-@dataclass(frozen=True)
-class FetchModel:
-    S: int = isa.FRAME_SLOTS          # slot frame: lane k owns SRAM cycles s with s % S == k
-    entries: int = isa.FETCH_ENTRIES  # words kept per lane, least recently used replaced
-    lat: int = isa.FETCH_LATENCY      # fetch_latency: 1 decode from A_DOUT, 2 registered A_DOUT
-
-
-def first_slot(c, period, k):
-    return c + ((k - c) % period)
-
-
-def base_duration(op, a, c, lane, fm):
-    """Cycles of a non-WAIT instruction dispatched in cycle c."""
-    if op in ("MOV", "OUT", "IN", "TMR", "EMIT"):
-        return 1 + a.get("delay", 0)
-    if op == "DLY":
-        return 1 + a["d"]
-    if op == "CSRW":
-        return 3 if a["addr"] in isa.CLASS_L else 1
-    if op in ("STW", "LDW"):
-        s = first_slot(c, isa.DATA_SLOT_PERIOD, 4 * lane + 3)
-        return s + 1 - c if op == "STW" else s + 2 - c + fm.lat - 1
-    return 1
-
-
-def next_dispatch(c, d, npc, buf, lane, fm):
-    """Two-word buffer fetch rule; buf[0] is the current word."""
-    w = npc // 2
-    if w in buf:
-        buf.remove(w)
-        buf.insert(0, w)
-        return c + d
-    s = first_slot(c, fm.S, lane)
-    del buf[fm.entries - 1:]
-    buf.insert(0, w)
-    return max(c + d, s + fm.lat)
 
 
 class Overrun(Exception):
@@ -109,10 +72,7 @@ def simulate(low, labels, lane, fm, t0, buf0, nco_phase=Fr(0)):
             v = visits.get(id(ins.ob), 0)
             out.append((ins.ob, v, t_ret))
             visits[id(ins.ob)] = v + 1
-        if ins.op == "WAIT":
-            d = t_ret - t + 1 + ins.a.get("delay", 0)
-        else:
-            d = base_duration(ins.op, ins.a, t, lane, fm)
+        end = t_ret if ins.op == "WAIT" else None
         if ins.op == "SET" and ins.a["dst"] == "X":
             x = ins.a["imm"]
         elif ins.op == "SET" and ins.a["dst"] == "CMD" and ins.a["imm"] == isa.CMD_DPLL_ON:
@@ -125,7 +85,7 @@ def simulate(low, labels, lane, fm, t0, buf0, nco_phase=Fr(0)):
                 x = (x - 1) & 0xFFFF
             if taken:
                 npc = labels[ins.a["target"]]
-        pc, t, first = npc, next_dispatch(t, d, npc, buf, lane, fm), False
+        pc, t, first = npc, cycles.step(ins.op, ins.a, t, npc, buf, lane, fm, end), False
     raise TseError("R399", "expected path did not return to the anchor")
 
 
@@ -163,7 +123,8 @@ def analyse(low, labels, lane, fm, ppm, nco_phase=Fr(0)):
                 if ob.ref == "anchor":
                     rng = (Fr(issue - p), Fr(issue - p) + 1)      # S6: sample in [d, d + 1)
                     lo, hi = ob.window
-                    err = max(lo - rng[0], rng[1] - hi, 0)
+                    pmin, pmax = getattr(low, "pads", (0, 0))   # pad delays, in ticks
+                    err = max(lo - rng[0] - pmin, rng[1] + pmax - hi, 0)
                     cost = abs(rng[0] + Fr(1, 2) - ob.ideals[v])
                     ok, shown, budget = err == 0, rng, (hi - lo) / 2
                 else:

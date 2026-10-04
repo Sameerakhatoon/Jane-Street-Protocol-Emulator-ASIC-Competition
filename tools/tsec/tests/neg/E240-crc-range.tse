@@ -1,0 +1,8 @@
+protocol p {
+  assist c15 : crc { width = 15; poly = 0x4599; }
+  frame f {
+    sof  : bit = 0;
+    data : bits[8];
+    crc  : bits[15] crc c15 over data..sof;
+  }
+}

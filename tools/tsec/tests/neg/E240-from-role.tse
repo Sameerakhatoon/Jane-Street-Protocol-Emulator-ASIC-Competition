@@ -1,0 +1,5 @@
+protocol p {
+  frame f {
+    ack : bit = 1 from nobody;
+  }
+}

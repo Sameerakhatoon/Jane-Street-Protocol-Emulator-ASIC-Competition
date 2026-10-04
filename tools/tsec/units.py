@@ -46,7 +46,7 @@ BASE_UNITS = {
     "ppm": Q(Fr(1, 10**6), 0),
 }
 TYPE_DIM = {"time": 1, "freq": -1, "ratio": 0, "count": 0}
-DATA_TYPES = ("bit", "bool", "bits", "uint")
+DATA_TYPES = ("bit", "bool", "bits", "uint", "bytes")
 
 
 # Rounding rules. Each takes exact ticks.

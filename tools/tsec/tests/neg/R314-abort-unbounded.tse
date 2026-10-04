@@ -1,0 +1,14 @@
+// abort on stop needs the earliest stop after the clock rises; nothing bounds it
+protocol p {
+  wire scl : inout open_drain pull_up;
+  wire sda : inout open_drain pull_up;
+  event stop = rise(sda) when scl == 1;
+  role r : target uses scl, sda {
+    var sh : bits[8];
+    state idle { on fall(scl) -> rx; }
+    state rx {
+      seq { repeat 8 { await rise(scl); shift sda -> sh msb 1; } push host sh; } -> idle
+        abort on stop -> idle;
+    }
+  }
+}

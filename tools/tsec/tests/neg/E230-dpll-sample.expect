@@ -1,0 +1,4 @@
+tools/tsec/tests/neg/E230-dpll-sample.tse:4:46: error: assist 'd': sample 1.2 is outside 0..1 [E230]
+ 4 |   assist d : dpll { period = 1 bit; sample = 120 %; }
+   |                                              ^~~
+1 error(s); nothing compiled

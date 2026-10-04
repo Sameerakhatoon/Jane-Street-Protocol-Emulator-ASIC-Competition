@@ -30,12 +30,24 @@ The rules:
      the earliest next start. If we own the next start (S3), our last edge
      must hold at least that long (OB-HOLD); if the environment owns it, we
      must be waiting again within floor(gap - tol) ticks (OB-REARM).
+  S8 Environment separations. A datasheet rule or an `assume` line
+     `A -> B >= T` says the next B after any A comes at least T later. It
+     applies to an event a when every a is an A (rule A = edge(w) covers
+     rise(w); a rule guarded by `w == v` applies when w is known to be v).
+     With no direct rule, a -> b may chain through the opposite edge of b's
+     wire when a leaves that wire at b's level (rise -> fall -> rise), or
+     through the edge that makes b's guard true (fall(scl) -> rise(scl) ->
+     stop, for stop = rise(sda) when scl == 1). With
+     no rule at all the separation is 0: the next b may already be here.
+     An edge visible in cycle k at the synchronizer was at the pin in
+     [k - 2, k - 1), so the next b is visible no earlier than k + floor(T).
 """
 import math
 from dataclasses import dataclass, field
 from fractions import Fraction as Fr
 
 from . import ast as A
+from . import printer
 from .diag import Span
 
 # obligation code -> rejection code
@@ -167,3 +179,130 @@ def hold_ok(hold, f):
 def rearm_ok(rearm, f):
     """S7, the environment owns the next start: waiting again within floor(gap - tol)."""
     return rearm <= math.floor(f.tail_limit)
+
+
+# ---------------------------------------------------------------- S8
+def base_event(sym, e):
+    """(pin event, guard) behind e: a named event's definition, or e itself."""
+    if e.kind == "named" and e.attr is None and e.name.text in sym.events:
+        d = sym.events[e.name.text]
+        return d.event, d.guard
+    return e, None
+
+
+def level_guard(sym, g):
+    """{wire: level} of a guard made of `w == 0|1` terms joined by and, else None."""
+    if g is None:
+        return {}
+    if isinstance(g, A.Binary) and g.op == "and":
+        a, b = level_guard(sym, g.left), level_guard(sym, g.right)
+        return None if a is None or b is None else {**a, **b}
+    if isinstance(g, A.Binary) and g.op == "==" and isinstance(g.left, A.Ref) \
+            and g.left.name.text in sym.wires and g.left.index is None:
+        try:
+            v = sym.eval(g.right).v
+        except Exception:
+            return None
+        return {g.left.name.text: int(v)} if v in (0, 1) else None
+    return None
+
+
+def covers(sym, r, e, ctx=None):
+    """Every occurrence of e (with wire levels ctx at that instant) is an occurrence of r."""
+    ctx = ctx or {}
+    if r.kind == "named":
+        if e.kind == "named":
+            return printer.event(r) == printer.event(e)
+        base, guard = base_event(sym, r)
+        if base is r:
+            return False
+        lv = level_guard(sym, guard)
+        return lv is not None and covers(sym, base, e, ctx) and all(ctx.get(w) == v for w, v in lv.items())
+    base, guard = base_event(sym, e)
+    if base is not e:
+        lv = level_guard(sym, guard) or {}
+        return covers(sym, r, base, {**ctx, **lv})
+    if r.kind == "taken" or e.kind == "taken" or r.name.text != e.name.text:
+        return r.kind == e.kind == "taken" and r.name.text == e.name.text
+    return r.kind == e.kind or r.kind == "edge"
+
+
+def env_rules(sym, role):
+    """(A, B, bound in seconds, guard levels, name) of every lower-bound rule and assume."""
+    out = []
+    for d in sym.spec.of(A.Datasheet):
+        for r in d.rules:
+            lv = level_guard(sym, r.guard)
+            if r.relop in (">=", ">") and lv is not None:
+                out.append((r.a, r.b, sym.eval(r.bound).v, lv, r))
+    for a in role.assumes if role is not None else ():
+        if a.b is not None and a.relop in (">=", ">"):
+            out.append((a.a, a.b, sym.eval(a.bound).v, {}, a))
+    return out
+
+
+def post_level(sym, e, wire):
+    """Level of wire right after event e, when e fixes it."""
+    base, guard = base_event(sym, e)
+    if base.kind in ("rise", "fall") and base.name.text == wire:
+        return 1 if base.kind == "rise" else 0
+    return (level_guard(sym, guard) or {}).get(wire)
+
+
+def direct_separation(sym, role, a, b, fclk, ctx=None):
+    best, used = Fr(0), []
+    ctx = dict(ctx or {})
+    base, guard = base_event(sym, a)
+    ctx.update(level_guard(sym, guard) or {})
+    for ra, rb, t, lv, rule in env_rules(sym, role):
+        if not all(ctx.get(w) == v for w, v in lv.items()):
+            continue
+        if covers(sym, ra, a, ctx) and covers(sym, rb, b) and t * fclk > best:
+            best, used = t * fclk, [rule]
+    return best, used
+
+
+def min_separation(sym, role, a, b, fclk, ctx=None):
+    """S8: (ticks, rules) from event a to the next event b, as the environment guarantees."""
+    best, used = direct_separation(sym, role, a, b, fclk, ctx)
+    if used:
+        return best, used
+    base, _ = base_event(sym, b)
+    if base.kind in ("rise", "fall"):
+        w = base.name.text
+        if post_level(sym, a, w) == (1 if base.kind == "rise" else 0) or \
+                (ctx or {}).get(w) == (1 if base.kind == "rise" else 0):
+            opp = A.Event("fall" if base.kind == "rise" else "rise", base.name)
+            t1, r1 = direct_separation(sym, role, a, opp, fclk, ctx)
+            t2, r2 = direct_separation(sym, role, opp, b, fclk)
+            if r1 and r2:
+                return t1 + t2, r1 + r2
+    _, guard = base_event(sym, b)        # stop = rise(sda) when scl == 1, after fall(scl)
+    for w, v in (level_guard(sym, guard) or {}).items():
+        if post_level(sym, a, w) == 1 - v or (ctx or {}).get(w) == 1 - v:
+            via = A.Event("rise" if v else "fall", A.Ident(w))
+            t1, r1 = direct_separation(sym, role, a, via, fclk, ctx)
+            t2, r2 = direct_separation(sym, role, via, b, fclk)
+            if r1 and r2:
+                return t1 + t2, r1 + r2
+    return Fr(0), []
+
+
+def opposite(e):
+    """The edge that undoes pin event e (rise <-> fall), or any change for edge(w)."""
+    return A.Event({"rise": "fall", "fall": "rise"}.get(e.kind, "edge"), e.name)
+
+
+def stable_after(sym, role, e, wire, fclk):
+    """Ticks after event e during which wire cannot change, from the rules (min over its levels)."""
+    known = post_level(sym, e, wire)
+    worst = None
+    for lvl in ((known,) if known is not None else (0, 1)):
+        nxt = A.Event("fall" if lvl == 1 else "rise", A.Ident(wire))
+        t, used = direct_separation(sym, role, e, nxt, fclk, {wire: lvl})
+        if not used:
+            t, used = direct_separation(sym, role, e, A.Event("edge", A.Ident(wire)), fclk, {wire: lvl})
+        if not used:
+            return Fr(0)
+        worst = t if worst is None else min(worst, t)
+    return worst

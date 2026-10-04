@@ -1,0 +1,4 @@
+tools/tsec/tests/neg/E230-dpll-period.tse:3:30: error: assist 'd': period is 120000.00 ticks, outside 2..65535 [E230]
+ 3 |   assist d : dpll { period = 2 ms; }
+   |                              ^
+1 error(s); nothing compiled

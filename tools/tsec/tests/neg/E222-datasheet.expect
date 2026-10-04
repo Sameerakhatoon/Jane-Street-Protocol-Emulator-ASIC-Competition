@@ -1,0 +1,4 @@
+tools/tsec/tests/neg/E222-datasheet.tse:8:45: error: drive scl = 0 for 1 us then release scl for 1 us: fall(scl) to rise(scl) can be 1 us, which breaks rule t_low (>= 1.3 us) [E222]
+ 8 |     state f { seq { drive scl = 0 for 1 us; release scl for 1 us; } -> idle; }
+   |                                             ^~~~~~~
+1 error(s); nothing compiled

@@ -1,0 +1,8 @@
+tools/tsec/tests/neg/R311-own-edge.tse:11:9: error: window after our own edge not met in role 'r': shift din -> v msb 1 within [0 ns, 20 ns] after rise(clk) [R311]
+ 11 |         shift din -> v msb 1 within [0 ns, 20 ns] after rise(clk);
+    |         ^~~~~
+  obligation : OB-WIN 'shift din -> v msb 1 within [0 ns, 20 ns] after rise(clk)', measured from our own earlier edge
+  window     : [0.0 ns, 20.0 ns] at the pins = 5 to 4 cycles between the two instructions, pads and skew included
+  achieved   : 5 to 8 cycles
+  late by    : 4 cycles
+1 obligation(s) or limit(s) not met; no image written (rule R1)

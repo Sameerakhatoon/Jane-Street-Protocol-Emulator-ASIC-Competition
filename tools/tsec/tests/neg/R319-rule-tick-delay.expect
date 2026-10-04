@@ -1,0 +1,5 @@
+tools/tsec/tests/neg/R319-rule-tick-delay.tse:11:10: error: rule 'ack': tick_delay 18 + 3 must stay below the period of sck, but its shortest period is 16.00 ticks [R319]
+ 11 |   assist ack : rule { clock = (sck, fall); tick_delay = 18; pattern = 1; pos = 7; }
+    |          ^~~
+  fix        : tick_delay <= 12
+1 obligation(s) or limit(s) not met; no image written (rule R1)

@@ -10,20 +10,20 @@ uart_rx.tse|-|0|-|-
 uart_rx.tse|--fclk 50e6|0|-|-
 uart_rx.tse|-D baud=1000000|0|-|-
 uart_rx.tse|-D baud=1000000 --fclk 50e6|0|-|-
-spi_controller_mode0.tse|-|2|R300|not supported by this version of tsec: state 'dispatch' must have exactly one 'seq' edge
-spi_controller_mode1.tse|-|2|R300|not supported by this version of tsec: state 'dispatch' must have exactly one 'seq' edge
-spi_controller_mode2.tse|-|2|R300|not supported by this version of tsec: state 'dispatch' must have exactly one 'seq' edge
-spi_controller_mode3.tse|-|2|R300|not supported by this version of tsec: state 'dispatch' must have exactly one 'seq' edge
-spi_target.tse|-|2|R300|not supported by this version of tsec: state 'armed' must have exactly one 'seq' edge
-spi_target_mode1.tse|-|2|R300|not supported by this version of tsec: state 'armed' must have exactly one 'seq' edge
-spi_target_mode2.tse|-|2|R300|not supported by this version of tsec: state 'armed' must have exactly one 'seq' edge
-spi_target_mode3.tse|-|2|R300|not supported by this version of tsec: state 'armed' must have exactly one 'seq' edge
-spi_flash_target.tse|-|2|R300|not supported by this version of tsec: the seq must return to the initial state
-i2c_target.tse|-|2|R300|not supported by this version of tsec: the anchor must be host.pull(v), fall(w) or rise(w)
-i2c_controller_fm.tse|-|2|R300|not supported by this version of tsec: state 'dispatch' must have exactly one 'seq' edge
-i2c_controller_sm.tse|-|2|R300|not supported by this version of tsec: state 'dispatch' must have exactly one 'seq' edge
-can_node.tse|-|2|R300|not supported by this version of tsec: state 'idle' must have exactly one 'on' edge
-swd_probe.tse|-|2|R300|not supported by this version of tsec: state 'dispatch' must have exactly one 'seq' edge
-jtag_probe.tse|-|2|R300|not supported by this version of tsec: 'repeat' inside seq
-ps2_device.tse|-|2|R300|not supported by this version of tsec: state 'idle' must have exactly one 'on' edge
-ps2_host.tse|-|2|R300|not supported by this version of tsec: state 'idle' must have exactly one 'on' edge
+spi_controller_mode0.tse|-|2|R300|not supported by this version of tsec: 'for', 'each' and '~' outside a paced frame (one anchor edge and one seq back to the initial state)
+spi_controller_mode1.tse|-|2|R300|not supported by this version of tsec: 'for', 'each' and '~' outside a paced frame (one anchor edge and one seq back to the initial state)
+spi_controller_mode2.tse|-|2|R300|not supported by this version of tsec: 'for', 'each' and '~' outside a paced frame (one anchor edge and one seq back to the initial state)
+spi_controller_mode3.tse|-|2|R300|not supported by this version of tsec: 'for', 'each' and '~' outside a paced frame (one anchor edge and one seq back to the initial state)
+spi_target.tse|-|2|R311|response window not met in role 'tgt': shift miso late
+spi_target_mode1.tse|-|2|R311|response window not met in role 'tgt': shift miso late
+spi_target_mode2.tse|-|2|R311|response window not met in role 'tgt': shift miso late
+spi_target_mode3.tse|-|2|R311|response window not met in role 'tgt': shift miso late
+spi_flash_target.tse|-|2|R300|not supported by this version of tsec: a guard on 'wel': on some path into this state it is not the variable last shifted in (a push or another shift reused the register)
+i2c_target.tse|-|2|R314|re-arm too late in role 'tgt': the wait that detects stop (abort) starts 12 cycles after stop may already be visible
+i2c_controller_fm.tse|-|2|R300|not supported by this version of tsec: a guard on 'cmd': on some path into this state it is not the variable last shifted in (a push or another shift reused the register)
+i2c_controller_sm.tse|-|2|R300|not supported by this version of tsec: a guard on 'cmd': on some path into this state it is not the variable last shifted in (a push or another shift reused the register)
+can_node.tse|-|2|R300|not supported by this version of tsec: edges on different events in state 'idle' (host.pull(txw) and fall(rxd))
+swd_probe.tse|-|2|R300|not supported by this version of tsec: 'for', 'each' and '~' outside a paced frame (one anchor edge and one seq back to the initial state)
+jtag_probe.tse|-|2|R307|pin plan impossible: tdi and tms are all shifted out, and shifts use virtual pin 0 only
+ps2_device.tse|-|2|R300|not supported by this version of tsec: edges on different events in state 'idle' (host.pull(sc) and fall(clk))
+ps2_host.tse|-|2|R300|not supported by this version of tsec: edges on different events in state 'idle' (fall(clk) and host.pull(cmd))

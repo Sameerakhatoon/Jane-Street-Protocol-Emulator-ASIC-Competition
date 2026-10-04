@@ -1,0 +1,4 @@
+tools/tsec/tests/neg/E241-enum-value.tse:2:33: error: enum 'k': b = 4 does not fit bits[2] [E241]
+ 2 |   enum k : bits[2] { a = 0, b = 4 }
+   |                                 ^
+1 error(s); nothing compiled

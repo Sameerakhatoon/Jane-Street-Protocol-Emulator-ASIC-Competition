@@ -1,0 +1,8 @@
+tools/tsec/tests/neg/R313-wait-too-long.tse:8:34: error: distance too short in role 'r': wait 20 us; [R313]
+ 8 |     state s { seq { drive a = 1; wait 20 us; drive b = 1; } -> t; }
+   |                                  ^~~~
+  obligation : OB-HOLD 'wait 20 us;' between two of our own outputs
+  required   : at least 1202 cycles (includes the pad skew between the pins)
+  achieved   : 513 cycles at phase 1
+  fix        : a DLY beyond 511 cycles: use a shorter wait or the T counter
+1 obligation(s) or limit(s) not met; no image written (rule R1)

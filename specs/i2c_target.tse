@@ -15,8 +15,10 @@
 //
 // Assumptions (the controller's side): the four i2c_fm rules. While we hold
 // SCL low (state load) no window runs, so the host may take as long as it likes.
-// tsec parses and checks this spec; `build` rejects it with R300 because
-// respond, await, repeat and abort are not lowered yet.
+// The compiler builds every window above with the sequencer (data and ACK at
+// 316.7 ns, stretch at 100 ns) but rejects the spec (R314): a stop may follow a
+// start at once, and the program arms its stop detection 12 cycles after the
+// start. A rule start -> stop >= 216.7 ns (not in the I2C standard) makes it build.
 protocol i2c_target {
   param addr7    : bits[7] = 0x50;
   const t_hd_int : time = 300 ns;     // internal SDA hold after SCL falls
@@ -36,6 +38,7 @@ protocol i2c_target {
     rule t_low    : fall(scl) -> rise(scl) >= t_low;
     rule t_high   : rise(scl) -> fall(scl) >= 0.6 us;
     rule t_su_dat : edge(sda) -> rise(scl) >= t_su_dat when scl == 0;
+    rule t_su_sto : rise(scl) -> stop      >= 0.6 us;
   }
 
   role tgt : target uses scl, sda {
@@ -100,7 +103,11 @@ protocol i2c_target {
     }
 
     state decide_w {
-      respond ack_w : on fall(scl) { drive sda = 0; } within [t_hd_int, t_vd] -> ack_slot;
+      respond ack_w : on fall(scl) { drive sda = 0; } within [t_hd_int, t_vd] -> ack_slot_w;
+    }
+
+    state ack_slot_w {                             // after a written byte: just end the ACK
+      on fall(scl) do { release sda within [t_hd_int, t_vd] after fall(scl); } -> wdata;
     }
   }
 }

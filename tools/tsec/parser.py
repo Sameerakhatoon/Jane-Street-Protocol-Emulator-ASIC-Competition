@@ -15,12 +15,13 @@ from .lexer import lex
 # Names that may follow an expression; any other name right after a number is its unit.
 FOLLOWS_EXPR = {"for", "within", "after", "each", "when", "and", "or", "do", "timeout",
                 "else", "lsb", "msb", "expect", "idle", "sample_delay", "filter",
-                "push_pull", "open_drain", "pull_up", "then"}
+                "push_pull", "open_drain", "pull_up", "then", "action", "nostuff", "from",
+                "crc", "if", "over", "into"}
 RELOPS = ("==", "!=", "<", "<=", ">", ">=")
 WIRE_FLAGS = ("push_pull", "open_drain", "pull_up")
 WIRE_VALUES = ("idle", "sample_delay", "filter")
 PIN_EVENTS = ("rise", "fall", "edge", "taken")
-UNSUPPORTED = ("enum", "frame", "assist", "trigger", "clock", "send", "recv")
+ASSIST_KINDS = ("crc", "stuffer", "nrzi", "manchester", "dpll", "timer", "rule")
 
 
 class Parser:
@@ -118,14 +119,13 @@ class Parser:
     def item(self):
         tok = self.peek()
         handlers = {"param": self.param, "const": self.param, "unit": self.unitdef,
-                    "wire": self.wire, "event": self.eventdef, "datasheet": self.datasheet,
-                    "role": self.role}
+                    "enum": self.enumdef, "frame": self.frame, "wire": self.wire,
+                    "event": self.eventdef, "assist": self.assist, "datasheet": self.datasheet,
+                    "role": self.role, "trigger": self.trigger}
         if tok.kind == "name" and tok.text in handlers:
             return handlers[tok.text]()
-        if tok.text in UNSUPPORTED:
-            raise TseError("E023", f"'{tok.text}' is not supported by this version of tsec", tok.span)
-        raise TseError("E014", f"expected param, const, unit, wire, event, datasheet or role, "
-                       f"found {tok}", tok.span)
+        raise TseError("E014", f"expected param, const, unit, enum, frame, wire, event, assist, "
+                       f"datasheet, role or trigger, found {tok}", tok.span)
 
     def param(self):
         const = self.take().text == "const"
@@ -139,11 +139,115 @@ class Parser:
 
     def type_ref(self):
         name = self.ident("a type")
-        width = None
+        node = A.TypeRef(name, span=name.span)
         if self.accept("["):
-            width = self.expr()
+            node.width = self.expr()
+            if self.accept(".."):
+                node.width_hi = self.expr()
             self.expect("]")
-        return A.TypeRef(name, width, span=name.span)
+        return node
+
+    def enumdef(self):
+        self.take()
+        name = self.ident()
+        self.expect(":")
+        ty = self.type_ref()
+        self.expect("{")
+        members = [self.named_value(self.expr)]
+        while self.accept(","):
+            members.append(self.named_value(self.expr))
+        self.expect("}")
+        self.accept(";")
+        return A.EnumDef(name, ty, members, span=name.span)
+
+    def named_value(self, value):
+        name = self.ident()
+        self.expect("=")
+        return A.NamedValue(name, value())
+
+    def frame(self):
+        self.take()
+        name = self.ident()
+        self.expect("{")
+        fields = self.many(self.frame_field, [])
+        self.expect("}")
+        return A.Frame(name, fields, span=name.span)
+
+    def frame_field(self):
+        name = self.ident("a field name")
+        self.expect(":")
+        f = A.FrameField(name, self.type_ref(), span=name.span)
+        if self.accept("="):
+            f.value = self.expr()
+        while not self.at(";"):
+            tok = self.take()
+            if tok.text == "nostuff":
+                f.attrs.append(A.FieldAttr("nostuff"))
+            elif tok.text == "from":
+                f.attrs.append(A.FieldAttr("from", [self.ident("a role name")]))
+            elif tok.text == "if":
+                f.attrs.append(A.FieldAttr("if", [self.expr()]))
+            elif tok.text == "crc":
+                crc = self.ident("an assist name")
+                self.expect("over")
+                lo = self.ident("a field name")
+                self.expect("..")
+                f.attrs.append(A.FieldAttr("crc", [crc, lo, self.ident("a field name")]))
+            else:
+                raise TseError("E016", f"unknown field attribute {tok}", tok.span)
+        self.expect(";")
+        return f
+
+    def assist(self):
+        self.take()
+        name = self.ident()
+        self.expect(":")
+        kind = self.one_of("E026", ASSIST_KINDS, "an assist kind (" + ", ".join(ASSIST_KINDS) + ")")
+        self.expect("{")
+        params = self.many(self.assist_param, [])
+        self.expect("}")
+        return A.Assist(name, kind, params, span=name.span)
+
+    def assist_param(self):
+        node = self.named_value(self.value)
+        self.expect(";")
+        return node
+
+    def value(self):
+        """expr, or a parenthesised tuple of values: (dp, dm)."""
+        if not self.at("("):
+            return self.expr()
+        span = self.take().span
+        first = self.value()
+        if not self.at(","):
+            self.expect(")")
+            return first
+        items = [first]
+        while self.accept(","):
+            items.append(self.value())
+        self.expect(")")
+        return A.Tuple(items, span=span)
+
+    def trigger(self):
+        self.take()
+        name = self.ident()
+        self.expect("{")
+        self.expect("match")
+        events = [self.tevent()]
+        while self.accept("then"):
+            events.append(self.tevent())
+        self.expect("action")
+        action = self.stmt()
+        self.expect("}")
+        return A.Trigger(name, events, action, span=name.span)
+
+    def tevent(self):
+        te = A.TEvent(self.event())
+        if self.accept("when"):
+            te.guard = self.expr()
+        if self.accept("within"):
+            te.within = self.expr()
+        return te
 
     def unitdef(self):
         self.take()
@@ -226,10 +330,14 @@ class Parser:
             role.assumes.append(self.assume())
         elif tok.text in ("state", "initial"):
             role.states.append(self.state())
-        elif tok.text in UNSUPPORTED:
-            raise TseError("E023", f"'{tok.text}' is not supported by this version of tsec", tok.span)
+        elif tok.text == "clock":
+            self.take()
+            role.clocks.append(self.ident("a clock name"))
+            while self.accept(","):
+                role.clocks.append(self.ident("a clock name"))
+            self.expect(";")
         else:
-            raise TseError("E017", f"expected var, assume or state, found {tok}", tok.span)
+            raise TseError("E017", f"expected var, clock, assume or state, found {tok}", tok.span)
 
     def var(self):
         self.take()
@@ -366,9 +474,6 @@ class Parser:
         method = getattr(self, "stmt_" + tok.text, None)
         if method is None:
             self.take()
-            if tok.text in UNSUPPORTED:
-                raise TseError("E023", f"'{tok.text}' is not supported by this version of tsec",
-                               tok.span)
             raise TseError("E020", f"unknown statement '{tok.text}'", tok.span)
         self.take()
         node = method(tok.span)
@@ -440,13 +545,28 @@ class Parser:
 
     def stmt_emit(self, span):
         name = self.ident()
-        args = []
+        return A.Emit(name, self.args(), span=span)
+
+    def args(self):
+        out = []
         if self.accept("("):
-            args.append(self.expr())
-            while self.accept(","):
-                args.append(self.expr())
+            if not self.at(")"):
+                out.append(self.expr())
+                while self.accept(","):
+                    out.append(self.expr())
             self.expect(")")
-        return A.Emit(name, args, span=span)
+        return out
+
+    def stmt_send(self, span):
+        name = self.ident("a frame name")
+        node = A.Send(name, self.args(), span=span)
+        node.window = self.timing().window
+        return node
+
+    def stmt_recv(self, span):
+        name = self.ident("a frame name")
+        into = self.ident("a variable name") if self.accept("into") else None
+        return A.Recv(name, into, span=span)
 
     def stmt_reset(self, span):
         names = [self.ident()]
@@ -521,6 +641,8 @@ class Parser:
                 node.unit = A.Ident(u.text, u.span)
             return node
         if tok.kind == "name":
+            if self.peek().kind == "sym" and self.at("("):
+                return A.Call(A.Ident(tok.text, tok.span), self.args(), span=tok.span)
             node = A.Ref(A.Ident(tok.text, tok.span), span=tok.span)
             if self.accept("["):
                 node.index = self.expr()

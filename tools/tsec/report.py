@@ -3,10 +3,12 @@
 The golden runs in tests/golden pin this text line for line.
 """
 import math
+from fractions import Fraction as Fr
 
 from .codegen import listing_lines
 
-STRATEGY_NAME = {"dly": "DLY pacing", "timer": "bit-timer pacing"}
+STRATEGY_NAME = {"dly": "DLY pacing", "timer": "bit-timer pacing", "rolled": "rolled loops",
+                 "unrolled": "unrolled loops"}
 
 
 def header(sym, fclk, fm, ppm):
@@ -39,7 +41,64 @@ def obligations(rep, f):
     return out
 
 
-def role_section(res, rows):
+def fsm_section(res, rows, fclk, pads):
+    role = res.role
+    out = ["", f"== role {role.name.text} ({role.kind}) on lane {res.lane}"]
+    att = res.chosen
+    if att is None:
+        out.append("REJECTED: no lowering meets every obligation (rule R1, all or nothing)")
+        for t in res.tried:
+            out.append(f"  strategy {t.mode} ({len(t.prog)} instructions, {t.res.states} analysis "
+                       f"states): {len(t.violations)} obligation(s) unproven")
+            for v in t.violations:
+                out.append(f"    - {v.code} line {v.span.line}: {v.msg}")
+        return out
+    out.append(f"strategy: state machine, {STRATEGY_NAME.get(att.mode, att.mode)} "
+               f"({att.res.states} analysis states)")
+    out += listing_lines(rows)
+    out += fsm_obligations(att, fclk, pads)
+    out.append(f"ACCEPTED: {len(rows)} instructions, image "
+               + " ".join(f"{w:04x}" for _, w, _, _, _ in rows))
+    return out
+
+
+def fsm_obligations(att, fclk, pads):
+    from . import printer
+    pmin, pmax = (Fr(p) * fclk / 10**9 for p in pads)
+
+    def ns(t):
+        return f"{float(t / fclk * 10**9):.1f}"
+    out = [f"obligations (worst case over every slot phase, buffer state and legal environment "
+           f"timing; pads {pads[0]:g} to {pads[1]:g} ns):"]
+    for ins in att.prog:
+        ob = ins.ob
+        if ob is not None:
+            st = att.res.obs[id(ins)]
+            if ob.kind == "out":
+                lo, hi = st.dmin + 3 + pmin, st.dmax + 4 + pmax
+            else:
+                lo, hi = st.dmin + pmin, st.dmax + 1 + pmax
+            out.append(f"  line {ob.span.line:2d} {ob.name:<14} after {printer.event(ob.event):<12} "
+                       f"{ns(lo)} to {ns(hi)} ns, window [{ns(ob.lo)}, {ns(ob.hi)}], margins "
+                       f"{ns(lo - ob.lo)} and {ns(ob.hi - hi)} ns  ok")
+        if ins.sep is not None:
+            got = att.res.seps[id(ins)]
+            span = f"{got[1]} to {got[3]}" if ins.sep.hi is not None else f"{got[1]}"
+            out.append(f"  line {ins.sep.span.line:2d} {ins.sep.text:<14} {span} cycles after our earlier "
+                       f"edge, needs at least {float(ins.sep.ticks):.2f} ticks"
+                       + (f" and at most {float(ins.sep.hi):.2f}" if ins.sep.hi is not None else "")
+                       + (" with pad skew" if ins.sep.skew else "") + "  ok")
+    if att.res.abort_latency is not None:
+        out.append(f"  abort: reaches the abort state within {att.res.abort_latency} cycles of the "
+                   "alternate condition being seen (stated bound)")
+    for k, v in sorted(att.fsm.host_notes.items()):
+        out.append(f"  host contract, {k}: {v}")
+    return out
+
+
+def role_section(res, rows, fclk=None, pads=(0, 25)):
+    if res.kind == "fsm":
+        return fsm_section(res, rows, fclk, pads)
     role = res.role
     out = ["", f"== role {role.name.text} ({role.kind}) on lane {res.lane}"]
     att = res.chosen

@@ -15,6 +15,7 @@ from .units import BASE_UNITS, DATA_TYPES, TYPE_DIM, Q, dimname
 
 BIT_OPS = {"&": lambda a, b: a & b, "|": lambda a, b: a | b,
            "<<": lambda a, b: a << b, ">>": lambda a, b: a >> b}
+FUNCTIONS = {"min": min, "max": max}
 
 
 class Symbols:
@@ -25,6 +26,10 @@ class Symbols:
         self.wires = {}         # name -> Wire
         self.events = {}        # name -> EventDef
         self.roles = []
+        self.enums = {}         # name -> EnumDef
+        self.frames = {}        # name -> Frame
+        self.assists = {}       # name -> Assist
+        self.triggers = []
         self.decl = {}          # name -> Ident where first declared
 
     def declare(self, ident, errs):
@@ -58,6 +63,17 @@ class Symbols:
             if name in self.units or name in BASE_UNITS:
                 return self.unit(e.name)
             raise TseError("E101", f"unknown name '{name}'", e.name.span)
+        if isinstance(e, A.Call):
+            fn = FUNCTIONS.get(e.name.text)
+            if fn is None:
+                raise TseError("E101", f"unknown function '{e.name.text}'", e.name.span)
+            vals = [self.eval(a) for a in e.args]
+            if not vals or any(v.dim != vals[0].dim for v in vals):
+                raise TseError("E102", f"'{e.name.text}' needs one or more values of one dimension",
+                               e.span)
+            return Q(fn(v.v for v in vals), vals[0].dim)
+        if isinstance(e, A.Tuple):
+            raise TseError("E110", "a tuple is not a constant here", e.span)
         if isinstance(e, A.Unary):
             if e.op == "not":
                 raise TseError("E110", "'not' needs a guard, not a constant", e.span)
@@ -87,12 +103,19 @@ def type_dim(sym, ty, errs):
     if name in TYPE_DIM:
         return TYPE_DIM[name]
     if name in DATA_TYPES:
-        if name in ("bits", "uint"):
+        if name in ("bits", "uint", "bytes"):
             if ty.width is None:
                 errs.append(TseError("E103", f"type '{name}' needs a width, as in {name}[8]",
                                      ty.name.span))
             else:
                 sym.eval(ty.width)
+                if ty.width_hi is not None:
+                    if name != "bytes":
+                        errs.append(TseError("E103", f"only bytes take a range, as in bytes[0..8]",
+                                             ty.name.span))
+                    sym.eval(ty.width_hi)
+        return 0
+    if name in sym.enums or name in sym.frames:
         return 0
     raise TseError("E103", f"unknown type '{name}'", ty.name.span)
 
@@ -138,6 +161,22 @@ def resolve(spec, overrides=None):
                     sym.roles.append(it)
             elif isinstance(it, A.Datasheet):
                 sym.declare(it.name, errs)
+            elif isinstance(it, A.EnumDef):
+                if sym.declare(it.name, errs):
+                    sym.enums[it.name.text] = it
+                    type_dim(sym, it.type, errs)
+                    for m in it.members:
+                        if sym.declare(m.name, errs):
+                            sym.params[m.name.text] = (it.name.text, sym.eval(m.value))
+            elif isinstance(it, A.Frame):
+                if sym.declare(it.name, errs):
+                    sym.frames[it.name.text] = it
+            elif isinstance(it, A.Assist):
+                if sym.declare(it.name, errs):
+                    sym.assists[it.name.text] = it
+            elif isinstance(it, A.Trigger):
+                if sym.declare(it.name, errs):
+                    sym.triggers.append(it)
         except TseError as e:
             errs.append(e)
     for name in overrides:

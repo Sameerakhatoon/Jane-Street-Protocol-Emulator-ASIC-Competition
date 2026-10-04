@@ -1,0 +1,4 @@
+tools/tsec/tests/neg/E231-crc-check.tse:3:87: error: assist 'c': parameters give 0x5118, check says 0xB4C8 (are refin and refout missing?) [E231]
+ 3 |   assist c : crc { width = 16; poly = 0x8005; init = 0xFFFF; xorout = 0xFFFF; check = 0xB4C8; }
+   |                                                                                       ^~~~~~
+1 error(s); nothing compiled

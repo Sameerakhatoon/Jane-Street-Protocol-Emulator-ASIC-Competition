@@ -1,0 +1,10 @@
+// we hold SCL low for 1 us, the datasheet rule we must keep says 1.3 us
+protocol p {
+  wire scl : inout open_drain pull_up;
+  datasheet fm { rule t_low : fall(scl) -> rise(scl) >= 1.3 us; }
+  role r : controller uses scl {
+    var v : bits[8];
+    state idle { on host.pull(v) -> f; }
+    state f { seq { drive scl = 0 for 1 us; release scl for 1 us; } -> idle; }
+  }
+}

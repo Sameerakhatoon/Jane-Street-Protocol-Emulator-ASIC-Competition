@@ -1,0 +1,4 @@
+tools/tsec/tests/neg/R303-rules.tse:6:10: error: role 'r' needs 3 response rules; a lane has 2 [R303]
+ 6 |   assist r2 : rule { pattern = 3; pos = 3; }
+   |          ^~
+1 obligation(s) or limit(s) not met; no image written (rule R1)

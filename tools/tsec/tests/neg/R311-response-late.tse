@@ -1,0 +1,13 @@
+// a response 50 ns after a pin edge: the sequencer needs at least 4 ticks (66.7 ns)
+protocol p {
+  wire trig : in;
+  wire ans : out push_pull idle 0;
+  role r : target uses trig, ans {
+    state idle {
+      respond quick : on fall(trig) { drive ans = 1; } within [0 ns, 50 ns] -> done;
+    }
+    state done {
+      respond back : on rise(trig) { drive ans = 0; } within [0 ns, 1 us] -> idle;
+    }
+  }
+}

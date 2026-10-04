@@ -1,0 +1,33 @@
+// A UART receiver with assists declared, to check the register values the image carries.
+protocol uart_rx_assists {
+  param baud : freq = 115200 Hz;
+  param tol  : ratio = 2 %;
+  unit  bit  = 1 / baud;
+
+  wire rx  : in;
+  wire scl : in;
+
+  assist crc16 : crc { width = 16; poly = 0x8005; init = 0xFFFF; refin = true; refout = true;
+                       xorout = 0xFFFF; check = 0xB4C8; }
+  assist bitclk : dpll { period = 1 bit; sample = 50 %; sjw = 1 us; dual_edge = true; edges = fall; }
+  assist ack : rule { clock = (scl, fall); tick_delay = 300 ns; pattern = 0xA0; mask = 0xFE;
+                      pos = 7; resp = 0; len = 1; }
+
+  datasheet clk {
+    rule lo : fall(scl) -> rise(scl) >= 1.3 us;
+    rule hi : rise(scl) -> fall(scl) >= 0.6 us;
+  }
+
+  role rx_side : target uses rx, scl {
+    var b : bits[8];
+    initial state idle { on fall(rx) -> frame; }
+    state frame {
+      seq {
+        sample rx expect 0 within [0.4 bit, 0.6 bit] after fall(rx) for 1 bit;
+        shift rx -> b lsb 8 each 1 bit ~ tol;
+        sample rx expect 1 for 1 bit ~ tol;
+        push host b;
+      } -> idle;
+    }
+  }
+}

@@ -1,0 +1,4 @@
+tools/tsec/tests/neg/E232-assist-parameter.tse:2:37: error: assist 'stuff': stuffer has no parameter 'colour' (it has run, value) [E232]
+ 2 |   assist stuff : stuffer { run = 6; colour = 1; }
+   |                                     ^~~~~~
+1 error(s); nothing compiled

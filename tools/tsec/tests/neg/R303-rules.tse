@@ -1,0 +1,18 @@
+// three response rules on one lane
+protocol p {
+  wire rx : in;
+  assist r0 : rule { pattern = 1; pos = 1; }
+  assist r1 : rule { pattern = 2; pos = 2; }
+  assist r2 : rule { pattern = 3; pos = 3; }
+  role r : target uses rx {
+    var b : bits[8];
+    state idle { on fall(rx) -> f; }
+    state f {
+      seq {
+        sample rx expect 0 within [4 us, 6 us] after fall(rx) for 10 us;
+        shift rx -> b lsb 8 each 10 us ~ 2 %;
+        push host b;
+      } -> idle;
+    }
+  }
+}

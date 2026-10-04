@@ -7,7 +7,9 @@ Every stage raises or collects TseError. The driver prints them as
          |               ^~
 
 Codes: E0xx lexer and parser, E1xx names and dimensions, E2xx semantic
-checks, R3xx rejections by rule R1. Exit codes:
+checks, W2xx warnings (printed, never fatal), R3xx rejections by rule R1.
+A rejection carries labelled lines (obligation, window, achieved, path,
+late by, fix) printed under the caret. Exit codes:
 0 accepted, 1 spec errors, 2 rejected, 3 internal error.
 """
 from dataclasses import dataclass
@@ -30,13 +32,18 @@ NOWHERE = Span()
 
 
 class TseError(Exception):
-    def __init__(self, code, msg, span=NOWHERE, notes=()):
+    def __init__(self, code, msg, span=NOWHERE, notes=(), fields=()):
         super().__init__(msg)
         self.code, self.msg, self.span, self.notes = code, msg, span, list(notes)
+        self.fields = list(fields)          # [(label, text)], the rejection anatomy
 
     @property
     def is_rejection(self):
         return self.code.startswith("R")
+
+    @property
+    def is_warning(self):
+        return self.code.startswith("W")
 
 
 class Errors(Exception):
@@ -50,7 +57,8 @@ class Errors(Exception):
 def render(e, src, path):
     lines = src.splitlines()
     where = f"{path}:{e.span.line}:{e.span.col}" if e.span.line else path
-    out = [f"{where}: error: {e.msg} [{e.code}]"]
+    kind = "warning" if e.is_warning else "error"
+    out = [f"{where}: {kind}: {e.msg} [{e.code}]"]
     if 0 < e.span.line <= len(lines):
         text = lines[e.span.line - 1]
         num = str(e.span.line)
@@ -58,5 +66,9 @@ def render(e, src, path):
         mark = "^" + "~" * (max(1, e.span.width) - 1)
         out.append(f" {num} | {text}")
         out.append(f" {pad} | {' ' * (e.span.col - 1)}{mark}")
+    for label, text in e.fields:
+        first, *more = text.split("\n")
+        out.append(f"  {label:<10} : {first}")
+        out += [" " * 15 + m for m in more]
     out += [f"  note: {n}" for n in e.notes]
     return "\n".join(out)

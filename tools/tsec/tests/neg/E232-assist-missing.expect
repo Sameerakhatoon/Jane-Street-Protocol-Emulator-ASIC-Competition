@@ -1,0 +1,4 @@
+tools/tsec/tests/neg/E232-assist-missing.tse:2:10: error: assist 'c': crc needs 'poly' [E232]
+ 2 |   assist c : crc { width = 16; }
+   |          ^
+1 error(s); nothing compiled

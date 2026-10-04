@@ -1,0 +1,24 @@
+// the clock may fall again 50 ns after it rises; the wait for the rise comes later
+protocol p {
+  wire clk : in;
+  wire din : in;
+  wire ack : out push_pull idle 0;
+  datasheet d {
+    rule hi : rise(clk) -> fall(clk) >= 50 ns;
+    rule lo : fall(clk) -> rise(clk) >= 50 ns;
+  }
+  role r : target uses clk, din, ack {
+    var v : bits[8];
+    state idle {
+      on fall(clk) do { drive ack = 1 within [200 ns, 300 ns] after fall(clk); } -> b;
+    }
+    state b {
+      seq {
+        await rise(clk);
+        shift din -> v msb 1;
+        drive ack = 0;
+        push host v;
+      } -> idle;
+    }
+  }
+}

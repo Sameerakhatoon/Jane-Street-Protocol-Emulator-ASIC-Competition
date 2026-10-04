@@ -1,0 +1,4 @@
+tools/tsec/tests/neg/E240-from-role.tse:3:24: error: field 'ack': 'from nobody' names no role [E240]
+ 3 |     ack : bit = 1 from nobody;
+   |                        ^~~~~~
+1 error(s); nothing compiled

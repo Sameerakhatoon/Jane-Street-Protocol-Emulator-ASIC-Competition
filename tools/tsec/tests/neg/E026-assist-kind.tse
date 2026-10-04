@@ -1,0 +1,3 @@
+protocol p {
+  assist a : blender { speed = 3; }
+}

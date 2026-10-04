@@ -1,0 +1,4 @@
+tools/tsec/tests/neg/E221-timelock.tse:6:11: error: state 'idle': invariant c <= 900.0 ns, but the earliest exit needs c >= 1 us [E221]
+ 6 |     state idle inv c <= 0.9 us {
+   |           ^~~~
+1 error(s); nothing compiled

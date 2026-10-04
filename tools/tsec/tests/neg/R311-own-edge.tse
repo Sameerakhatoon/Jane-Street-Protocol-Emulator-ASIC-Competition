@@ -1,0 +1,17 @@
+// a sample 20 ns after our own clock edge: two output stages alone take longer
+protocol p {
+  wire clk : out push_pull idle 0;
+  wire din : in;
+  role r : controller uses clk, din {
+    var v : bits[8];
+    state idle { on host.pull(v) -> s; }
+    state s {
+      seq {
+        drive clk = 1;
+        shift din -> v msb 1 within [0 ns, 20 ns] after rise(clk);
+        drive clk = 0;
+        push host v;
+      } -> idle;
+    }
+  }
+}

@@ -1,0 +1,35 @@
+tsec: protocol 'spi_target_mode0', clock 60 MHz, S = 4, fetch buffer 2 word(s), fetch_latency 1, clock budget 50 ppm
+  param f_sck = 3.8e+06 (freq)
+  param t_su = 5e-09 (time)
+  param t_css = 1.7e-07 (time)
+  param t_mo = 2e-08 (time)
+
+== role tgt (target) on lane 0
+strategy: state machine, rolled loops (6679 analysis states)
+addr  word   instruction                    note
+  0  4010          SET   PINS, 0, mask=0b0001     idle levels before driving
+  1  4111          SET   PINDIRS, 1, mask=0b0001  outputs on (turnaround pins off)
+  2  c300   L1:    PULL  block                    wait for the host
+  3  2420   L2:    WAIT  1, PIN, 1                
+  4  2020          WAIT  0, PIN, 1                
+  5  8000          OUT   PINS, 1                  shift miso
+  6  2048   bits:  WAIT  0, PIN, 2, alt           level before the loop
+  7  4307          SET   Y, 7                     repeat 8
+  8  2448   L4:    WAIT  1, PIN, 2, alt           
+  9  a000          IN    PINS, 1                  shift mosi
+ 10  2048   L5:    WAIT  0, PIN, 2, alt           
+ 11  8000          OUT   PINS, 1                  shift miso
+ 12  0308          JMP   YDEC, L4                 
+ 13  0602          JMP   TOUT, L1                 abort on rise(cs_n)
+ 14  c000          PUSH                           
+ 15  0006          JMP   ALWAYS, bits             -> bits
+obligations (worst case over every slot phase, buffer state and legal environment timing; pads 0 to 25 ns):
+  line 46 shift miso     after fall(cs_n)   66.7 to 158.3 ns, window [0.0, 165.0], margins 66.7 and 6.7 ns  ok
+  line 52 shift mosi     after rise(sck)    16.7 to 108.3 ns, window [0.0, 111.6], margins 16.7 and 3.2 ns  ok
+  line 53 shift miso     after fall(sck)    66.7 to 108.3 ns, window [0.0, 126.6], margins 66.7 and 18.2 ns  ok
+  abort: reaches the abort state within 56 cycles of the alternate condition being seen (stated bound)
+  host contract, pull host txw: send the word bit-reversed: OUT shifts bit 0 first, and the spec sends the msb first
+  host contract, push host rxb: mailbox bits 7 to 0, first bit received highest; higher bits are not defined; the push does not block, so the host must empty the mailbox before the next push
+ACCEPTED: 16 instructions, image 4010 4111 c300 2420 2020 8000 2048 4307 2448 a000 2048 8000 0308 0602 c000 0006
+
+RESULT: all roles accepted, image ready

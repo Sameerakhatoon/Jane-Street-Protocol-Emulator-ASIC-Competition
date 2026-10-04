@@ -17,8 +17,12 @@
 // Assumptions (the controller's side): sck_low, sck_high, css, window_loaded.
 // first_bit fails with the full 25 ns pad budget; it passes once pads are
 // measured below 11.7 ns, or if MISO is pre-driven while armed.
-// tsec parses and checks this spec; `build` rejects it with R300 because
-// respond, repeat and abort are not lowered yet.
+// The compiler rejects this spec for timing (R311). first_bit is worse than the
+// estimate above: cs_n may fall one cycle after the armed state has seen it high,
+// and the reacting OUT then waits for its fetch, so MISO can change up to 158.3 ns
+// after the fall (late by 63.3 ns; t_css >= 164 ns, or 139 ns with ideal pads).
+// The first mosi sample after cs_n falls is late by 3.3 ns at 4 MHz. With
+// -D t_css=170e-9 -D f_sck=3.8e6 it builds (16 instructions, rolled byte loop).
 protocol spi_target_mode0 {
   param f_sck : freq = 4 MHz;          // fastest SCK the controller will use
   param t_su  : time = 5 ns;           // controller's MISO setup before its sampling edge

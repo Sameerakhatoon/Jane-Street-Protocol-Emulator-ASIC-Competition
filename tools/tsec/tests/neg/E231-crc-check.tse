@@ -1,0 +1,4 @@
+// CRC-16/USB with the reflection flags left out
+protocol p {
+  assist c : crc { width = 16; poly = 0x8005; init = 0xFFFF; xorout = 0xFFFF; check = 0xB4C8; }
+}

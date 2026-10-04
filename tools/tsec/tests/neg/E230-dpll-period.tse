@@ -1,0 +1,4 @@
+// 2 ms is 120000 ticks; the DPLL period holds at most 65535
+protocol p {
+  assist d : dpll { period = 2 ms; }
+}

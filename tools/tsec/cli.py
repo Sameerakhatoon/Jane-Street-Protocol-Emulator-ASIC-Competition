@@ -17,7 +17,7 @@ import sys
 import traceback
 from fractions import Fraction as Fr
 
-from . import ast, printer, proofgen, report, selftest, uppaal
+from . import ast, config, lir, printer, proofgen, report, selftest, uppaal
 from .check import check
 from .codegen import assemble, image_text, listing_lines
 from .diag import EXIT_ERRORS, EXIT_INTERNAL, EXIT_OK, EXIT_REJECTED, Errors, TseError, render
@@ -49,8 +49,10 @@ def arg_parser():
             p.add_argument("--entries", type=int, default=2, help="fetch buffer words per lane")
             p.add_argument("--lat", type=int, default=1, help="fetch_latency (2: registered A_DOUT)")
             p.add_argument("--ppm", type=int, default=50, help="clock budget against the peer")
-            p.add_argument("--emit", default="img,lst,report",
-                           help="comma list of img, lst, report, xml, proof, or all")
+            p.add_argument("--pad-min", type=float, default=0, help="least pad delay, ns")
+            p.add_argument("--pad-max", type=float, default=25, help="largest pad delay, ns")
+            p.add_argument("--emit", default="img,lst,report,json",
+                           help="comma list of img, lst, report, json, lir, xml, proof, or all")
     sub.add_parser("selftest")
     return ap
 
@@ -64,7 +66,7 @@ def front_end(src, path, overrides=None):
     """parse, resolve, check; returns the symbol table or prints errors and returns None."""
     try:
         sym = resolve(parse(src), overrides)
-        check(sym)
+        show(check(sym), src, path)
         return sym
     except Errors as e:
         show(e.errs, src, path)
@@ -82,8 +84,24 @@ def overrides_of(defs):
     return out
 
 
+def fsm_rejection_diags(res):
+    """The diagnostics of the state-machine strategy that came closest, with a note per other."""
+    best = min(reversed(res.tried), key=lambda t: len(t.violations))
+    for v in best.violations:
+        for t in res.tried:
+            if t is not best:
+                same = any(o.code == v.code and o.span == v.span for o in t.violations)
+                v.notes.append(f"with {report.STRATEGY_NAME[t.mode]}: "
+                               + ("fails too" if same else "this obligation holds, but others fail"))
+        if len(res.tried) > 1:
+            v.notes.append(f"shown for {report.STRATEGY_NAME[best.mode]}")
+    return best.violations
+
+
 def rejection_diags(res):
     """One diagnostic per unproven obligation of the attempt that came closest."""
+    if res.kind == "fsm":
+        return fsm_rejection_diags(res)
     best = min(reversed(res.tried), key=lambda t: len({(v.code, v.span) for v in t.report.violations}))
     others = [t for t in res.tried if t is not best]
     seen, out = set(), []
@@ -110,30 +128,37 @@ def build(args, src, path):
         return EXIT_ERRORS
     fclk = Fr(int(args.fclk))
     fm = FetchModel(args.slots, args.entries, args.lat)
-    emit = {"img", "lst", "report", "xml", "proof"} if args.emit == "all" else set(args.emit.split(","))
+    emit = {"img", "lst", "report", "json", "lir", "xml", "proof"} if args.emit == "all" \
+        else set(args.emit.split(","))
+    pads = (args.pad_min, args.pad_max)
     text = report.header(sym, fclk, fm, args.ppm)
-    rejected, accepted = [], []
+    rejected, accepted, warned = [], [], []
     for lane, role in enumerate(sym.roles):
         if lane >= LANES:
             rejected.append(TseError("R306", f"more roles than lanes: role '{role.name.text}' "
                                      f"would need lane {lane}, the chip has {LANES}", role.name.span))
             continue
         try:
-            res = compile_role(sym, role, lane, fclk, fm, args.ppm)
+            res = compile_role(sym, role, lane, fclk, fm, args.ppm, pads)
             rows = assemble(res.chosen) if res.chosen else None
+            cfg = config.lane_config(sym, res, fclk) if rows is not None else None
         except TseError as e:
             text += ["", f"== role {role.name.text} ({role.kind}) on lane {lane}",
                      f"REJECTED: {e.msg} ({e.code})"]
             rejected.append(e)
             continue
-        text += report.role_section(res, rows)
+        text += report.role_section(res, rows, fclk, pads)
+        if res.kind == "fsm":
+            for t in res.tried:
+                warned += t.warnings if t is res.chosen or res.chosen is None else []
         if rows is None:
             rejected += rejection_diags(res)
         else:
-            accepted.append((lane, res, rows))
+            accepted.append((lane, res, rows, cfg))
     text += report.verdict(not rejected)
     print("\n".join(text))
     stem = os.path.splitext(os.path.basename(path))[0]
+    show(dedup(warned), src, path)
     if rejected:
         show(rejected, src, path)
         print(f"{len(rejected)} obligation(s) or limit(s) not met; no image written (rule R1)",
@@ -144,11 +169,20 @@ def build(args, src, path):
                 os.remove(stale)
         return EXIT_REJECTED
     if args.out:
-        write_outputs(args.out, stem, sym, accepted, text, emit)
+        write_outputs(args.out, stem, sym, accepted, text, emit, fclk)
     return EXIT_OK
 
 
-def write_outputs(out, stem, sym, accepted, text, emit):
+def dedup(errs):
+    seen, out = set(), []
+    for e in errs:
+        if (e.code, e.span, e.msg) not in seen:
+            seen.add((e.code, e.span, e.msg))
+            out.append(e)
+    return out
+
+
+def write_outputs(out, stem, sym, accepted, text, emit, fclk):
     os.makedirs(out, exist_ok=True)
 
     def put(name, body):
@@ -156,20 +190,32 @@ def write_outputs(out, stem, sym, accepted, text, emit):
             fh.write(body)
     if "img" in emit:
         put(f"{stem}.img", image_text(sym.spec.name.text,
-                                      [(lane, res.role.name.text, rows) for lane, res, rows in accepted]))
+                                      [(lane, res.role.name.text, rows) for lane, res, rows, _ in accepted]))
     if "lst" in emit:
         lst = []
-        for lane, res, rows in accepted:
+        for lane, res, rows, _ in accepted:
             lst += [f"; lane {lane}: role {res.role.name.text}, "
                     f"{report.STRATEGY_NAME[res.chosen.mode]}"] + listing_lines(rows) + [""]
         put(f"{stem}.lst", "\n".join(lst))
     if "report" in emit:
         put(f"{stem}.report.txt", "\n".join(text) + "\n")
+    if "json" in emit:
+        lanes = [(lane, res.role, *cfg) for lane, res, _, cfg in accepted]
+        put(f"{stem}.json", config.image_json(sym, lanes, fclk))
+    if "lir" in emit:
+        body = []
+        for lane, res, _, _ in accepted:
+            body += [f"; lane {lane}: role {res.role.name.text}"] + lir.listing(res.chosen.low.prog) + [""]
+        put(f"{stem}.lir", "\n".join(body))
     if "xml" in emit:
-        for _, res, _ in accepted:
+        for _, res, _, _ in accepted:
+            if res.kind == "fsm":
+                continue
             put(f"{stem}_{res.role.name.text}.xml", uppaal.export(res.role, res.chosen.low))
     if "proof" in emit:
-        for lane, res, rows in accepted:
+        for lane, res, rows, _ in accepted:
+            if res.kind == "fsm":
+                continue
             proofgen.write(os.path.join(out, "proof"), res.role, lane, res.chosen.low,
                            [w for _, w, _, _, _ in rows])
 

@@ -3,7 +3,7 @@ PY ?= python3
 TSEC_SRC := $(shell find tools/tsec -name '*.py' -o -name '*.sh') $(wildcard specs/*.tse)
 TSEC_PROOF := build/tsec-proof
 
-.PHONY: tsec-lint tsec-test tsec-proof
+.PHONY: tsec-lint tsec-test tsec-proof tsec-fuzz
 
 # byte-compile, then style: no tabs, no trailing blanks, lines up to 110, no en or em dashes
 tsec-lint:
@@ -17,6 +17,10 @@ tsec-lint:
 
 tsec-test:
 	bash tools/tsec/tests/run-all.sh
+
+# 2500 Hypothesis examples for each of the four front-end fuzz tests: 10,000 in all.
+tsec-fuzz:
+	TSEC_FUZZ_EXAMPLES=2500 $(PY) -m pytest -q -p no:cacheprovider tools/tsec/tests/unit/test_10_fuzz.py
 
 # The window checker's own regression: ok PASS, tight FAIL, bug FAIL, cov PASS.
 tsec-proof:

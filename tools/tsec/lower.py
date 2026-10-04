@@ -11,23 +11,13 @@ Two pacing strategies: "dly" (delay loops, the default) and "timer" (the
 lane's DPLL as a bit timer, for fractional periods). Delays marked tunable
 are fixed later by the solver in schedule.py.
 """
-from dataclasses import dataclass
 from fractions import Fraction as Fr
 
 from . import ast as A
 from . import isa
 from .diag import TseError
+from .lir import Ins
 from .semantics import frame as desugar
-
-
-@dataclass(eq=False)
-class Ins:
-    op: str
-    a: dict
-    ob: object = None           # the obligation this instruction discharges
-    tune: bool = False          # a delay the solver may change
-    label: str = None
-    note: str = ""
 
 
 def unsupported(msg, span):

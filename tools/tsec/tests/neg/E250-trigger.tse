@@ -1,0 +1,7 @@
+protocol p {
+  wire rx : in;
+  role mon : monitor uses rx {
+    state idle { on fall(rx) -> idle; }
+  }
+  trigger t { match mon.byte action emit hit; }
+}

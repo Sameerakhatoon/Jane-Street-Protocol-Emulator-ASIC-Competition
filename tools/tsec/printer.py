@@ -30,6 +30,10 @@ def expr(e, outer=0):
         if e.attr:
             s += "." + e.attr.text
         return s
+    if isinstance(e, A.Call):
+        return e.name.text + "(" + ", ".join(expr(a) for a in e.args) + ")"
+    if isinstance(e, A.Tuple):
+        return "(" + ", ".join(expr(a) for a in e.items) + ")"
     if isinstance(e, A.Unary):
         p = PREC["not" if e.op == "not" else "neg"]
         s = ("not " if e.op == "not" else "-") + expr(e.operand, p)
@@ -41,7 +45,10 @@ def expr(e, outer=0):
 
 
 def type_ref(t):
-    return t.name.text + (f"[{expr(t.width)}]" if t.width is not None else "")
+    if t.width is None:
+        return t.name.text
+    hi = f"..{expr(t.width_hi)}" if t.width_hi is not None else ""
+    return f"{t.name.text}[{expr(t.width)}{hi}]"
 
 
 def event(ev):
@@ -108,6 +115,11 @@ def stmt(s, depth):
         return "reset " + ", ".join(n.text for n in s.names) + ";"
     if isinstance(s, A.Set):
         return f"set {s.name.text} = {expr(s.value)};"
+    if isinstance(s, A.Send):
+        args = "(" + ", ".join(expr(a) for a in s.args) + ")" if s.args else ""
+        return f"send {s.name.text}{args}{timing(A.Timing(s.window))};"
+    if isinstance(s, A.Recv):
+        return f"recv {s.name.text}" + (f" into {s.into.text}" if s.into else "") + ";"
     raise TypeError(f"no printer for {type(s).__name__}")
 
 
@@ -138,6 +150,8 @@ def role(r):
     for v in r.vars:
         init = f" = {expr(v.init)}" if v.init is not None else ""
         out.append(f"    var {v.name.text} : {type_ref(v.type)}{init};")
+    if r.clocks:
+        out.append("    clock " + ", ".join(c.text for c in r.clocks) + ";")
     for a in r.assumes:
         rel = f" -> {event(a.b)} {a.relop} {expr(a.bound)}" if a.b else ""
         out.append(f"    assume {a.name.text} : {event(a.a)}{rel};")
@@ -169,7 +183,43 @@ def item(it):
             lines.append(f"    rule {r.name.text} : {event(r.a)} -> {event(r.b)} {r.relop} "
                          f"{expr(r.bound)}{guard};")
         return "\n".join(lines + ["  }"])
+    if isinstance(it, A.EnumDef):
+        members = ", ".join(f"{m.name.text} = {expr(m.value)}" for m in it.members)
+        return f"  enum {it.name.text} : {type_ref(it.type)} {{ {members} }}"
+    if isinstance(it, A.Frame):
+        return "\n".join([f"  frame {it.name.text} {{"] + [f"    {field(f)}" for f in it.fields]
+                         + ["  }"])
+    if isinstance(it, A.Assist):
+        lines = [f"  assist {it.name.text} : {it.kind} {{"]
+        lines += [f"    {p.name.text} = {expr(p.value)};" for p in it.params]
+        return "\n".join(lines + ["  }"])
+    if isinstance(it, A.Trigger):
+        evs = " then ".join(tevent(te) for te in it.events)
+        return f"  trigger {it.name.text} {{ match {evs} action {stmt(it.action, 2)} }}"
     return role(it)
+
+
+def field(f):
+    s = f"{f.name.text} : {type_ref(f.type)}" + (f" = {expr(f.value)}" if f.value is not None else "")
+    for a in f.attrs:
+        if a.kind == "nostuff":
+            s += " nostuff"
+        elif a.kind == "from":
+            s += f" from {a.args[0].text}"
+        elif a.kind == "if":
+            s += f" if {expr(a.args[0])}"
+        else:
+            s += f" crc {a.args[0].text} over {a.args[1].text}..{a.args[2].text}"
+    return s + ";"
+
+
+def tevent(te):
+    s = event(te.event)
+    if te.guard is not None:
+        s += f" when {expr(te.guard)}"
+    if te.within is not None:
+        s += f" within {expr(te.within)}"
+    return s
 
 
 def spec(s):

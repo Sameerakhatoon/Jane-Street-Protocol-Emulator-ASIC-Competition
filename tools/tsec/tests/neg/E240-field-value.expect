@@ -1,0 +1,4 @@
+tools/tsec/tests/neg/E240-field-value.tse:3:21: error: field 'eof': value 0xFF does not fit bits[7] [E240]
+ 3 |     eof : bits[7] = 0xFF;
+   |                     ^~~~
+1 error(s); nothing compiled

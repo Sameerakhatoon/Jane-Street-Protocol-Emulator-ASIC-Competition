@@ -1,0 +1,11 @@
+// a wait of 20 us is 1200 cycles; one DLY holds 512
+protocol p {
+  wire a : out push_pull idle 0;
+  wire b : out push_pull idle 0;
+  role r : controller uses a, b {
+    var v : bits[8];
+    state idle { on host.pull(v) -> s; }
+    state s { seq { drive a = 1; wait 20 us; drive b = 1; } -> t; }
+    state t { seq { drive a = 0; drive b = 0; } -> idle; }
+  }
+}

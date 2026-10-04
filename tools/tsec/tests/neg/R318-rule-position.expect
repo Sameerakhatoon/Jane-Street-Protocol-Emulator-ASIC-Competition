@@ -1,0 +1,5 @@
+tools/tsec/tests/neg/R318-rule-position.tse:4:10: error: rule 'late': pos + offset = 258 > 254; the frame bit counter saturates at 255 [R318]
+ 4 |   assist late : rule { pattern = 1; pos = 250; offset = 8; }
+   |          ^~~~
+  fix        : respond earlier in the frame, or re-base the counter with a frame reset before the rule's position
+1 obligation(s) or limit(s) not met; no image written (rule R1)

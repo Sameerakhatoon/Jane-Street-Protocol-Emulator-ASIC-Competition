@@ -1,0 +1,4 @@
+tools/tsec/tests/neg/R304-two-crcs.tse:5:10: error: assist resources exhausted: role 'r' needs a CRC for 'a' and for 'b', a lane has one [R304]
+ 5 |   assist b : crc { width = 16; poly = 0x1021; }
+   |          ^
+1 obligation(s) or limit(s) not met; no image written (rule R1)

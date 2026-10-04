@@ -1,0 +1,19 @@
+// // build: the guard reads d after the clock falls, and no rule keeps d stable
+protocol p {
+  wire clk : in;
+  wire d : in;
+  wire q : out push_pull idle 0;
+  datasheet ds {
+    rule hi : rise(clk) -> fall(clk) >= 1 us;
+    rule lo : fall(clk) -> rise(clk) >= 1 us;
+  }
+  role r : target uses clk, d, q {
+    state idle {
+      on fall(clk) when d == 1 do { drive q = 1 within [0 ns, 500 ns] after fall(clk); } -> b;
+      on fall(clk) -> idle;
+    }
+    state b {
+      on rise(clk) do { drive q = 0 within [0 ns, 500 ns] after rise(clk); } -> idle;
+    }
+  }
+}

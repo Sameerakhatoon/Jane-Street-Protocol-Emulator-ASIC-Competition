@@ -1,0 +1,3 @@
+tools/tsec/tests/neg/W220-hidden-edge.tse:8:7: warning: the edge at line 8 never fires: line 7 has no guard and takes priority on fall(clk) [W220]
+ 8 |       on fall(clk) when d == 1 -> b;
+   |       ^~

@@ -1,4 +1,10 @@
-"""The front end never crashes: any input gives a tree or a diagnostic, never a Python exception."""
+"""The front end never crashes: any input gives a tree or a diagnostic, never a Python exception.
+
+TSEC_FUZZ_EXAMPLES sets the examples per test (default 1000; make tsec-fuzz runs 2500 for each
+of the four tests, 10,000 in all).
+"""
+import os
+
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
@@ -13,9 +19,16 @@ from helpers import UART
 VOCAB = ["protocol", "param", "const", "unit", "wire", "role", "state", "on", "seq", "respond",
          "drive", "shift", "sample", "push", "host", "within", "after", "for", "each", "lsb",
          "->", "{", "}", "(", ")", "[", "]", ";", ":", ",", "=", "~", "/", "*", "+", "-", "%",
-         "==", "and", "not", "fall", "rise", "x", "tx", "1", "0x1F", "2.5", "us", "MHz", "bits"]
+         "==", "and", "not", "fall", "rise", "x", "tx", "1", "0x1F", "2.5", "us", "MHz", "bits",
+         "enum", "frame", "assist", "trigger", "clock", "send", "recv", "match", "then", "action",
+         "crc", "over", "..", "nostuff", "from", "await", "repeat", "abort", "release", "bytes",
+         "max", "if", "else", "emit", "wait", "reset", "set", "datasheet", "rule", "event"]
 TOKENS = [t.text for t in lex(UART)][:-1]
-SETTINGS = settings(max_examples=1500, deadline=None, suppress_health_check=[HealthCheck.too_slow])
+with open("specs/i2c_target.tse") as fh:
+    I2C_TOKENS = [t.text for t in lex(fh.read())][:-1]
+EXAMPLES = int(os.environ.get("TSEC_FUZZ_EXAMPLES", "1000"))
+SETTINGS = settings(max_examples=EXAMPLES, deadline=None, suppress_health_check=[HealthCheck.too_slow])
+EDIT = st.sampled_from(["drop", "dup", "swap", "replace"])
 
 
 def front_end(src):
@@ -25,18 +38,7 @@ def front_end(src):
         assert e.errs and all(x.code[0] in "ER" for x in e.errs)
 
 
-@SETTINGS
-@given(st.lists(st.sampled_from(VOCAB), max_size=60))
-def test_random_token_streams(words):
-    front_end("protocol p { " + " ".join(words) + " }")
-
-
-@SETTINGS
-@given(st.lists(st.tuples(st.sampled_from(["drop", "dup", "swap", "replace"]),
-                          st.integers(0, len(TOKENS) - 1), st.sampled_from(VOCAB)),
-                min_size=1, max_size=4))
-def test_mutations_of_the_uart_spec(edits):
-    toks = list(TOKENS)
+def mutate(toks, edits):
     for op, i, word in edits:
         i %= len(toks)
         if op == "drop":
@@ -51,6 +53,26 @@ def test_mutations_of_the_uart_spec(edits):
         if not toks:
             toks = ["protocol"]
     front_end(" ".join(toks))
+
+
+@SETTINGS
+@given(st.lists(st.sampled_from(VOCAB), max_size=60))
+def test_random_token_streams(words):
+    front_end("protocol p { " + " ".join(words) + " }")
+
+
+@SETTINGS
+@given(st.lists(st.tuples(EDIT, st.integers(0, len(TOKENS) - 1), st.sampled_from(VOCAB)),
+                min_size=1, max_size=4))
+def test_mutations_of_the_uart_spec(edits):
+    mutate(list(TOKENS), edits)
+
+
+@SETTINGS
+@given(st.lists(st.tuples(EDIT, st.integers(0, len(I2C_TOKENS) - 1), st.sampled_from(VOCAB)),
+                min_size=1, max_size=4))
+def test_mutations_of_the_i2c_spec(edits):
+    mutate(list(I2C_TOKENS), edits)
 
 
 @SETTINGS

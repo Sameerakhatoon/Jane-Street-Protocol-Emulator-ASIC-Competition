@@ -1,0 +1,3 @@
+tools/tsec/tests/neg/W220-overlapping-edges.tse:9:7: warning: edges at lines 8 and 9 overlap on fall(clk); line 8 takes priority [W220]
+ 9 |       on fall(clk) when v == 3 -> b;
+   |       ^~

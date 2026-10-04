@@ -56,9 +56,23 @@ class Binary:
 
 
 @dataclass
+class Call:
+    name: Ident                 # crc16(data), a function of constants
+    args: list = field(default_factory=list)
+    span: Span = _span()
+
+
+@dataclass
+class Tuple:
+    items: list                 # (dp, dm) in an assist value
+    span: Span = _span()
+
+
+@dataclass
 class TypeRef:
     name: Ident
-    width: object = None        # bits[8], uint[4]
+    width: object = None        # bits[8], uint[4], bytes[8], the a of bytes[a..b]
+    width_hi: object = None     # the b of bytes[a..b]
     span: Span = _span()
 
 
@@ -183,7 +197,23 @@ class Set:
     span: Span = _span()
 
 
+@dataclass
+class Send:
+    name: Ident                 # a frame
+    args: list = field(default_factory=list)
+    window: Window = None
+    span: Span = _span()
+
+
+@dataclass
+class Recv:
+    name: Ident                 # a frame
+    into: Ident = None
+    span: Span = _span()
+
+
 TIMED = (Drive, Release, Shift, Sample)
+EXPRS = (Num, Ref, Unary, Binary, Call, Tuple)
 
 
 # ---------------------------------------------------------------- edges, states
@@ -299,6 +329,68 @@ class Datasheet:
 
 
 @dataclass
+class EnumDef:
+    name: Ident
+    type: TypeRef
+    members: list               # [NamedValue]
+    span: Span = _span()
+
+
+@dataclass
+class FieldAttr:
+    kind: str                   # nostuff, from, if, crc
+    args: list = field(default_factory=list)    # from: [Ident]; if: [guard]; crc: [Ident] * 3
+
+
+@dataclass
+class FrameField:
+    name: Ident
+    type: TypeRef
+    value: object = None
+    attrs: list = field(default_factory=list)
+    span: Span = _span()
+
+
+@dataclass
+class Frame:
+    name: Ident
+    fields: list
+    span: Span = _span()
+
+
+@dataclass
+class NamedValue:
+    name: Ident
+    value: object               # an expression, or a Tuple in an assist
+
+
+@dataclass
+class Assist:
+    name: Ident
+    kind: str                   # crc, stuffer, nrzi, manchester, dpll, timer, rule
+    params: list                # [NamedValue]
+    span: Span = _span()
+
+    def get(self, name):
+        return next((p for p in self.params if p.name.text == name), None)
+
+
+@dataclass
+class TEvent:
+    event: Event
+    guard: object = None
+    within: object = None
+
+
+@dataclass
+class Trigger:
+    name: Ident
+    events: list                # [TEvent]: match, then, then ...
+    action: object
+    span: Span = _span()
+
+
+@dataclass
 class Var:
     name: Ident
     type: TypeRef
@@ -325,6 +417,7 @@ class Role:
     vars: list = field(default_factory=list)
     assumes: list = field(default_factory=list)
     states: list = field(default_factory=list)
+    clocks: list = field(default_factory=list)
     span: Span = _span()
 
 
@@ -345,7 +438,7 @@ def dump(node, indent=0):
     pad = "  " * indent
     if isinstance(node, list):
         return "\n".join(dump(n, indent) for n in node)
-    if isinstance(node, (Num, Ref, Unary, Binary)):
+    if isinstance(node, EXPRS):
         return f"{pad}{show_expr(node)}"
     if isinstance(node, Ident):
         return f"{pad}{node.text}"
@@ -356,7 +449,7 @@ def dump(node, indent=0):
             continue
         if isinstance(v, Ident):
             head.append(f"{f.name}={v.text}")
-        elif isinstance(v, (Num, Ref, Unary, Binary)):
+        elif isinstance(v, EXPRS):
             head.append(f"{f.name}=({show_expr(v)})")
         elif isinstance(v, TypeRef):
             from .printer import type_ref

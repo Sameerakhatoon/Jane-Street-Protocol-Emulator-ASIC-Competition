@@ -1,0 +1,4 @@
+tools/tsec/tests/neg/E250-trigger.tse:6:21: error: trigger 't' uses mon.byte, which no role emits [E250]
+ 6 |   trigger t { match mon.byte action emit hit; }
+   |                     ^~~
+1 error(s); nothing compiled
