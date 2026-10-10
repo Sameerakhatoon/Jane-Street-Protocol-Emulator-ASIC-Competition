@@ -9,7 +9,7 @@ module tse_chip #(
     parameter int LANES      = 3,
     parameter bit CFG_LATCH  = 1'b1,
     parameter int EVQ_DEPTH  = 4,
-    parameter int CHIP_BANKS = 2
+    parameter int DS_WORDS   = 16
 ) (
     input  wire [7:0] ui_in,
     output wire [7:0] uo_out,
@@ -24,7 +24,7 @@ module tse_chip #(
     logic [7:0]  ld_dout;
     logic        load_mode, spi_en, spi_miso;
 
-    tse_top #(.LANES(LANES), .CFG_LATCH(CFG_LATCH), .EVQ_DEPTH(EVQ_DEPTH), .CHIP_BANKS(CHIP_BANKS)) u_top (
+    tse_top #(.LANES(LANES), .CFG_LATCH(CFG_LATCH), .EVQ_DEPTH(EVQ_DEPTH), .DS_WORDS(DS_WORDS)) u_top (
         .clk, .rst_n, .pad_in({uio_in, ui_in}), .pad_out, .pad_oe,
         .load_mode, .ld_dout, .spi_en, .spi_miso
     );

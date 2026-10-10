@@ -1,11 +1,16 @@
 `default_nettype none
 // Boot self-test, started by the BIST command (it destroys the SRAM
 // contents, so the host runs it before writing the program).
-// 1. March C- on the 512x32 program SRAM, twice, with the backgrounds
+// 1. March C- on the 512x32 program SRAM through the macro's test port
+//    (m_en selects it), twice, with the backgrounds
 //    B = 0x00000000 and B = 0x55555555 (0 means B, 1 means ~B):
 //    up(w0) up(r0,w1) up(r1,w0) down(r0,w1) down(r1,w0) up(r0)
 //    A read is issued in one cycle and checked in the next, when the SRAM
 //    output is valid; the write of the same address goes out in that cycle.
+//    The datasheet forbids any access the cycle before and after the port
+//    select changes, so m_en rises and falls between two idle cycles each
+//    side (ENTER, LEAVE); busy covers them, which keeps the host off the
+//    functional port.
 // 2. Pad loopback: walking one then walking zero on the 16 output registers,
 //    looped inside the crossbar to the input synchronizers (pads not driven);
 //    both the rising-edge and falling-edge samples must match.
@@ -18,6 +23,7 @@ module tse_selftest (
     input  logic        rst_n,
     input  logic        start,
     input  logic        clr,
+    output logic        m_en,
     output logic        m_req,
     output logic        m_we,
     output logic [8:0]  m_addr,
@@ -32,7 +38,7 @@ module tse_selftest (
     output logic        pass,
     output logic [13:0] result
 );
-    typedef enum logic [1:0] {IDLE, MARCH, LOOP} state_t;
+    typedef enum logic [2:0] {IDLE, ENTER, MARCH, LEAVE, LOOP} state_t;
     state_t      state;
     logic [2:0]  el, f_el;
     logic [8:0]  a, f_a;
@@ -40,6 +46,7 @@ module tse_selftest (
     logic        chk;                  // second cycle of a read: compare now
     logic [4:0]  k;
     logic [2:0]  w;
+    logic [1:0]  g;
     logic [31:0] pat;
 
     logic up, has_rd, has_wr, rd_v, wr_v, last_a;
@@ -71,11 +78,23 @@ module tse_selftest (
     always_ff @(posedge clk or negedge rst_n)
         if (!rst_n) begin
             state <= IDLE; el <= '0; a <= '0; bg <= 1'b0; chk <= 1'b0; k <= '0; w <= '0;
-            lb_en <= 1'b0; lb_pat <= '0;
+            g <= '0; m_en <= 1'b0; lb_en <= 1'b0; lb_pat <= '0;
         end else begin
             unique case (state)
                 IDLE: if (start) begin
-                    state <= MARCH; el <= '0; a <= '0; bg <= 1'b0; chk <= 1'b0;
+                    state <= ENTER; g <= '0; el <= '0; a <= '0; bg <= 1'b0; chk <= 1'b0;
+                end
+                ENTER: begin
+                    g <= g + 2'd1;
+                    if (g == 2'd0) m_en <= 1'b1;
+                    if (g == 2'd2) state <= MARCH;
+                end
+                LEAVE: begin
+                    g <= g + 2'd1;
+                    if (g == 2'd0) m_en <= 1'b0;
+                    if (g == 2'd2) begin
+                        state <= LOOP; k <= '0; w <= '0; lb_en <= 1'b1; lb_pat <= 16'h0001;
+                    end
                 end
                 MARCH: begin
                     if (has_rd && !chk) chk <= 1'b1;
@@ -83,7 +102,7 @@ module tse_selftest (
                         chk <= 1'b0;
                         if (!last_a) a <= up ? a + 9'd1 : a - 9'd1;
                         else if (el == 3'd5 && bg) begin
-                            state <= LOOP; k <= '0; w <= '0; lb_en <= 1'b1; lb_pat <= 16'h0001;
+                            state <= LEAVE; g <= '0;
                         end else if (el == 3'd5) begin
                             el <= '0; a <= '0; bg <= 1'b1;
                         end else begin

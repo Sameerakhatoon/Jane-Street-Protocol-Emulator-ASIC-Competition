@@ -3,28 +3,31 @@
 // banks, crossbar, event unit, self-test, and one host bus driven by the
 // command decoder from the load-mode byte bus or the run-mode SPI target.
 // Host map (16-bit word addresses, every name from tse_regs_pkg):
-//   0x0000 program SRAM, window w at 0x80 x w; 0x0400 data window (window 3,
-//   3 lanes only); 0x1000 + 0x100 x lane + reg lane registers; 0x2000
+//   0x0000 program SRAM, window w at 0x80 x w; 0x0400 data window (SRAM
+//   window 3 with 3 lanes, the latch data store with 4); 0x0800 fallback
+//   program store; 0x1000 + 0x100 x lane + reg lane registers; 0x2000
 //   crossbar; 0x3000 event unit; 0x4000 chip registers and mailboxes.
 //   Unmapped addresses read 0 and ignore writes.
 // Refused, setting the sticky host error: a class L or P lane write while
-// that lane runs or is about to; an SRAM write into a window a running lane
-// uses; any SRAM access during the self-test, or while lanes run with 4
-// lanes (no system slot); RUN in run mode while not loaded (in load mode
-// the runtime flops are in reset and a RUN write does nothing). A refused
-// read returns 0.
-// Chip configuration words (class L) live in CHIP_BANKS (1 or 2) banks of
-// 64 / CHIP_BANKS words, numbered in host address order: PAD_OUT, LANE_IN of the
-// lanes built, PIN_OPT, EV_CTL, TRIG_MATCH, TRIG_WIN, TRIG_CTL (39 words for 3
-// lanes, 43 for 4). chip_word() and chip_mask() derive the numbering and the
-// stored bits from the register package. Package names are written out in
-// full (pkg::NAME) because Yosys takes neither a wildcard nor a header import.
-// RUN takes effect at the next frame end and only while loaded.
+// that lane runs or is about to; an SRAM write into a program window a
+// running lane fetches from; a fallback store write while a running lane
+// fetches from it; any SRAM access during the self-test, or SRAM program
+// access while lanes run with 4 lanes (no system slot); RUN in run mode
+// while not loaded (in load mode the runtime flops are in reset and a RUN
+// write does nothing). A refused read returns 0.
+// Chip configuration (class L) is one 64-word bank addressed {bank, word}
+// with the bank and word numbers of chip_reg_cfg() in the register package:
+// bank 0 crossbar (PAD_OUT, LANE_IN), bank 1 event (PIN_OPT, EV_CTL and the
+// trigger words). LANE_IN words of lanes not built store nothing. Package
+// names are written out in full (pkg::NAME) because Yosys takes neither a
+// wildcard nor a header import.
+// RUN takes effect at the end of the 16-cycle slot frame and only while
+// loaded, so every lane's data cycles have a fixed phase from its start.
 module tse_top #(
     parameter int LANES      = 3,
     parameter bit CFG_LATCH  = 1,
     parameter int EVQ_DEPTH  = 4,
-    parameter int CHIP_BANKS = 2
+    parameter int DS_WORDS   = 16
 ) (
     input  logic        clk,
     input  logic        rst_n,
@@ -52,51 +55,26 @@ module tse_top #(
     };
     localparam logic [1023:0] LANE_MASK = LANE_OWN | (1024'(tse_regs_pkg::LR_LANE_PROG_MASK) << (32 * tse_regs_pkg::LW_LANE_PROG));
 
-    localparam int CW_PAD_OUT    = 0;
-    localparam int CW_LANE_IN    = CW_PAD_OUT + tse_regs_pkg::HR_PAD_OUT_COUNT;
-    localparam int CW_PIN_OPT    = CW_LANE_IN + NI;
-    localparam int CW_EV_CTL     = CW_PIN_OPT + 1;
-    localparam int CW_TRIG_MATCH = CW_EV_CTL + 1;
-    localparam int CW_TRIG_WIN   = CW_TRIG_MATCH + tse_regs_pkg::HR_TRIG_MATCH_COUNT;
-    localparam int CW_TRIG_CTL   = CW_TRIG_WIN + tse_regs_pkg::HR_TRIG_WIN_COUNT;
-    localparam int CHIP_WORDS    = CW_TRIG_CTL + 1;
-    localparam int CBW           = 64 / CHIP_BANKS;
-    localparam int CAW           = $clog2(CBW);
-
-    // {hit, chip word} of a host address
-    function automatic logic [6:0] chip_word(input logic [15:0] a);
-        int i;
-        chip_word = '0;
-        i = int'(a) - int'(tse_regs_pkg::HR_PAD_OUT);
-        if (i >= 0 && i < tse_regs_pkg::HR_PAD_OUT_COUNT)   chip_word = {1'b1, 6'(CW_PAD_OUT + i)};
-        i = int'(a) - int'(tse_regs_pkg::HR_LANE_IN);
-        if (i >= 0 && i < NI)                 chip_word = {1'b1, 6'(CW_LANE_IN + i)};
-        if (a == tse_regs_pkg::HR_PIN_OPT)                  chip_word = {1'b1, 6'(CW_PIN_OPT)};
-        if (a == tse_regs_pkg::HR_EV_CTL)                   chip_word = {1'b1, 6'(CW_EV_CTL)};
-        i = int'(a) - int'(tse_regs_pkg::HR_TRIG_MATCH);
-        if (i >= 0 && i < tse_regs_pkg::HR_TRIG_MATCH_COUNT) chip_word = {1'b1, 6'(CW_TRIG_MATCH + i)};
-        i = int'(a) - int'(tse_regs_pkg::HR_TRIG_WIN);
-        if (i >= 0 && i < tse_regs_pkg::HR_TRIG_WIN_COUNT)   chip_word = {1'b1, 6'(CW_TRIG_WIN + i)};
-        if (a == tse_regs_pkg::HR_TRIG_CTL)                 chip_word = {1'b1, 6'(CW_TRIG_CTL)};
-    endfunction
+    // chip bank word (bank x 32 + word) of each configuration register
+    localparam int CW_XBAR       = 32 * int'(tse_regs_pkg::CBANK_XBAR);
+    localparam int CW_EVENT      = 32 * int'(tse_regs_pkg::CBANK_EVENT);
+    localparam int CW_PAD_OUT    = CW_XBAR + int'(tse_regs_pkg::CW_PAD_OUT);
+    localparam int CW_LANE_IN    = CW_XBAR + int'(tse_regs_pkg::CW_LANE_IN);
+    localparam int CW_PIN_OPT    = CW_EVENT + int'(tse_regs_pkg::CW_PIN_OPT);
+    localparam int CW_EV_CTL     = CW_EVENT + int'(tse_regs_pkg::CW_EV_CTL);
+    localparam int CW_TRIG_MATCH = CW_EVENT + int'(tse_regs_pkg::CW_TRIG_MATCH);
+    localparam int CW_TRIG_WIN   = CW_EVENT + int'(tse_regs_pkg::CW_TRIG_WIN);
+    localparam int CW_TRIG_CTL   = CW_EVENT + int'(tse_regs_pkg::CW_TRIG_CTL);
 
     function automatic logic [64*32-1:0] chip_mask();
         logic [64*32-1:0] m;
         m = '0;
-        for (int p = 0; p < tse_regs_pkg::HR_PAD_OUT_COUNT; p++) m[32*(CW_PAD_OUT + p) +: 32] = tse_regs_pkg::HR_PAD_OUT_MASK;
-        for (int i = 0; i < NI; i++)               m[32*(CW_LANE_IN + i) +: 32] = tse_regs_pkg::HR_LANE_IN_MASK;
-        m[32*CW_PIN_OPT +: 32] = tse_regs_pkg::HR_PIN_OPT_MASK;
-        m[32*CW_EV_CTL +: 32]  = tse_regs_pkg::HR_EV_CTL_MASK;
-        for (int s = 0; s < tse_regs_pkg::HR_TRIG_MATCH_COUNT; s++) m[32*(CW_TRIG_MATCH + s) +: 32] = tse_regs_pkg::HR_TRIG_MATCH_MASK;
-        for (int s = 0; s < tse_regs_pkg::HR_TRIG_WIN_COUNT; s++)   m[32*(CW_TRIG_WIN + s) +: 32]   = tse_regs_pkg::HR_TRIG_WIN_MASK;
-        m[32*CW_TRIG_CTL +: 32] = tse_regs_pkg::HR_TRIG_CTL_MASK;
+        m[32*CW_XBAR +: 1024]  = tse_regs_pkg::CHIP_XBAR_MASK;
+        m[32*CW_EVENT +: 1024] = tse_regs_pkg::CHIP_EVENT_MASK;
+        for (int i = NI; i < tse_regs_pkg::HR_LANE_IN_COUNT; i++) m[32*(CW_LANE_IN + i) +: 32] = '0;
         chip_mask = m;
     endfunction
     localparam logic [64*32-1:0] CHIP_MASK = chip_mask();
-
-    if (CHIP_WORDS > 64 || CHIP_BANKS < 1 || CHIP_BANKS > 2) begin : g_bad_chip_words
-        tse_top_bad_chip_words u_stop ();         // does not exist: elaboration stops here
-    end
 
     // ---------------- resets and mode
     logic eng_rst_n, ld_rst_n, sys_rst_n;
@@ -132,97 +110,119 @@ module tse_top #(
     logic [1:0]  hl;
     tse_regs_pkg::rclass_t     hcls;
     logic [4:0]  hword;
-    logic [6:0]  cw;
-    logic        a_sram, a_dwin, a_lane;
+    tse_regs_pkg::chip_cfg_t ccfg;
+    logic [5:0]  cw;
+    logic        a_sram, a_dwin, a_fb, a_lane;
     logic [1:0]  a_win;
     logic [3:0]  busy_win;
     assign hreg   = h_addr[7:0];
     assign hl     = h_addr[9:8];
     assign hcls   = tse_regs_pkg::lane_reg_class(hreg);
     assign hword  = tse_regs_pkg::lane_reg_word(hreg);
-    assign cw     = chip_word(h_addr);
+    assign ccfg   = tse_regs_pkg::chip_reg_cfg(h_addr);
+    assign cw     = {ccfg.bank, ccfg.word};
     assign a_sram = h_addr < tse_regs_pkg::REGION_SRAM_BASE + tse_regs_pkg::REGION_SRAM_SIZE;
-    assign a_dwin = LANES < 4 && h_addr >= tse_regs_pkg::REGION_DATA_BASE && h_addr < tse_regs_pkg::REGION_DATA_BASE + tse_regs_pkg::REGION_DATA_SIZE;
+    assign a_dwin = h_addr >= tse_regs_pkg::REGION_DATA_BASE && h_addr < tse_regs_pkg::REGION_DATA_BASE + tse_regs_pkg::REGION_DATA_SIZE;
+    assign a_fb   = h_addr >= tse_regs_pkg::REGION_FALLBACK_BASE && h_addr < tse_regs_pkg::REGION_FALLBACK_BASE + tse_regs_pkg::REGION_FALLBACK_SIZE;
     assign a_lane = h_addr >= tse_regs_pkg::LANE_HOST_BASE && 32'(h_addr) < 32'(tse_regs_pkg::LANE_HOST_BASE) + LANES * 32'(tse_regs_pkg::LANE_HOST_STRIDE);
     assign a_win  = a_dwin ? 2'd3 : h_addr[8:7];
 
     logic [LANES*2-1:0] l_win;
+    logic [LANES-1:0]   l_fb;
+    logic               busy_fb;
     logic [LANES*1024-1:0] lcfg;
     always_comb begin
         busy_win = '0;
+        busy_fb  = 1'b0;
         for (int i = 0; i < LANES; i++) begin
             l_win[2*i +: 2] = lcfg[1024*i + 32*tse_regs_pkg::LW_LANE_PROG + tse_regs_pkg::LR_LANE_PROG_WINDOW_LO +: 2];
-            if (lane_run[i]) busy_win[l_win[2*i +: 2]] = 1'b1;
+            l_fb[i]         = lcfg[1024*i + 32*tse_regs_pkg::LW_LANE_PROG + tse_regs_pkg::LR_LANE_PROG_FALLBACK_LO];
+            if (lane_run[i] && !l_fb[i]) busy_win[l_win[2*i +: 2]] = 1'b1;
+            if (lane_run[i] && l_fb[i])  busy_fb = 1'b1;
         end
     end
 
-    logic acc, err_sram, err_lane, err_run, sram_go;
+    // with 4 lanes the data window is the latch store, not the SRAM
+    logic a_mem, a_sram_only;
+    assign a_mem       = a_sram || a_dwin || a_fb;
+    assign a_sram_only = a_sram || (a_dwin && LANES < 4);
+
+    logic acc, err_sram, err_fb, err_lane, err_run, sram_go;
     assign acc      = h_we || h_re;
-    assign err_sram = (a_sram || a_dwin) && (st_busy || (LANES == 4 && lane_run != '0) || (h_we && busy_win[a_win]));
+    assign err_sram = a_sram_only && (st_busy || (LANES == 4 && lane_run != '0) || (h_we && busy_win[a_win]));
+    assign err_fb   = a_fb && h_we && busy_fb;
     assign err_lane = a_lane && h_we && (hcls == tse_regs_pkg::RC_L || hcls == tse_regs_pkg::RC_P) && lane_run[hl];
     assign err_run  = h_we && h_addr == tse_regs_pkg::HR_RUN && !loaded && !load_mode;
-    assign h_err    = acc && (err_sram || err_lane || err_run);
-    assign sram_go  = acc && (a_sram || a_dwin) && !err_sram;
+    assign h_err    = acc && (err_sram || err_fb || err_lane || err_run);
+    assign sram_go  = acc && a_mem && !err_sram && !err_fb;
 
     logic h_wr;                                   // an accepted register write
     assign h_wr = h_we && !h_err;
 
-    // ---------------- program memory and self-test
-    logic        pm_pend, pm_we, pm_gnt, pm_rd_q, pm_h_gnt;
+    // ---------------- program memory, data window, fallback store, self-test
+    logic        pm_pend, pm_we, pm_dw, pm_fb, pm_gnt, pm_rd_q;
     logic [8:0]  pm_addr;
     logic [31:0] pm_wdata, pm_rdata;
-    logic        st_m_req, st_m_we, frame_end;
+    logic        st_m_en, st_m_req, st_m_we, frame_end;
     logic [8:0]  st_m_addr;
     logic [31:0] st_m_wdata;
+    logic [3:0]  slot_cnt;
     logic [LANES-1:0]   l_req, l_gnt;
     logic [LANES*7-1:0] l_addr;
     logic [31:0]        l_rdata;
-    assign pm_gnt = pm_h_gnt && !st_busy;
+
+    // Lane data port (LDW, STW), one set per lane, protocol in tse_prog_mem.
+    // The tse_lane ports dmem_req, dmem_we, dmem_addr, dmem_wdata, dmem_gnt
+    // and dmem_rdata connect here; without them the port idles.
+    logic [LANES-1:0]    l_dreq, l_dwe, l_dgnt;
+    logic [LANES*7-1:0]  l_daddr;
+    logic [LANES*32-1:0] l_dwdata;
+    logic [31:0]         l_drdata;
+    assign l_dreq   = '0;
+    assign l_dwe    = '0;
+    assign l_daddr  = '0;
+    assign l_dwdata = '0;
 
     always_ff @(posedge clk or negedge sys_rst_n)
         if (!sys_rst_n) begin
-            pm_pend <= 1'b0; pm_we <= 1'b0; pm_addr <= '0; pm_wdata <= '0; pm_rd_q <= 1'b0;
+            pm_pend <= 1'b0; pm_we <= 1'b0; pm_dw <= 1'b0; pm_fb <= 1'b0; pm_addr <= '0;
+            pm_wdata <= '0; pm_rd_q <= 1'b0;
         end else begin
             pm_rd_q <= pm_gnt && !pm_we;
             if (pm_gnt) pm_pend <= 1'b0;
             if (sram_go) begin
                 pm_pend <= 1'b1; pm_we <= h_we; pm_wdata <= h_wdata;
-                pm_addr <= a_dwin ? {2'd3, h_addr[6:0]} : h_addr[8:0];
+                pm_dw <= a_dwin; pm_fb <= a_fb; pm_addr <= h_addr[8:0];
             end
         end
 
-    tse_prog_mem #(.LANES(LANES)) u_pmem (
-        .clk, .rst_n(sys_rst_n), .run(lane_live != '0),
-        .l_req, .l_addr, .l_win, .l_gnt, .l_rdata,
-        .h_req(st_busy ? st_m_req : pm_pend), .h_we(st_busy ? st_m_we : pm_we),
-        .h_addr(st_busy ? st_m_addr : pm_addr), .h_wdata(st_busy ? st_m_wdata : pm_wdata),
-        .h_gnt(pm_h_gnt), .h_rdata(pm_rdata), .frame_end
+    tse_prog_mem #(.LANES(LANES), .LATCH(CFG_LATCH), .DS_WORDS(DS_WORDS)) u_pmem (
+        .clk, .rst_n(sys_rst_n), .clr(cfg_clr), .all_stopped(lane_live == '0),
+        .l_req, .l_addr, .l_win, .l_fb, .l_gnt, .l_rdata,
+        .d_req(l_dreq), .d_we(l_dwe), .d_addr(l_daddr), .d_wdata(l_dwdata), .d_gnt(l_dgnt), .d_rdata(l_drdata),
+        .h_req(pm_pend && !st_busy), .h_we(pm_we), .h_dw(pm_dw), .h_fb(pm_fb), .h_addr(pm_addr),
+        .h_wdata(pm_wdata), .h_gnt(pm_gnt), .h_rdata(pm_rdata),
+        .t_en(st_m_en), .t_req(st_m_req), .t_we(st_m_we), .t_addr(st_m_addr), .t_wdata(st_m_wdata),
+        .cnt(slot_cnt), .frame_end
     );
 
     logic        lb_en;
     logic [15:0] lb_pat, pad_p, pad_n;
     tse_selftest u_st (
         .clk, .rst_n(sys_rst_n), .start(bist_start), .clr(cfg_clr),
-        .m_req(st_m_req), .m_we(st_m_we), .m_addr(st_m_addr), .m_wdata(st_m_wdata), .m_rdata(pm_rdata),
+        .m_en(st_m_en), .m_req(st_m_req), .m_we(st_m_we), .m_addr(st_m_addr), .m_wdata(st_m_wdata), .m_rdata(pm_rdata),
         .lb_en, .lb_pat, .pad_p, .pad_n, .busy(st_busy), .done(st_done), .pass(st_pass), .result(st_result)
     );
 
-    // ---------------- chip configuration banks
+    // ---------------- chip configuration bank
     logic [64*32-1:0] chip_q;
-    logic [31:0]      chip_rd [CHIP_BANKS];
     logic [31:0]      chip_rdata;
-    logic [CHIP_BANKS-1:0] chip_busy;
-    logic             cbank;
-    assign cbank = CHIP_BANKS == 2 && cw[5];
-    for (genvar b = 0; b < CHIP_BANKS; b++) begin : g_chip
-        tse_cfg_bank #(.WORDS(CBW), .LATCH(CFG_LATCH), .MASK(CHIP_MASK[CBW*32*b +: CBW*32])) u_cfg (
-            .clk, .rst_n(sys_rst_n), .clr(cfg_clr),
-            .we(h_wr && cw[6] && cbank == (b == 1)), .addr(cw[CAW-1:0]), .wdata(h_wdata),
-            .busy(chip_busy[b]), .rd_addr(cw[CAW-1:0]), .rd_data(chip_rd[b]),
-            .q(chip_q[CBW*32*b +: CBW*32])
-        );
-    end
-    assign chip_rdata = chip_rd[CHIP_BANKS == 2 ? 32'(cbank) : 0];
+    logic             chip_busy;
+    tse_cfg_bank #(.WORDS(64), .LATCH(CFG_LATCH), .MASK(CHIP_MASK)) u_ccfg (
+        .clk, .rst_n(sys_rst_n), .clr(cfg_clr),
+        .we(h_wr && ccfg.hit), .addr(cw), .wdata(h_wdata),
+        .busy(chip_busy), .rd_addr(cw), .rd_data(chip_rdata), .q(chip_q)
+    );
 
     logic [3:0] pin_opt;
     assign pin_opt = chip_q[32*CW_PIN_OPT +: 4];
@@ -351,7 +351,7 @@ module tse_top #(
         for (int i = 0; i < LANES; i++) mbox[2*i +: 2] = lane_flags[i];
         rmux = '0;
         if (a_lane)     rmux = hcls == tse_regs_pkg::RC_L ? lane_rd[hl] : lane_h_rdata[hl];
-        else if (cw[6]) rmux = chip_rdata;
+        else if (ccfg.hit) rmux = chip_rdata;
         else begin
             if (h_addr == tse_regs_pkg::HR_ID)          rmux = {12'd0, 4'(EVQ_DEPTH), CFG_LATCH, 3'(LANES), 4'(tse_isa_pkg::ISA_VERSION), 8'h54};
             if (h_addr == tse_regs_pkg::HR_RUN)         rmux = {28'd0, run_q};
@@ -376,6 +376,6 @@ module tse_top #(
             else if (h_re && !sram_go)  h_rdata <= h_err ? 32'd0 : rmux;
         end
 
-    wire _unused = &{lane_busy, chip_busy, chip_flags, ld_rst_n, chip_q, 1'b0};
+    wire _unused = &{lane_busy, chip_busy, chip_flags, ld_rst_n, chip_q, slot_cnt, l_dgnt, l_drdata, 1'b0};
 endmodule
 `default_nettype wire

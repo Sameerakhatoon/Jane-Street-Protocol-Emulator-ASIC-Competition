@@ -1,19 +1,30 @@
-# cocotb tests of the whole chip through its pins (Icarus, cocotb 2.1):
-# loader byte streams and the run-mode SPI target. The source list is the
-# full-chip one from info_chip.yaml, with the SRAM model instead of the
-# black box. make LANES=4 runs the 4-lane build.
+# cocotb tests (Icarus, cocotb 2.1), two benches:
+#   TB=chip  the whole chip through its pins: loader byte streams, the run-mode
+#            SPI target, self-test with injected SRAM faults, fallback store and
+#            data window. The source list is the full-chip one from
+#            info_chip.yaml, with the SRAM model instead of the black box.
+#   TB=pmem  tse_prog_mem alone with stub lanes and host: data slots, host turn,
+#            fallback fetches, random traffic against a shadow memory.
+# make LANES=4 runs the 4-lane build.
 TOP      := $(abspath ../..)
 LANES    ?= 3
+TB       ?= chip
 SOURCES  := $(shell sed -n '/^ *source_files:/,/^[^ ]/s/^ *- *"\([^"]*\)".*/\1/p' $(TOP)/info_chip.yaml)
 
 SIM              ?= icarus
 TOPLEVEL_LANG    := verilog
+ifeq ($(TB),pmem)
+VERILOG_SOURCES  := $(addprefix $(TOP)/src/,tse_prog_mem.sv tse_slot_arb.sv tse_dstore.sv tse_cfg_bank.sv tse_sram_512x32.sv tse_sram_model.v)
+COCOTB_TOPLEVEL  := tse_prog_mem
+COCOTB_TEST_MODULES := test_pmem
+else
 VERILOG_SOURCES  := $(addprefix $(TOP)/src/,$(filter-out tse_sram_bb.v,$(SOURCES))) $(TOP)/src/tse_sram_model.v
-COMPILE_ARGS     += -g2012 -DSIM -Ptse_chip.LANES=$(LANES)
 COCOTB_TOPLEVEL  := tse_chip
-COCOTB_TEST_MODULES := test_loader,test_spi
-SIM_BUILD        := $(TOP)/build/verif-chip/L$(LANES)
-COCOTB_RESULTS_FILE := $(TOP)/build/verif-chip/results_L$(LANES).xml
+COCOTB_TEST_MODULES := test_loader,test_spi,test_memory
+endif
+COMPILE_ARGS     += -g2012 -DSIM -P$(COCOTB_TOPLEVEL).LANES=$(LANES)
+SIM_BUILD        := $(TOP)/build/verif-chip/$(TB)_L$(LANES)
+COCOTB_RESULTS_FILE := $(TOP)/build/verif-chip/results_$(TB)_L$(LANES).xml
 
 export LANES
 export PYTHONPATH := $(TOP)/host:$(TOP):$(PYTHONPATH)

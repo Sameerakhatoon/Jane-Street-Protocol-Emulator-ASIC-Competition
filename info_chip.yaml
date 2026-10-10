@@ -28,6 +28,8 @@ project:
     - "tse_host_spi.sv"
     - "tse_selftest.sv"
     - "tse_prog_mem.sv"
+    - "tse_slot_arb.sv"
+    - "tse_dstore.sv"
     - "tse_sram_512x32.sv"
     - "tse_sram_bb.v"
     - "tse_cfg_bank.sv"
