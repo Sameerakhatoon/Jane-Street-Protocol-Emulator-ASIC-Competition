@@ -12,7 +12,7 @@ CI      ?=
 VERIF_PY := $(wildcard model/*.py model/tests/*.py verif/lockstep/*.py verif/lane/*.py verif/blocks/*.py \
                        formal/*.py formal/mcy/*.py)
 FORMAL_BUILD := build/formal
-LANE_SV := $(addprefix $(RTL_DIR)/,tse_cfg_bank.sv tse_crc.sv tse_stuffer.sv tse_codec.sv tse_dpll.sv \
+LANE_SV := $(addprefix $(RTL_DIR)/,tse_isa_pkg.sv tse_regs_pkg.sv tse_cfg_bank.sv tse_crc.sv tse_stuffer.sv tse_codec.sv tse_dpll.sv \
              tse_resp_rule.sv tse_nco.sv tse_timer.sv tse_seq.sv tse_lane.sv)
 
 .PHONY: verif-lint verif-test model-test lockstep lane-lockstep block-lockstep verilator-lockstep formal mcy \
@@ -22,7 +22,7 @@ test: verif-test
 
 verif-lint:
 	$(PYTHON) -m py_compile $(VERIF_PY)
-	verilator --lint-only -Wall --top-module seq_harness $(RTL_DIR)/tse_seq.sv verif/lockstep/seq_harness.sv
+	verilator --lint-only -Wall --top-module seq_harness $(RTL_DIR)/tse_isa_pkg.sv $(RTL_DIR)/tse_regs_pkg.sv $(RTL_DIR)/tse_seq.sv verif/lockstep/seq_harness.sv
 	verilator --lint-only -Wall --top-module lane_harness $(LANE_SV) verif/lane/lane_harness.sv
 	verilator --lint-only -Wall -Wno-PROCASSINIT -Wno-SYNCASYNCNET --top-module crc_props -DCAT $(RTL_DIR)/tse_crc.sv formal/crc/crc_props.sv
 

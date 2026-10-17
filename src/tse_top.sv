@@ -42,18 +42,6 @@ module tse_top #(
     localparam int V  = 4;
     localparam int NI = LANES * V;
 
-    // The lanes still decode their configuration in their own word layout, so
-    // the lane bank stores that layout's bits plus the program register.
-    localparam logic [1023:0] LANE_OWN = {
-        {8{32'h0}},
-        32'h0000_1FFF, 32'h01FF_FFFF, 32'h0000_0000, 32'hFFFF_FFFF,    // rule 1
-        32'h0000_1FFF, 32'h01FF_FFFF, 32'h0000_0000, 32'hFFFF_FFFF,    // rule 0
-        {2{32'h0}}, 32'h0FC0_0000, 32'h0000_0FFF,                     // WAIT alternate, RULE_CLK
-        32'h0007_FFFF, 32'h00FF_FFFF, 32'h03FF_FFFF,                   // timer, lane
-        32'h000F_FFFF, 32'h000F_FFFF, 32'h000F_FFFF,                   // DPLL
-        32'h0000_0F3F, 32'h0000_007F, {4{32'hFFFF_FFFF}}              // line, CRC
-    };
-    localparam logic [1023:0] LANE_MASK = LANE_OWN | (1024'(tse_regs_pkg::LR_LANE_PROG_MASK) << (32 * tse_regs_pkg::LW_LANE_PROG));
 
     // chip bank word (bank x 32 + word) of each configuration register
     localparam int CW_XBAR       = 32 * int'(tse_regs_pkg::CBANK_XBAR);
@@ -90,7 +78,7 @@ module tse_top #(
     logic [7:0]  s_data;
 
     logic [3:0]       run_q;
-    logic [LANES-1:0] lane_live, lane_run;
+    logic [LANES-1:0] lane_live, lane_run, l_halted;
     logic             st_busy, st_done, st_pass;
     logic [13:0]      st_result;
 
@@ -101,7 +89,7 @@ module tse_top #(
         .ld_data(pad_in[7:0]), .ld_strobe(pad_in[8]), .ld_frame(pad_in[9]), .ld_dout,
         .s_valid, .s_first, .s_data,
         .h_we, .h_re, .h_addr, .h_wdata, .h_rdata, .h_rvalid, .h_err,
-        .lanes_idle(lane_run == '0), .bist_done(st_done), .bist_pass(st_pass), .halted(4'd0),
+        .lanes_idle(lane_run == '0), .bist_done(st_done), .bist_pass(st_pass), .halted(4'(l_halted)),
         .loaded, .host_err, .load_crc, .cfg_clr, .bist_start
     );
 
@@ -172,16 +160,10 @@ module tse_top #(
     logic [31:0]        l_rdata;
 
     // Lane data port (LDW, STW), one set per lane, protocol in tse_prog_mem.
-    // The tse_lane ports dmem_req, dmem_we, dmem_addr, dmem_wdata, dmem_gnt
-    // and dmem_rdata connect here; without them the port idles.
     logic [LANES-1:0]    l_dreq, l_dwe, l_dgnt;
     logic [LANES*7-1:0]  l_daddr;
     logic [LANES*32-1:0] l_dwdata;
     logic [31:0]         l_drdata;
-    assign l_dreq   = '0;
-    assign l_dwe    = '0;
-    assign l_daddr  = '0;
-    assign l_dwdata = '0;
 
     always_ff @(posedge clk or negedge sys_rst_n)
         if (!sys_rst_n) begin
@@ -233,7 +215,12 @@ module tse_top #(
     logic [LANES-1:0]      l_cfg_we, ev_valid, lane_busy;
     logic [LANES*5-1:0]    l_cfg_word;
     logic [LANES*32-1:0]   l_cfg_wdata;
-    logic [LANES*4-1:0]    ev_code;
+    logic [LANES*6-1:0]    ev_code;
+    logic [LANES*8-1:0]    ev_data;
+    logic [LANES*4-1:0]    l_irq, sig_mask, sig_val;
+    logic [LANES-1:0]      sig_we;
+    logic [5:0]            chip_flags;
+    logic [31:0]           ev_ts;
     logic [NI-1:0]         vin_p, vin_n, vout, voe, live_pins;
     logic [31:0]           lane_h_rdata [LANES];
     logic [31:0]           lane_rx [LANES];
@@ -245,7 +232,7 @@ module tse_top #(
         assign hb_we = h_wr && sel && hcls == tse_regs_pkg::RC_L;
         assign live_pins[V*i +: V] = {V{lane_live[i]}};
 
-        tse_cfg_bank #(.WORDS(32), .LATCH(CFG_LATCH), .MASK(LANE_MASK)) u_cfg (
+        tse_cfg_bank #(.WORDS(32), .LATCH(CFG_LATCH), .MASK(tse_regs_pkg::LANE_BANK_MASK)) u_cfg (
             .clk, .rst_n(sys_rst_n), .clr(cfg_clr),
             .we(lane_live[i] ? l_cfg_we[i] : hb_we),
             .addr(lane_live[i] ? l_cfg_word[5*i +: 5] : hword),
@@ -264,8 +251,12 @@ module tse_top #(
             .h_tx_we(h_wr && h_addr == tse_regs_pkg::HR_MBOX_TX + 16'(i)), .h_tx_data(h_wdata),
             .h_rx_re(h_re && h_addr == tse_regs_pkg::HR_MBOX_RX + 16'(i)),
             .h_rx_data(lane_rx[i]), .h_flags(lane_flags[i]),
-            .ev_valid(ev_valid[i]), .ev_code(ev_code[4*i +: 4]),
+            .ev_valid(ev_valid[i]), .ev_code(ev_code[6*i +: 6]), .ev_data(ev_data[8*i +: 8]),
+            .irq(l_irq[4*i +: 4]), .halted(l_halted[i]), .sig_we(sig_we[i]), .sig_mask(sig_mask[4*i +: 4]),
+            .sig_val(sig_val[4*i +: 4]), .chip_flags, .ts(ev_ts),
             .imem_req(l_req[i]), .imem_addr(l_addr[7*i +: 7]), .imem_gnt(l_gnt[i]), .imem_rdata(l_rdata),
+            .dmem_req(l_dreq[i]), .dmem_we(l_dwe[i]), .dmem_addr(l_daddr[7*i +: 7]),
+            .dmem_wdata(l_dwdata[32*i +: 32]), .dmem_gnt(l_dgnt[i]), .dmem_rdata(l_drdata),
             .vin_p(vin_p[V*i +: V]), .vin_n(vin_n[V*i +: V]), .vout(vout[V*i +: V]), .voe(voe[V*i +: V])
         );
     end
@@ -283,7 +274,7 @@ module tse_top #(
             if (frame_end) lane_live <= run_q[LANES-1:0] & {LANES{loaded}};
             begin
                 logic [4*LANES-1:0] set;
-                for (int i = 0; i < LANES; i++) set[4*i +: 4] = ev_valid[i] ? ev_code[4*i +: 4] : 4'd0;
+                set = l_irq;
                 irq_q <= ((h_re && h_addr == tse_regs_pkg::HR_IRQ) ? '0 : irq_q) | set;
             end
         end
@@ -316,21 +307,18 @@ module tse_top #(
     );
 
     // ---------------- event unit
-    logic [31:0] ev_head, ev_ts;
+    logic [31:0] ev_head;
     logic [15:0] ev_status;
-    logic [5:0]  chip_flags;
     logic [4*16-1:0] ev_win;
-    logic [LANES*6-1:0] ev_code6;
     always_comb begin
         for (int s = 0; s < 4; s++) ev_win[16*s +: 16] = chip_q[32*(CW_TRIG_WIN + s) +: 16];
-        for (int i = 0; i < LANES; i++) ev_code6[6*i +: 6] = {2'd0, ev_code[4*i +: 4]};
     end
 
     tse_event_unit #(.LANES(LANES), .DEPTH(EVQ_DEPTH)) u_ev (
         .clk, .rst_n(eng_rst_n),
         .cfg_ctl(chip_q[32*CW_EV_CTL +: 10]), .cfg_match(chip_q[32*CW_TRIG_MATCH +: 128]),
         .cfg_win(ev_win), .cfg_trig(chip_q[32*CW_TRIG_CTL +: 17]),
-        .ev_valid, .ev_code(ev_code6), .ev_data('0), .cf_we('0), .cf_mask('0), .cf_val('0),
+        .ev_valid, .ev_code, .ev_data, .cf_we(sig_we), .cf_mask(sig_mask), .cf_val(sig_val),
         .pop(h_re && h_addr == tse_regs_pkg::HR_EV_POP),
         .clr_fifo(h_wr && h_addr == tse_regs_pkg::HR_EV_CLEAR && h_wdata[tse_regs_pkg::HR_EV_CLEAR_FIFO_LO]),
         .clr_drop(h_wr && h_addr == tse_regs_pkg::HR_EV_CLEAR && h_wdata[tse_regs_pkg::HR_EV_CLEAR_DROPS_LO]),
@@ -376,6 +364,6 @@ module tse_top #(
             else if (h_re && !sram_go)  h_rdata <= h_err ? 32'd0 : rmux;
         end
 
-    wire _unused = &{lane_busy, chip_busy, chip_flags, ld_rst_n, chip_q, slot_cnt, l_dgnt, l_drdata, 1'b0};
+    wire _unused = &{lane_busy, chip_busy, ld_rst_n, chip_q, slot_cnt, 1'b0};
 endmodule
 `default_nettype wire

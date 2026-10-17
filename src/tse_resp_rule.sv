@@ -3,8 +3,10 @@
 // against (pattern, mask) when the 8-bit frame bit counter equals pos (or
 // any is set), optionally gated by a condition, then drives up to 16
 // response bits and/or raises abort.
-// pos = {any[8], pos[7:0]}; ctl = {en, abort, drive, cond[1:0], offset[3:0], rlen[3:0]};
-// lowest k wins. The counter saturates at 255 (the compiler rejects
+// pos = {any[8], pos[7:0]}; ctl = {chain, en, abort, drive, cond[1:0], offset[3:0],
+// rlen[3:0]}; lowest k wins. With chain, rule k > 0 matches only after rule
+// k - 1 has matched earlier in the frame (its sticky hit flag), which extends
+// a match to 32-bit patterns. The counter saturates at 255 (the compiler rejects
 // fixed-position rules with pos + offset > 254).
 // RULE_CLK (shared by the K rules): cfg_src 0 = bit mode: recovered bits
 // (bit_valid, bit_in) and bit_start pacing; offset 0 drives inside the
@@ -24,7 +26,7 @@ module tse_resp_rule #(
     input  logic [K*PW-1:0] cfg_msk,
     input  logic [K*9-1:0]  cfg_pos,
     input  logic [K*16-1:0] cfg_resp,
-    input  logic [K*13-1:0] cfg_ctl,
+    input  logic [K*14-1:0] cfg_ctl,
     input  logic          cfg_src,
     input  logic          cfg_edge,
     input  logic [7:0]    cfg_tdly,
@@ -60,25 +62,26 @@ module tse_resp_rule #(
     always_comb
         for (int k = 0; k < K; k++) begin
             logic cond_ok;
-            case (cfg_ctl[13*k+8 +: 2])
+            case (cfg_ctl[14*k+8 +: 2])
                 2'd1:    cond_ok = crc_ok;
                 2'd2:    cond_ok = !crc_ok;
                 2'd3:    cond_ok = ext_flag;
                 default: cond_ok = 1'b1;
             endcase
-            match[k] = cfg_ctl[13*k+12] && bv && cond_ok
+            match[k] = cfg_ctl[14*k+12] && bv && cond_ok
+                            && (k == 0 || !cfg_ctl[14*k+13] || hit_flags[(k == 0) ? 0 : k - 1])
                             && (((hist_n ^ cfg_pat[PW*k +: PW]) & cfg_msk[PW*k +: PW]) == '0)
                             && (cfg_pos[9*k+8] || cfg_pos[9*k +: 8] == cnt);
         end
 
-    logic [12:0] wctl;
+    logic [13:0] wctl;
     logic [15:0] wresp;
     logic        any;
     always_comb begin                                  // lowest-numbered match wins
         wctl = '0; wresp = '0; any = 1'b0;
         for (int k = K - 1; k >= 0; k--)
             if (match[k]) begin
-                wctl = cfg_ctl[13*k +: 13]; wresp = cfg_resp[16*k +: 16]; any = 1'b1;
+                wctl = cfg_ctl[14*k +: 14]; wresp = cfg_resp[16*k +: 16]; any = 1'b1;
             end
     end
 
@@ -94,7 +97,7 @@ module tse_resp_rule #(
     logic [3:0]  left;
     logic [15:0] rsr;
     assign drv_val = rsr[0];
-    wire _unused = &{hist[PW-1], wctl[12], wctl[9:8], 1'b0};
+    wire _unused = &{hist[PW-1], wctl[13:12], wctl[9:8], cfg_ctl[13], 1'b0};
 
     always_ff @(posedge clk or negedge rst_n)
         if (!rst_n) begin

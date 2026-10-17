@@ -73,34 +73,39 @@ async def test_03_straight_line(dut):
     await search(dut, "straight", "straight", setups())
 
 
-def finding(name, profile, doc, ss_bases=(0, 1, 2)):
+def finding(name, profile, doc, ss_bases=(0, 1, 2), xfail=True):
     async def t(dut):
         await search(dut, name, profile, setups(ss_bases))
     t.__name__ = t.__qualname__ = name
     t.__doc__ = doc
-    return cocotb.test(expect_fail=True)(t)
+    return cocotb.test(expect_fail=xfail)(t)
 
 
 test_04_branches = finding(
     "test_04_branches", "branch",
-    "RTL fill replaces entry 1 unless it holds the next word, not the least recently used word")
+    "A fill replaces the least recently used word; the word of the current instruction stays", xfail=False)
 test_05_wait = finding(
     "test_05_wait", "wait",
-    "RTL starts the successor fetch of WAIT and blocking PUSH or PULL when they end, not at dispatch")
+    "WAIT and blocking PUSH or PULL fetch their successor from dispatch on", xfail=False)
 test_06_side_set_base3 = finding(
     "test_06_side_set_base3", "straight",
-    "RTL side-set from pin 3 drives pin 4, not pin 0 (wrap modulo 8, not 4)", ss_bases=(3,))
+    "Side-set from pin 3 drives pins 3 and 0 (wrap modulo 4)", ss_bases=(3,), xfail=False)
 test_07_set_mask = finding(
-    "test_07_set_mask", "set_mask", "RTL SET PINS/PINDIRS writes imm[7:0], no write mask")
+    "test_07_set_mask", "set_mask",
+    "SET PINS and SET PINDIRS write imm[3:0] under the mask imm[7:4]", xfail=False)
 test_08_jmp_guard = finding(
-    "test_08_jmp_guard", "jmp_guard", "RTL JMP condition 7 is any event, not GUARD")
+    "test_08_jmp_guard", "jmp_guard",
+    "JMP condition 7 is GUARD (C >= GT[gsel])", xfail=False)
 test_09_wait_edge_chip_guard = finding(
     "test_09_wait_edge_chip_guard", "wait_edge_chip_guard",
-    "RTL WAIT lacks pin-changed, CHIP and GUARD sources")
+    "WAIT has the pin-changed, CHIP and GUARD sources", xfail=False)
 test_10_mov_clock = finding(
-    "test_10_mov_clock", "mov_clock", "RTL MOV source 7 reads 0, not the clock C")
+    "test_10_mov_clock", "mov_clock",
+    "MOV source 7 reads the clock C", xfail=False)
 test_11_tmr_sig_emit = finding(
-    "test_11_tmr_sig_emit", "tmr_sig_emit", "RTL decodes TMR, SIG and EMIT as long DLY")
+    "test_11_tmr_sig_emit", "tmr_sig_emit",
+    "TMR, SIG and EMIT decode with their own durations, DLY has a 9-bit count", xfail=False)
 test_12_csr_classes = finding(
     "test_12_csr_classes", "csr_classes",
-    "RTL CSRW costs 3 for every address below 0x20 and 1 for the rule registers at 0x40")
+    "CSRW costs 3 for every class-L address, the rule registers included, and 1 otherwise",
+    xfail=False)

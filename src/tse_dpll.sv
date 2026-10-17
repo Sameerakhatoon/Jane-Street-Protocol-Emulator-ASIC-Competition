@@ -22,7 +22,8 @@ module tse_dpll (
     output logic        q1,
     output logic        sample,
     output logic        samp_val,
-    output logic        edge_seen
+    output logic        edge_seen,
+    output logic        synced         // not waiting for a hard sync
 );
     logic [19:0] ph, half_p, q_p, elapsed, lag, sj, e, mag;
     logic [20:0] e_raw, s, delta, delta_q;
@@ -34,6 +35,7 @@ module tse_dpll (
     assign lag     = !cfg_dual ? 20'd8 : (s_n != prev_p) ? 20'd12 : 20'd4;
     assign elapsed = lag + 20'd16;
     assign edge_q  = enable && ((!prev_p && s_p && cfg_rise) || (prev_p && !s_p && cfg_fall));
+    assign synced  = !armed;
     assign hard    = edge_q && armed;
     assign e_raw   = {1'b0, ph} - {1'b0, lag};             // our phase when the edge happened
     assign e       = e_raw[20] ? e_raw[19:0] + cfg_period : e_raw[19:0];

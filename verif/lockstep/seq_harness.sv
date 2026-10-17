@@ -49,6 +49,13 @@ module seq_harness (
   logic        imem_req, gnt, csr_re;
   logic [1:0]  cyc;
   logic [7:0]  flg;
+  logic [3:0]  pout, poe, sig_mask, sig_val;
+  logic        sig_we, emit_v, timer_ack, halted, dmem_req, dmem_we;
+  logic [6:0]  dmem_addr;
+  logic [31:0] dmem_wdata;
+  logic [15:0] clock;
+  logic [5:0]  emit_code;
+  logic [7:0]  emit_data;
 
   always_ff @(posedge clk) begin
     if (prog_we) mem[prog_addr] <= prog_data;
@@ -65,20 +72,24 @@ module seq_harness (
   assign csr_rdata = {csr_addr, ~csr_addr, csr_addr ^ 8'h5a, 8'hc3};
 
   tse_seq u_seq (
-    .clk, .rst_n, .run, .imem_req, .imem_addr, .imem_gnt(gnt), .imem_rdata(rdata),
-    .alt_cfg, .flg, .pin_in({4'd0, pins}), .pin_out, .pin_oe, .side_en, .ss_base, .jmp_pin, .ev,
+    .clk, .rst_n, .run, .start_pc(8'd0), .imem_req, .imem_addr, .imem_gnt(gnt), .imem_rdata(rdata),
+    .dmem_req, .dmem_we, .dmem_addr, .dmem_wdata, .dmem_gnt(1'b0), .dmem_rdata(32'd0),
+    .alt_cfg, .flg, .pin_in(pins), .pin_out(pout), .pin_oe(poe), .side_en, .ss_base(ss_base[1:0]),
+    .jmp_pin(jmp_pin[1:0]), .ev, .chip_flags(6'd0), .gt(64'd0), .clock, .pc_o(pc),
     .csr_we, .csr_re, .csr_addr, .csr_wdata, .csr_rdata, .cmd_we, .cmd,
     .h_tx_we, .h_tx_data, .h_tx_full, .h_rx_re, .h_rx_data, .h_rx_full, .irq,
+    .sig_we, .sig_mask, .sig_val, .emit_v, .emit_code, .emit_data, .timer_ack, .halted,
     .aflag_o(aflag), .tflag_o(tflag)
   );
 
+  assign pin_out  = {4'd0, pout};
+  assign pin_oe   = {4'd0, poe};
   assign dispatch = u_seq.avail && !u_seq.held;
-  assign pc  = u_seq.pc;
   assign x   = u_seq.x;
   assign y   = u_seq.y;
   assign t   = u_seq.t;
   assign isr = u_seq.isr;
   assign osr = u_seq.osr;
-  wire _unused = &{csr_re, 1'b0};
+  wire _unused = &{csr_re, clock, timer_ack, halted, dmem_req, dmem_we, dmem_addr, dmem_wdata, sig_we, sig_mask, sig_val, emit_v, emit_code, emit_data, ss_base[2], jmp_pin[2], 1'b0};
 endmodule
 `default_nettype wire

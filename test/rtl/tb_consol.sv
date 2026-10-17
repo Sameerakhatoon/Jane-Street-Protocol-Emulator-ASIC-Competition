@@ -11,9 +11,11 @@ module tb_consol;
     longint cyc = 0;
     always @(posedge clk) cyc = $time / 10;   // cycle number, race-free
 
-    function automatic logic [15:0] SET(input int d, v);  return {3'd2, 2'b0, 3'(d), 8'(v)}; endfunction
+    function automatic logic [15:0] SET(input int d, v);   // PINS, PINDIRS: all four pins (mask 1111)
+        return {3'd2, 2'b0, 3'(d), 8'(d < 2 ? 8'hF0 | v : v)};
+    endfunction
     function automatic logic [15:0] JMP(input int c, t);  return {3'd0, 2'b0, 3'(c), 8'(t)}; endfunction
-    function automatic logic [15:0] DLY(input int d);     return {3'd7, 2'b0, 11'(d)}; endfunction
+    function automatic logic [15:0] DLY(input int d);     return {3'd7, 2'b0, 2'b0, 9'(d)}; endfunction
     function automatic logic [15:0] CSRW(input int a);    return {3'd6, 2'b0, 2'd2, 1'b0, 8'(a)}; endfunction
     function automatic logic [15:0] WAITI(input int pol, src, idx, to, alt, d);
         return {3'd1, 2'b0, 1'(pol), 2'(src), 3'(idx), 1'(to), 1'(alt), 3'(d)};
@@ -25,7 +27,7 @@ module tb_consol;
     logic [31:0] rdata;
     logic [31:0] mem [128];
     logic [1:0]  slot;
-    logic [7:0]  pin_in, pout, poe;
+    logic [3:0]  pin_in, pout, poe;
     logic        csr_we;
     int          grants;
     always_ff @(posedge clk) begin
@@ -35,9 +37,10 @@ module tb_consol;
     end
     assign gnt = req && slot == 2'd0;
 
-    tse_seq dut (.clk, .rst_n, .run, .imem_req(req), .imem_addr(addr), .imem_gnt(gnt), .imem_rdata(rdata),
+    tse_seq dut (.clk, .rst_n, .run, .start_pc(8'd0), .chip_flags(6'd0), .gt(64'd0), .dmem_gnt(1'b0), .dmem_rdata(32'd0),
+        .imem_req(req), .imem_addr(addr), .imem_gnt(gnt), .imem_rdata(rdata),
         .alt_cfg(6'b001_00_1), .flg(8'h80),
-        .pin_in, .pin_out(pout), .pin_oe(poe), .side_en(1'b0), .ss_base(3'd0), .jmp_pin(3'd0), .ev(8'd0),
+        .pin_in, .pin_out(pout), .pin_oe(poe), .side_en(1'b0), .ss_base(2'd0), .jmp_pin(2'd0), .ev(8'd0),
         .csr_we, .csr_re(), .csr_addr(), .csr_wdata(), .csr_rdata(32'd0), .cmd_we(), .cmd(),
         .h_tx_we(1'b0), .h_tx_data(32'd0), .h_tx_full(), .h_rx_re(1'b0), .h_rx_data(), .h_rx_full(), .irq(), .aflag_o(), .tflag_o());
 
@@ -55,7 +58,7 @@ module tb_consol;
     logic [1:0] hits;
     tse_resp_rule #(.K(2), .PW(16)) rr (.clk, .rst_n,
         .cfg_pat({16'h0, 16'h00A0}), .cfg_msk({16'h0, 16'h00FF}), .cfg_pos({9'd0, 9'd7}),
-        .cfg_resp({16'h0, 16'h0000}), .cfg_ctl({13'h0, 13'h1400}),
+        .cfg_resp({16'h0, 16'h0000}), .cfg_ctl({14'h0, 14'h1400}),
         .cfg_src(1'b1), .cfg_edge(1'b1), .cfg_tdly(8'd18), .frame_rst(frst),
         .bit_valid(1'b0), .bit_in(1'b0), .bit_start(1'b0), .pin_clk(scl), .pin_dat(sda),
         .crc_ok(1'b0), .ext_flag(1'b0), .flags_clr(frst), .drv_en, .drv_val, .hit_flags(hits),
@@ -64,7 +67,7 @@ module tb_consol;
     logic frst2 = 0, bv2 = 0, bin2 = 0, bst2 = 0, d2en;
     tse_resp_rule #(.K(2), .PW(16)) rr2 (.clk, .rst_n,
         .cfg_pat({16'h0, 16'h0005}), .cfg_msk({16'h0, 16'h000F}), .cfg_pos({9'd0, 9'd3}),
-        .cfg_resp({16'h0, 16'h0001}), .cfg_ctl({13'h0, 13'h1420}),
+        .cfg_resp({16'h0, 16'h0001}), .cfg_ctl({14'h0, 14'h1420}),
         .cfg_src(1'b0), .cfg_edge(1'b0), .cfg_tdly(8'd0), .frame_rst(frst2),
         .bit_valid(bv2), .bit_in(bin2), .bit_start(bst2), .pin_clk(1'b0), .pin_dat(1'b0),
         .crc_ok(1'b0), .ext_flag(1'b0), .flags_clr(frst2), .drv_en(d2en), .drv_val(), .hit_flags(),
@@ -129,11 +132,11 @@ module tb_consol;
             for (int ph = 0; ph < 4; ph++) begin
                 longint tw, ts;
                 pin_in = 0; restart(); repeat (20 + ph) @(negedge clk);
-                pin_in = 8'h01; tw = -1; ts = -1;
+                pin_in = 4'h1; tw = -1; ts = -1;
                 repeat (12) begin
                     @(posedge clk);
-                    if (dut.retire && dut.op == 3'd1) tw = ($time / 10);
-                    if (dut.retire && dut.op == 3'd2 && tw >= 0 && ts < 0) ts = ($time / 10);
+                    if (dut.retire && dut.ic == tse_isa_pkg::I_WAIT) tw = ($time / 10);
+                    if (dut.retire && dut.ic == tse_isa_pkg::I_SET && tw >= 0 && ts < 0) ts = ($time / 10);
                 end
                 gaps.push_back(int'(ts - tw));
             end
@@ -149,18 +152,18 @@ module tb_consol;
         for (int which = 0; which < 2; which++) begin
             longint tr;
             pin_in = 0; restart(); repeat (20) @(posedge clk);
-            @(negedge clk) pin_in = which ? 8'h01 : 8'h02;
+            @(negedge clk) pin_in = which ? 4'h1 : 4'h2;
             tr = -1;
-            repeat (20) begin @(posedge clk); if (tr < 0 && dut.retire && dut.op == 3'd1) tr = ($time / 10); end
+            repeat (20) begin @(posedge clk); if (tr < 0 && dut.retire && dut.ic == tse_isa_pkg::I_WAIT) tr = ($time / 10); end
             if (pout[1:0] != (which ? 2'b01 : 2'b10)) begin errors++; $display("FAIL WAIT alternate cond %0d pins %b", which, pout); end
             else $display("info WAIT alternate %s ended the WAIT, JMP TOUT %s, WAIT retired in the first cycle it saw the pin: %0d",
                                         which ? "own condition" : "alternate condition", which ? "not taken" : "taken (AFLAG)",
                                         tr >= 0);
         end
 
-        // CSRW cost: CSRW to a config word lasts 3 cycles, to a lane register 1
+        // CSRW cost: CSRW to a config word (here a rule register) lasts 3 cycles, to a lane register 1
         p = new[5];
-        p[0] = CSRW(5); p[1] = SET(0, 1); p[2] = CSRW(8'h21); p[3] = SET(0, 0); p[4] = JMP(0, 4);
+        p[0] = CSRW(tse_regs_pkg::LR_RULE0_RESP_POS); p[1] = SET(0, 1); p[2] = CSRW(8'h21); p[3] = SET(0, 0); p[4] = JMP(0, 4);
         load(p);
         restart();
         begin

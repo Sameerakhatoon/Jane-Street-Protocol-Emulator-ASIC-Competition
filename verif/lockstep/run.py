@@ -18,7 +18,7 @@ build = HERE / "sim_build" / sim
 sys.path[:0] = [str(ROOT), str(HERE)]      # the runner passes sys.path on as PYTHONPATH
 
 runner = get_runner(sim)
-runner.build(sources=[rtl / "tse_seq.sv", HERE / "seq_harness.sv"], hdl_toplevel="seq_harness",
+runner.build(sources=[rtl / "tse_isa_pkg.sv", rtl / "tse_regs_pkg.sv", rtl / "tse_seq.sv", HERE / "seq_harness.sv"], hdl_toplevel="seq_harness",
              build_args=args, build_dir=build, timescale=("1ns", "1ps"))
 results = Path(runner.test(hdl_toplevel="seq_harness", test_module="test_lockstep",
                            build_dir=build, test_dir=HERE,

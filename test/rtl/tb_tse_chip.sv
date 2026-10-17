@@ -38,12 +38,7 @@ module tb_tse_chip;
     endfunction
 
     // host address of the lane register stored in bank word w
-    function automatic logic [15:0] lane_word_addr(input int lane, input int w);
-        for (int a = 0; a < 256; a++)
-            if (lane_reg_class(8'(a)) == RC_L && lane_reg_word(8'(a)) == 5'(w))
-                return LANE_HOST_BASE + 16'(lane) * LANE_HOST_STRIDE + 16'(a);
-        return 16'hFFFF;
-    endfunction
+    localparam logic [31:0] LANE_CFG_UART = (1 << LR_LANE_CFG_TX_OWNS_PIN_LO) | (1 << LR_LANE_CFG_IDLE_LO);
 
     int errors;
     logic [31:0] crc;
@@ -136,24 +131,26 @@ module tb_tse_chip;
         ld_stat(s);
         check("STAT after BIST", 32'(s), 32'h06);
 
-        p = new[10];
+        p = new[12];
         p[0] = SET(7, 8'hD0);                               // DPLL on, line idle high
         p[1] = SET(2, 9);  p[2] = SET(3, 0);
         p[3] = XFR(2, 0, 8'h21);                            // TXCTL = 9: send 10 bits
         p[4] = SET(2, 8'hAA); p[5] = SET(5, 8'h02);         // X = 0x02AA = {stop, 0x55, start}
         p[6] = XFR(2, 0, 8'h20);                            // TXDATA = {Y, X}
         p[7] = WAITI(1, 1, 6, 0, 0, 0);                     // wait TX idle
-        p[8] = SET(6, 5);                                   // event code 5
-        p[9] = JMP(0, 9);
-        pw = new[5];
+        p[8] = tse_isa_pkg::EMIT_MATCH | (16'd5 << tse_isa_pkg::EMIT_CODE_LO);   // EMIT 5
+        p[9] = SET(6, 5);                                   // interrupt bits 0 and 2
+        p[10] = JMP(0, 10); p[11] = JMP(0, 11);
+        pw = new[6];
         foreach (pw[i]) pw[i] = {p[2*i + 1], p[2*i]};
         ld_wrb(16'h0000, pw);
-        // lane 0 words 5 to 9: no stuffing, NRZ; 64 cycles per bit; TX owns vpin 0, idles high
-        ld_wr(lane_word_addr(0, 5), 32'd0);
-        ld_wr(lane_word_addr(0, 6), 32'd1024);
-        ld_wr(lane_word_addr(0, 7), 32'd512);
-        ld_wr(lane_word_addr(0, 8), 32'd0);
-        ld_wr(lane_word_addr(0, 9), (1 << 19) | (1 << 25));
+        // lane 0: no stuffing, NRZ; 64 cycles per bit; TX owns vpin 0, idles high
+        ld_wr(LANE_HOST_BASE + 16'(LR_STUFF_CFG), 32'd0);
+        ld_wr(LANE_HOST_BASE + 16'(LR_CODEC_CFG), 32'd0);
+        ld_wr(LANE_HOST_BASE + 16'(LR_DPLL_PERIOD), 32'd1024);
+        ld_wr(LANE_HOST_BASE + 16'(LR_DPLL_SPT), 32'd512);
+        ld_wr(LANE_HOST_BASE + 16'(LR_DPLL_SJW), 32'd0);
+        ld_wr(LANE_HOST_BASE + 16'(LR_LANE_CFG), LANE_CFG_UART);
         ld_wr(LANE_HOST_BASE + 16'(LR_LANE_PROG), 32'd0);   // window 0, start 0
         ld_wr(HR_PAD_OUT, 32'h1C0);                         // uo_out[0] <- lane 0 vpin 0: en, idle 1, idle_oe
         ld_wr(HR_EV_CTL, 32'h3);                            // log lane 0
@@ -163,12 +160,12 @@ module tb_tse_chip;
         ld_stat(s);
         check("STAT after COMMIT", 32'(s), 32'h07);
 
-        ld_rdb(16'h0000, 5, rb);
+        ld_rdb(16'h0000, pw.size(), rb);
         foreach (pw[i]) if (rb[i] !== pw[i]) begin errors++; $display("FAIL readback word %0d %h %h", i, rb[i], pw[i]); end
         ld_rdb(HR_LOAD_CRC, 1, rb);
         check("LOAD_CRC", rb[0], ~crc);
-        ld_rdb(lane_word_addr(0, 9), 1, rb);
-        check("lane 0 word 9 readback", rb[0], (1 << 19) | (1 << 25));
+        ld_rdb(LANE_HOST_BASE + 16'(LR_LANE_CFG), 1, rb);
+        check("lane 0 LANE_CFG readback", rb[0], LANE_CFG_UART);
         ld_rdb(HR_PAD_OUT, 1, rb);
         check("PAD_OUT[0] readback", rb[0], 32'h1C0);
 
@@ -208,16 +205,16 @@ module tb_tse_chip;
         spi_rd(HR_EV_POP, rd);
         check("first record is TIME, epoch 0", rd, 32'h3F00_0000);
         spi_rd(HR_EV_POP, rd);
-        check("lane 0 event code 5", {rd[31:16], 16'd0}, 32'h0500_0000);
+        check("lane 0 event code 5, X[7:0] 0xAA", {rd[31:16], 16'd0}, 32'h05AA_0000);
         spi_rd(HR_IRQ, rd);
         check("IRQ", rd & 32'hF, 32'h5);
         spi_rd(HR_IRQ, rd);
         check("IRQ after the clearing read", rd, 32'h0);
-        spi_wr(lane_word_addr(0, 9), 32'd0);                // running lane: refused
+        spi_wr(LANE_HOST_BASE + 16'(LR_LANE_CFG), 32'd0);                // running lane: refused
         spi_rd(HR_STATUS, rd);
         check("STATUS after a refused write", rd, 32'h10F);
-        spi_rd(lane_word_addr(0, 9), rd);
-        check("refused write left the word", rd, (1 << 19) | (1 << 25));
+        spi_rd(LANE_HOST_BASE + 16'(LR_LANE_CFG), rd);
+        check("refused write left the word", rd, LANE_CFG_UART);
 
         rst_n = 1'b0;                                       // load mode clears loaded
         repeat (8) @(negedge clk);
