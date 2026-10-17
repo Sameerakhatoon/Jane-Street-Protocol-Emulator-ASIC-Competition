@@ -30,12 +30,12 @@ jobs:
         with:
           python-version: '3.11'
       - run: pip install cocotb==2.1.0 hypothesis==6.169.0 pytest==9.1.1
-      - run: make verif-lint lockstep
+      - run: make verif-lint lockstep lane-lockstep block-lockstep
       - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: lockstep-results
-          path: verif/lockstep/results.xml
+          path: verif/*/results.xml
 
   formal:
     runs-on: ubuntu-24.04

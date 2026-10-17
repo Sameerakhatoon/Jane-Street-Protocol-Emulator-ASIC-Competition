@@ -25,7 +25,7 @@ jobs:
           path: verif/lockstep/sim_build/.hypothesis-*
           key: hypothesis-db-${{ github.run_id }}
           restore-keys: hypothesis-db-
-      - run: make lockstep HYP_EXAMPLES=2000 CI=false
+      - run: make lockstep lane-lockstep block-lockstep verilator-lockstep HYP_EXAMPLES=2000 LANE_EXAMPLES=1000 BLOCK_EXAMPLES=1000 CI=false
 
   mutation:
     runs-on: ubuntu-24.04

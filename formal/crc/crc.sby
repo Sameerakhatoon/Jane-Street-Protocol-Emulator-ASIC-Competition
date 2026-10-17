@@ -1,5 +1,6 @@
 [tasks]
 equiv          E
+full           F
 cat_crc5_usb   K crc5
 cat_crc15_can  K crc15
 cat_crc16_usb  K crc16
@@ -8,20 +9,26 @@ cat_crc32      K crc32
 [options]
 E: mode prove
 E: depth 20
+F: mode prove
 K: mode bmc
 K: depth 90
 
 [engines]
-smtbmc bitwuzla
+E: smtbmc bitwuzla
+K: smtbmc bitwuzla
+F: abc pdr
 
 [script]
 K: verilog_defines -DCAT
 crc5:  verilog_defines -DCRC5_USB
 crc15: verilog_defines -DCRC15_CAN
 crc16: verilog_defines -DCRC16_USB
-read -formal tse_crc.sv crc_props.sv
-prep -top crc_props
+~F: read -formal tse_crc.sv crc_props.sv
+~F: prep -top crc_props
+F: read -formal tse_crc.sv crc_full.sv
+F: prep -top crc_full
 
 [files]
 tse_crc.sv
 crc_props.sv
+crc_full.sv

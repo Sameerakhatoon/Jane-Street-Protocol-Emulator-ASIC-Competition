@@ -1,0 +1,15 @@
+[options]
+mode prove
+expect pass,fail
+
+[engines]
+abc pdr
+
+[script]
+read_rtlil mutated.il
+read -formal codec_props.sv
+prep -top codec_props
+
+[files]
+mutated.il
+codec_props.sv

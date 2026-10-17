@@ -1,0 +1,15 @@
+[options]
+mode prove
+expect pass,fail
+
+[engines]
+abc pdr
+
+[script]
+read_rtlil mutated.il
+read -formal stuff_props.sv
+prep -top stuff_props
+
+[files]
+mutated.il
+stuff_props.sv

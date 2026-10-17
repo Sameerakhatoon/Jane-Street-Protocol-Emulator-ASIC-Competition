@@ -1,0 +1,13 @@
+[options]
+mode prove
+
+[engines]
+abc pdr
+
+[script]
+read -formal tse_codec.sv codec_props.sv
+prep -top codec_props
+
+[files]
+tse_codec.sv
+codec_props.sv

@@ -1,0 +1,26 @@
+[tasks]
+full
+cat32
+
+[options]
+full: mode prove
+cat32: mode bmc
+cat32: depth 90
+expect pass,fail
+
+[engines]
+full: abc pdr
+cat32: smtbmc yices
+
+[script]
+cat32: verilog_defines -DCAT
+read_rtlil mutated.il
+full: read -formal crc_full.sv
+full: prep -top crc_full
+cat32: read -formal crc_props.sv
+cat32: prep -top crc_props
+
+[files]
+mutated.il
+crc_full.sv
+crc_props.sv
