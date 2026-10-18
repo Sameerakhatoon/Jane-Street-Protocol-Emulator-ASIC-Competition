@@ -1,13 +1,14 @@
 # Simulation harness: one tse_sim binary per Verilated top.
 #   make                 TOP=echo (stand-in), build/echo/tse_sim
 #   make TOP=uart        UART test Tiny Tapeout top from RTL_DIR
-#   make TOP=chip        full chip (tse_chip) from RTL_DIR
+#   make TOP=chip        full chip (tse_chip, LANES lanes) from RTL_DIR
 #   make TOP=chip pgo    profile-guided model, build/chip-pgo/tse_sim
 #   make unit            adapter unit tests, build/unit/
 #   make pins            regenerate bridge/pins_gen.h from the pinout tables
 SHELL      := /bin/bash
 RTL_DIR    ?= ../src
 TOP        ?= echo
+LANES      ?= 2
 
 # Packages first so the modules can import them; every other block of the
 # chip except the Tiny Tapeout tops, plus the SIM-selected SRAM model.
@@ -31,7 +32,7 @@ else ifeq ($(TOP),chip)
 RTL_SRC    = $(addprefix $(RTL_DIR)/,$(CHIP_SV))
 RTL_TOP    = tse_chip
 TOP_DEF    = -DTSE_TOP_CHIP
-VL_WARN    = -Wno-fatal -DSIM
+VL_WARN    = -Wno-fatal -DSIM -GLANES=$(LANES)
 else
 $(error TOP must be echo, uart or chip)
 endif
@@ -47,7 +48,7 @@ LZ4_INC    = $(if $(wildcard /usr/include/lz4.h),,-I$(CURDIR)/compat)
 LDLIBS     = -l:liblz4.so.1 -lz -lpthread -latomic
 
 # Model build knobs. VARIANT keeps experiments apart, for example
-#   make TOP=chip VARIANT=-l1 VL_OPT="-O3 --x-assign fast --x-initial fast -GLANES=1"
+#   make TOP=chip VARIANT=-o2 VL_CFLAGS=-O2
 # --threads N made the full chip slower here, so it is not used.
 VL_OPT    ?= -O3 --x-assign fast --x-initial fast
 VL_CFLAGS ?= -O3 -march=native

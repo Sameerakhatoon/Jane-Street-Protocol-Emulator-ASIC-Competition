@@ -35,6 +35,8 @@ def parser():
         sp.add_argument("--expect", metavar="FILE", help="expected frame keys, one per line")
         sp.add_argument("--allow-empty", action="store_true")
         sp.add_argument("--quiet", action="store_true", help="print only violations and the verdict")
+        sp.add_argument("--from", dest="t_from", type=float, metavar="SECONDS",
+                        help="judge only from this time on (for example after a load phase)")
         mod.add_args(sp)
     return p
 
@@ -63,6 +65,10 @@ def run(argv, out=sys.stdout):
     except (OSError, VcdError) as e:
         print("error: %s" % e, file=sys.stderr)
         return 2
+    if args.t_from is not None:
+        t0 = int(round(trace.units(args.t_from)))
+        for s in trace.signals.values():
+            s.crop(t0)
     res = mod.decode(trace, **{k: getattr(args, k) for k in mod.OPTS})
 
     if not args.quiet:

@@ -82,6 +82,13 @@ class Signal:
             i += 1
         return out
 
+    def crop(self, t):
+        """Forget everything before t; the level at t becomes the first sample."""
+        i = bisect.bisect_right(self.times, t)
+        lv = self.levels[i - 1] if i > 0 else X
+        self.times = array("q", [t]) + self.times[i:]
+        self.levels = bytearray([lv]) + self.levels[i:]
+
     def __len__(self):
         return len(self.times)
 

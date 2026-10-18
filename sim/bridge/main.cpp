@@ -68,7 +68,7 @@ static void usage(void){
         "  --free-run             run time even when no adapter is busy\n"
         "  --cycles N             stop after N cycles (0 = until SIGINT or SIGTERM)\n"
         "  --bench N              run N cycles flat out, print cycles per second\n"
-        "  --pin-server           pins from stdin: S ui uio rst, T n, R, Q (hex)\n"
+        "  --pin-server           pins from stdin: S ui uio rst, T n, R, U n mask, Q (hex)\n"
         "  --quantum N            cycles per batch between poll() calls (4096)\n"
         "PIN is ui0..ui7, uo0..uo7, uio0..uio7 or a pinout name (XIO2, RUN.SPI_MISO).\n",
         TOP_NAME, DEF_TX, DEF_IN);
@@ -78,6 +78,9 @@ static void usage(void){
 //   S <ui_in> <uio_in> <rst_n>   set inputs, no reply
 //   T <n>                        run n cycles, no reply
 //   R                            reply "<uo_out>\n"
+//   U <n> <mask>                 run up to n cycles, stopping after the first one in
+//                                which uio_out or uio_oe changed under mask; reply
+//                                "<cycles run> <uo_out> <uio_out> <uio_oe>\n"
 //   Q                            quit
 // All numbers hex. Adapters still tick, but not while rst_n is low.
 static int pin_server(Harness* h){
@@ -103,6 +106,22 @@ static int pin_server(Harness* h){
             printf("%x\n", h->pins.uo_out);
             fflush(stdout);
             break;
+        case 'U': {
+            // a host-side bus model (open drain) sleeps until the chip moves a line
+            unsigned long long ran = 0;
+            if(sscanf(line + 1, "%llx %x", &n, &a) != 2)
+                goto bad;
+            uint8_t o0 = h->pins.uio_out & a, e0 = h->pins.uio_oe & a;
+            while(ran < n){
+                harness_step(h, h->pins.rst_n);
+                ran++;
+                if((h->pins.uio_out & a) != o0 || (h->pins.uio_oe & a) != e0)
+                    break;
+            }
+            printf("%llx %x %x %x\n", ran, h->pins.uo_out, h->pins.uio_out, h->pins.uio_oe);
+            fflush(stdout);
+            break;
+        }
         case 'Q':
             return 0;
         case '\n':

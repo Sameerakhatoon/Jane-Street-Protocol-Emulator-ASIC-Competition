@@ -79,3 +79,21 @@ def test_module_entry_point(tmp_path):
                         "--bitrate", "500000"], cwd=ROOT, capture_output=True, text=True)
     assert p.returncode == 0, p.stdout + p.stderr
     assert "123#DEADBEEF" in p.stdout and p.stdout.splitlines()[-1].startswith("PASS can")
+
+
+def test_from_skips_a_load_phase(tmp_path):
+    w = Wave()
+    w.add("uo_out0", 0)
+    for k in range(12):                         # readback bytes on the pin before the run
+        w.set("uo_out0", 1e-6 + k * 0.4e-6, k & 1)
+    w.set("uo_out0", 6e-6, 1)
+    t = uart_tx(w, "uo_out0", 20e-6, 0x48, 115200) + 10e-6
+    uart_tx(w, "uo_out0", t, 0x69, 115200)
+    path = w.write(str(tmp_path / "l.vcd"), tail=100e-6)
+    base = ["uart", path, "--map", "rx=uo_out0", "--baud", "115200"]
+    rc, lines = call(base)
+    assert rc == 1 and any("idle level" in ln for ln in lines)
+    rc, lines = call(base + ["--from", "8e-6"])
+    assert rc == 0 and lines[-1] == "PASS uart: 2 frames, 0 violations"
+    rc, lines = call(base + ["--from", "%g" % (t - 5e-6), "--quiet"])
+    assert rc == 0 and lines[-1] == "PASS uart: 1 frames, 0 violations"
