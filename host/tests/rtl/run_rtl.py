@@ -1,4 +1,5 @@
-"""Build the whole chip with Icarus and run the cocotb tests in loader_rtl.py.
+"""Build the whole chip with Icarus and run the cocotb tests in loader_rtl.py and
+session_rtl.py at 3 lanes, then session_rtl.py again on the 4-lane build.
 
     python3 host/tests/rtl/run_rtl.py        (from the repository root)
 The source list is the full-chip one from info_chip.yaml, with the SRAM model
@@ -30,12 +31,18 @@ def main():
     os.environ["PYTHONPATH"] = os.pathsep.join([HERE, HOST, PINS, os.environ.get("PYTHONPATH", "")])
     os.environ["PYTHONDONTWRITEBYTECODE"] = "1"
     sys.path[:0] = [HERE, HOST, PINS]
-    r = get_runner("icarus")
-    r.build(sources=sources(), hdl_toplevel="tse_chip", build_dir=BUILD,
-            build_args=["-g2012", "-DSIM"], timescale=("1ps", "1ps"), always=True)
-    results = r.test(hdl_toplevel="tse_chip", test_module="loader_rtl", build_dir=BUILD,
-                     test_dir=BUILD)
-    total, failed = get_results(results)
+    total = failed = 0
+    for lanes, modules in ((3, ["loader_rtl", "session_rtl"]), (4, ["session_rtl"])):
+        build = "%s_L%d" % (BUILD, lanes)
+        r = get_runner("icarus")
+        r.build(sources=sources(), hdl_toplevel="tse_chip", build_dir=build,
+                parameters={"LANES": lanes}, build_args=["-g2012", "-DSIM"],
+                timescale=("1ps", "1ps"), always=True)
+        results = r.test(hdl_toplevel="tse_chip", test_module=modules, build_dir=build,
+                         test_dir=build, extra_env={"LANES": str(lanes)})
+        t, f = get_results(results)
+        print("rtl %d lanes: %d tests, %d failed" % (lanes, t, f))
+        total, failed = total + t, failed + f
     print("rtl: %d tests, %d failed" % (total, failed))
     return 1 if failed else 0
 

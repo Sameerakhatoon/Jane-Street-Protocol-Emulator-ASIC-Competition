@@ -13,14 +13,26 @@ What it models, one call of tick() per rising clock edge:
     CRC-32 over the address and data bytes of WR and WRB, COMMIT setting
     loaded only on a match, reads presenting one byte per strobe MSB first,
     the first byte of each word READ_LAT edges after its strobe is seen.
-  - BIST: the March test as a fixed BIST_CYCLES run that leaves the SRAM
-    holding the last background.
+  - BIST: the March test on the SRAM test port as a fixed BIST_CYCLES run
+    that leaves the SRAM holding the last background; the host cannot reach
+    the SRAM meanwhile. A stuck-at-1 cell (bist_fail_word) or a dead macro
+    (sram_dead: every read returns 0) makes it fail.
   - run mode: the SPI target on ui_in[0] CS_N, ui_in[1] SCK, ui_in[2] MOSI,
-    uo_out[3] MISO, oversampled through 2-flop synchronizers, with the
-    refusal rules (configuration of a running lane, RUN while not loaded,
-    BEGIN, BIST and COMMIT while any lane runs) setting the sticky host error.
-  - the host-bus register map from regs_map: bits outside fields do not exist.
-Lanes themselves are not modelled: a lane "runs" when its RUN bit is set.
+    uo_out[3] MISO, oversampled through 2-flop synchronizers.
+  - the host-bus register map from regs_map: bits outside fields do not
+    exist; chip configuration in one bank addressed {bank, word}; the data
+    window (SRAM window 3 with 3 lanes, a DS_WORDS word store with 4); the
+    fallback store.
+  - the 16-cycle slot frame: a RUN write is stored at once, but lanes start
+    and stop (live) only at the frame end, cnt == 15, and only while loaded.
+  - refusals, each setting the sticky host error (a refused read returns 0):
+    a class L or P lane write while that lane runs or is about to; an SRAM
+    write into a window such a lane fetches from; a fallback store write
+    while such a lane fetches from it; any SRAM access during the self-test,
+    and SRAM program access while lanes run with 4 lanes; RUN in run mode
+    while not loaded; BEGIN, BIST and COMMIT over SPI unless every lane is
+    stopped.
+Lanes themselves are not modelled: a lane runs while its live bit is set.
 
 Host timing faults (strobe edges closer than MIN_HOLD clocks, data changing
 before the loader sampled it) are not hidden: the model does what the RTL
@@ -34,12 +46,16 @@ from .frames import WR, RD, WRB, RDB, BEGIN, BIST, COMMIT, STAT, crc32_update
 LANES = 3
 SRAM_WORDS = 512
 WINDOW_WORDS = 0x80
-DATA_WINDOW = 3            # 6x4: window 3 is the data window
+DATA_WINDOW = 3            # 3 lanes: SRAM window 3 is the data window
+DS_WORDS = 16              # 4 lanes: words in the data store; above read 0
+FRAME = 16                 # cycles per slot frame
 READ_LAT = 3               # edges from a read strobe event to the byte on uo_out
-BIST_CYCLES = 10300
+BIST_CYCLES = 11500
 BIST_LAST_BACKGROUND = 0x55555555
+BIST_DEAD = (1 << 13) | (2 << 9)    # dead macro: first fail reading ones, word 0
+BIST_CELL = (1 << 13) | (1 << 9)   # stuck-at-1 cell: first fail reading zeros
 MIN_HOLD = 4
-ID_VALUE = 0x54 | (1 << 8) | (LANES << 12) | (1 << 15) | (4 << 16)
+VIRT_PINS = 4
 
 P_IDLE, P_ADDR, P_COUNT, P_WDATA, P_READ, P_CRC, P_STAT = range(7)
 
@@ -52,10 +68,17 @@ def _rand_regs(rng, table, cls):
     return out
 
 
+def bank_slot(name, index=0):
+    """Word of a class-L chip register in the chip's one configuration bank."""
+    r = regs_map.CHIP[name]
+    return regs_map.BANK_WORDS * regs_map.CHIP_BANKS.index(r["bank"]) + r["word"] + index
+
+
 class Chip:
-    def __init__(self, seed=None, lanes=LANES, bist_fail_word=None):
+    def __init__(self, seed=None, lanes=LANES, bist_fail_word=None, sram_dead=False):
         self.lanes = lanes
         self.bist_fail_word = bist_fail_word
+        self.sram_dead = sram_dead
         self.power_up(seed)
 
     # ---------------------------------------------------------------- power
@@ -66,15 +89,20 @@ class Chip:
         self.cycle = 0
         self.violations = []
         self.sram = [rng.getrandbits(32) for _ in range(SRAM_WORDS)]
+        self.dstore = [rng.getrandbits(32) for _ in range(DS_WORDS)]
         self.fallback = [rng.getrandbits(32) for _ in range(regs_map.REGIONS["fallback"]["size"])]
         self.lane_cfg = [_rand_regs(rng, regs_map.LANE, "L") for _ in range(self.lanes)]
         self.lane_flop = [_rand_regs(rng, regs_map.LANE, "F") for _ in range(self.lanes)]
-        self.chip_cfg = {}
+        self.cbank_mask = [0] * (regs_map.BANK_WORDS * len(regs_map.CHIP_BANKS))
         for name, r in regs_map.CHIP.items():
             if r["class"] == "L":
                 for i in range(r.get("count", 1)):
-                    self.chip_cfg[(name, i)] = rng.getrandbits(32) & r["mask"]
+                    unbuilt = name == "LANE_IN" and i >= VIRT_PINS * self.lanes
+                    self.cbank_mask[bank_slot(name, i)] = 0 if unbuilt else r["mask"]
+        self.cbank = [rng.getrandbits(32) & m for m in self.cbank_mask]
         self.run = rng.getrandbits(4)
+        self.live = 0
+        self.cnt = rng.getrandbits(4)
         self.mbox_tx = [rng.getrandbits(32) for _ in range(4)]
         self.events = []
         self.ts = rng.getrandbits(32)
@@ -104,6 +132,10 @@ class Chip:
         self.ui_in, self.uio_in, self.rst_n = 0, 0, 1
         self._strobe_cycle = -MIN_HOLD
         self._strobe_data = (0, 0)
+
+    @property
+    def id_value(self):
+        return 0x54 | (1 << 8) | (self.lanes << 12) | (1 << 15) | (4 << 16)
 
     # ----------------------------------------------------------------- pins
     def set_inputs(self, ui_in=None, uio_in=None, rst_n=None):
@@ -140,7 +172,10 @@ class Chip:
         self.cycle += 1
         load_mode = self.lm[1]
         entering = load_mode and not self.lm[2]
+        switching = load_mode != self.lm[2]
         strobe = load_mode and (self.st[2] ^ self.st[1])
+        frame_end = self.cnt == FRAME - 1
+        self.cnt = 0 if switching else (self.cnt + 1) % FRAME
         self.lm = [0 if self.rst_n else 1, self.lm[0], self.lm[1]]
         self.st = [self.uio_in & 1, self.st[0], self.st[1]]
         if self.bist_left:
@@ -148,6 +183,8 @@ class Chip:
             if not self.bist_left:
                 self._bist_finish()
         if not load_mode:
+            if frame_end:
+                self.live = self.run & self.lane_mask() if self.loaded else 0
             self.ts = (self.ts + 1) & 0xFFFFFFFF
             self.phase = P_IDLE
             self._spi_edge()
@@ -171,6 +208,7 @@ class Chip:
 
     def _engine_reset(self):
         self.run = 0
+        self.live = 0
         for f in self.lane_flop:
             for k in f:
                 f[k] = 0
@@ -259,12 +297,13 @@ class Chip:
         self.run = 0
         self.crc = 0xFFFFFFFF
         self.host_err = 0
+        self.bist_done = self.bist_pass = 0
+        self.bist_info = 0
         self.fallback = [0] * len(self.fallback)
         for c in self.lane_cfg:
             for k in c:
                 c[k] = 0
-        for k in self.chip_cfg:
-            self.chip_cfg[k] = 0
+        self.cbank = [0] * len(self.cbank)
 
     def _bist_start(self):
         self.bist_left = BIST_CYCLES
@@ -272,30 +311,44 @@ class Chip:
         self.bist_info = 0
 
     def _bist_finish(self):
-        self.sram = [BIST_LAST_BACKGROUND] * SRAM_WORDS
         self.bist_done = 1
+        if self.sram_dead:
+            self.bist_pass, self.bist_info = 0, BIST_DEAD
+            return
+        self.sram = [BIST_LAST_BACKGROUND] * SRAM_WORDS
         w = self.bist_fail_word
         self.bist_pass = 1 if w is None else 0
-        self.bist_info = 0 if w is None else (1 << 13) | (w & 0x1FF)
+        self.bist_info = 0 if w is None else BIST_CELL | (w & 0x1FF)
 
     # ------------------------------------------------------------- host bus
+    def lane_mask(self):
+        return (1 << self.lanes) - 1
+
     def status(self):
-        running = self.run & ((1 << self.lanes) - 1) if self.loaded else 0
         return (self.loaded | self.bist_done << 1 | self.bist_pass << 2 | self.host_err << 3
-                | running << 8)
+                | self.live << 8)
 
     def running(self, lane=None):
-        mask = self.status() >> 8
+        """Live lanes (the STATUS view): set at a frame end from RUN while loaded."""
+        return self.live if lane is None else (self.live >> lane) & 1
+
+    def busy(self, lane=None):
+        """Lanes that run or are about to (RUN set): what the refusal rules look at."""
+        mask = (self.run | self.live) & self.lane_mask()
         return mask if lane is None else (mask >> lane) & 1
 
     def _decode(self, addr):
-        """('sram', i) | ('fallback', i) | ('lane', lane, name) | ('chip', name, index) | None"""
+        """('sram', i) | ('dstore', i) | ('fallback', i) | ('lane', lane, name)
+        | ('chip', name, index) | ('none',) for a mapped word that stores nothing | None"""
         R = regs_map.REGIONS
         if addr < R["sram"]["base"] + R["sram"]["size"]:
             return ("sram", addr)
         d = R["data"]
         if d["base"] <= addr < d["base"] + d["size"]:
-            return ("sram", WINDOW_WORDS * DATA_WINDOW + addr - d["base"])
+            i = addr - d["base"]
+            if self.lanes < 4:
+                return ("sram", WINDOW_WORDS * DATA_WINDOW + i)
+            return ("dstore", i) if i < DS_WORDS else ("none",)
         f = R["fallback"]
         if f["base"] <= addr < f["base"] + f["size"]:
             return ("fallback", addr - f["base"])
@@ -312,14 +365,27 @@ class Chip:
                 return ("chip", name, (addr - r["addr"]) // s)
         return None
 
-    def _window_lane(self, word):
-        """Lane whose program window holds SRAM word, or None."""
-        win = word // WINDOW_WORDS
+    def _prog(self, lane):
+        p = self.lane_cfg[lane].get("LANE_PROG", 0)
+        f = regs_map.LANE["LANE_PROG"]["fields"]
+        return (p >> f["window"][1]) & 3, (p >> f["fallback"][1]) & 1
+
+    def _busy_window(self, win):
         for lane in range(self.lanes):
-            prog = self.lane_cfg[lane].get("LANE_PROG", 0)
-            if (prog >> 8) & 3 == win:
-                return lane
-        return None
+            w, fb = self._prog(lane)
+            if self.busy(lane) and not fb and w == win:
+                return True
+        return False
+
+    def _busy_fallback(self):
+        return any(self.busy(lane) and self._prog(lane)[1] for lane in range(self.lanes))
+
+    def _sram_refused(self, word, write):
+        if self.bist_left:
+            return True
+        if self.lanes == 4 and self.busy():
+            return True
+        return write and self._busy_window(word // WINDOW_WORDS)
 
     def _refuse(self):
         self.host_err = 1
@@ -329,34 +395,30 @@ class Chip:
         if where is None:
             return
         kind = where[0]
-        if kind in ("sram", "fallback") and self.bist_left:
-            return self._refuse()
         if kind == "sram":
             word = where[1]
-            lane = self._window_lane(word)
-            if word // WINDOW_WORDS != DATA_WINDOW and lane is not None and self.running(lane):
+            if self._sram_refused(word, True):
                 return self._refuse()
-            self.sram[word] = value
+            if not self.sram_dead:
+                self.sram[word] = value
+        elif kind == "dstore":
+            self.dstore[where[1]] = value
         elif kind == "fallback":
-            if self.running():
+            if self._busy_fallback():
                 return self._refuse()
             self.fallback[where[1]] = value
         elif kind == "lane":
             lane, name = where[1], where[2]
             r = regs_map.LANE[name]
-            if r["class"] == "R":
-                return
-            if self.running(lane):
+            if r["class"] in ("L", "P") and self.busy(lane):
                 return self._refuse()
             if r["class"] == "L":
                 self.lane_cfg[lane][name] = value & r["mask"]
             elif r["class"] == "F":
                 self.lane_flop[lane][name] = value & r["mask"]
-        else:
+        elif kind == "chip":
             name, idx = where[1], where[2]
             r = regs_map.CHIP[name]
-            if r["class"] == "R":
-                return
             if name == "RUN":
                 if self.load_mode:
                     return              # runtime flops are held in reset in load mode
@@ -365,10 +427,9 @@ class Chip:
                 self.run = value & r["mask"]
             elif name == "MBOX_TX":
                 self.mbox_tx[idx] = value & r["mask"]
-            elif self.running():
-                self._refuse()
             elif r["class"] == "L":
-                self.chip_cfg[(name, idx)] = value & r["mask"]
+                k = bank_slot(name, idx)
+                self.cbank[k] = value & self.cbank_mask[k]
             elif name == "EV_CLEAR" and value & 1:
                 self.events = []
 
@@ -378,7 +439,14 @@ class Chip:
             return 0
         kind = where[0]
         if kind == "sram":
-            return self.sram[where[1]]
+            if self._sram_refused(where[1], False):
+                self._refuse()
+                return 0
+            return 0 if self.sram_dead else self.sram[where[1]]
+        if kind == "dstore":
+            return self.dstore[where[1]]
+        if kind == "none":
+            return 0
         if kind == "fallback":
             return self.fallback[where[1]]
         if kind == "lane":
@@ -389,16 +457,16 @@ class Chip:
             if cls == "F":
                 return self.lane_flop[lane][name]
             if name == "STATUS":
-                return self.running(lane) << 10
+                return self.running(lane) << regs_map.LANE["STATUS"]["fields"]["running"][1]
             if name == "TS":
                 return self.ts
             return 0                    # P reads 0; the other R registers are not modelled
         name, idx = where[1], where[2]
         r = regs_map.CHIP[name]
         if r["class"] == "L":
-            return self.chip_cfg[(name, idx)]
+            return self.cbank[bank_slot(name, idx)]
         if name == "ID":
-            return ID_VALUE
+            return self.id_value
         if name == "RUN":
             return self.run
         if name == "STATUS":
@@ -413,13 +481,15 @@ class Chip:
             return min(len(self.events), 15)
         if name == "EV_POP":
             return self.events.pop(0) if self.events else 0
-        if name == "MBOX_TX":
-            return 0
         return 0
 
     def lane_config(self, lane, name):
         """Backdoor read of a configuration word (programs and the host cannot read them)."""
         return self.lane_cfg[lane][name]
+
+    def chip_config(self, name, index=0):
+        """Backdoor read of a chip configuration word."""
+        return self.cbank[bank_slot(name, index)]
 
     # ----------------------------------------------------------- SPI target
     def _spi_reset(self):
@@ -438,7 +508,7 @@ class Chip:
         cs_now, sck_now, sck_old, mosi_now = s_cs[1], s_sck[1], s_sck[2], s_mosi[1]
         self.sp_sync = [[cs, s_cs[0], s_cs[1]], [sck, s_sck[0], s_sck[1]],
                         [mosi, s_mosi[0], s_mosi[1]]]
-        if self.chip_cfg.get(("PIN_OPT", 0), 0) & 1:
+        if self.chip_config("PIN_OPT") & 1:
             return                      # host_spi_off: the pins belong to the crossbar
         if cs_now:
             if self.sp_bits:
@@ -458,7 +528,7 @@ class Chip:
         bs = self.sp_bytes
         bs.append(b)
         n, code = len(bs), bs[0]
-        stopped = not self.running()
+        stopped = not self.busy()
         if code == STAT and n == 1:
             st = self.status() & 0xFF
             self._spi_reply(8, lambda i: (st >> (7 - i)) & 1 if i < 8 else 0)
@@ -512,22 +582,29 @@ class Chip:
     def snapshot(self):
         """Architectural state as plain data (for the command line's state file)."""
         return {
-            "sram": list(self.sram), "fallback": list(self.fallback),
+            "lanes": self.lanes, "sram_dead": self.sram_dead,
+            "sram": list(self.sram), "dstore": list(self.dstore), "fallback": list(self.fallback),
             "lane_cfg": [dict(c) for c in self.lane_cfg],
             "lane_flop": [dict(f) for f in self.lane_flop],
-            "chip_cfg": [[k[0], k[1], v] for k, v in sorted(self.chip_cfg.items())],
-            "run": self.run, "loaded": self.loaded, "crc": self.crc, "host_err": self.host_err,
+            "cbank": list(self.cbank),
+            "run": self.run, "live": self.live, "loaded": self.loaded, "crc": self.crc,
+            "host_err": self.host_err,
             "bist": [self.bist_done, self.bist_pass, self.bist_info],
             "mbox_tx": list(self.mbox_tx), "events": list(self.events),
             "rst_n": self.rst_n, "cycle": self.cycle, "ts": self.ts,
         }
 
     def restore(self, s):
-        self.sram, self.fallback = list(s["sram"]), list(s["fallback"])
+        if s["lanes"] != self.lanes:
+            self.lanes = s["lanes"]
+            self.power_up(0)
+        self.sram_dead = s["sram_dead"]
+        self.sram, self.dstore, self.fallback = list(s["sram"]), list(s["dstore"]), list(s["fallback"])
         self.lane_cfg = [dict(c) for c in s["lane_cfg"]]
         self.lane_flop = [dict(f) for f in s["lane_flop"]]
-        self.chip_cfg = {(n, i): v for n, i, v in s["chip_cfg"]}
-        self.run, self.loaded, self.crc, self.host_err = s["run"], s["loaded"], s["crc"], s["host_err"]
+        self.cbank = list(s["cbank"])
+        self.run, self.live, self.loaded = s["run"], s["live"], s["loaded"]
+        self.crc, self.host_err = s["crc"], s["host_err"]
         self.bist_done, self.bist_pass, self.bist_info = s["bist"]
         self.mbox_tx, self.events = list(s["mbox_tx"]), list(s["events"])
         self.cycle, self.ts = s["cycle"], s["ts"]

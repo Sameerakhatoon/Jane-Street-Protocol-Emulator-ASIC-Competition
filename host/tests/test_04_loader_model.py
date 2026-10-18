@@ -164,7 +164,7 @@ def test_10_bist():
     chip, link, s = fresh(bist_fail_word=0x42)
     with pytest.raises(FallbackNeeded):
         s.load(PROG)
-    assert s.peek(regs_map.BIST) == [(1 << 13) | 0x42]
+    assert s.peek(regs_map.BIST) == [model.BIST_CELL | 0x42]
 
 
 # 11: unknown commands and bare strobes outside a command do nothing

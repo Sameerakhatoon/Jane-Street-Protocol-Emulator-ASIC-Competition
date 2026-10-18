@@ -4,13 +4,17 @@
 
 Commands (several per run, separated by +):
     load IMAGE [--no-bist] [--no-verify] [--run MASK]
+    boot IMAGE FALLBACK [--no-verify] [--run MASK]
+                   self-test, then IMAGE, or FALLBACK if the self-test fails
     peek ADDR [COUNT]
     poke ADDR VALUE
     status
     image build -o OUT [--clock HZ] [--name N] [--lane L=prog.s ...] [--chip REG[.I]=V ...]
+                [--fallback]   (a fallback image: one program in the fallback store)
     image show IMAGE
 Targets:
-    model          the Python chip model (default); --state keeps it between runs
+    model          the Python chip model (default); --state keeps it between runs,
+                   --lanes 3 or 4 picks the build, --sram-dead fails its self-test
     pipe:CMD       any pin server speaking the tse_host.pinpipe protocol, e.g.
                    "pipe:python3 -m tse_host.pinpipe" or a Verilated chip harness
 In load mode peek and poke use the byte bus (RD, WR); in run mode, SPI.
@@ -32,12 +36,12 @@ from tse_host.session import Session, LoadError  # noqa: E402
 
 
 class Target:
-    def __init__(self, spec, state, seed):
+    def __init__(self, spec, state, seed, lanes=3, sram_dead=False):
         self.state = state
         self.pins = None
         self.chip = None
         if spec == "model":
-            self.chip = Chip(seed=seed)
+            self.chip = Chip(seed=seed, lanes=lanes, sram_dead=sram_dead)
             if state and os.path.exists(state):
                 with open(state) as fh:
                     self.chip.restore(json.load(fh))
@@ -71,6 +75,11 @@ def parser():
     p.add_argument("--no-bist", action="store_true")
     p.add_argument("--no-verify", action="store_true")
     p.add_argument("--run", type=num)
+    p = sub.add_parser("boot")
+    p.add_argument("image")
+    p.add_argument("fallback")
+    p.add_argument("--no-verify", action="store_true")
+    p.add_argument("--run", type=num)
     p = sub.add_parser("peek")
     p.add_argument("addr", type=num)
     p.add_argument("count", type=num, nargs="?", default=1)
@@ -86,6 +95,7 @@ def parser():
     b.add_argument("--name", default="")
     b.add_argument("--lane", action="append", default=[], help="L=program.s")
     b.add_argument("--chip", action="append", default=[], help="REG[.INDEX]=VALUE")
+    b.add_argument("--fallback", action="store_true")
     s = isub.add_parser("show")
     s.add_argument("image")
     return ap
@@ -105,8 +115,9 @@ def build_image(a):
         reg, _, val = spec.partition("=")
         name, _, idx = reg.partition(".")
         chip.append((name.upper(), int(idx or 0), num(val)))
-    blocks = image.build(lanes, chip)
-    blob = image.pack(blocks, int(a.clock), a.name or os.path.splitext(os.path.basename(a.out))[0])
+    blocks = image.build_fallback(lanes, chip) if a.fallback else image.build(lanes, chip)
+    name = a.name or os.path.splitext(os.path.basename(a.out))[0]
+    blob = image.pack(blocks, int(a.clock), name, fallback=a.fallback)
     with open(a.out, "wb") as fh:
         fh.write(blob)
     print(image.show(blob))
@@ -130,6 +141,21 @@ def run_one(a, tgt):
         if a.run is not None:
             st = s.start(a.run)
             print("run mode, RUN=0x%X, STATUS=0x%08X" % (a.run, st))
+    elif a.cmd == "boot":
+        with open(a.image, "rb") as fh:
+            name, clock, blocks = image.unpack(fh.read())
+        with open(a.fallback, "rb") as fh:
+            blob = fh.read()
+        if not image.is_fallback(blob):
+            raise image.ImageError("%s is not a fallback image" % a.fallback)
+        fb_name, _, fb_blocks = image.unpack(blob)
+        rep = s.boot(blocks, fb_blocks, verify=not a.no_verify)
+        print("boot path %s: loaded %s, crc 0x%08X, BIST 0x%08X"
+              % (rep["path"], (fb_name if rep["path"] == "fallback" else name).decode(),
+                 rep["crc"], rep["bist"]))
+        if a.run is not None:
+            st = s.start(a.run)
+            print("run mode, RUN=0x%X, STATUS=0x%08X" % (a.run, st))
     elif a.cmd == "peek":
         for i, w in enumerate(s.peek(a.addr, a.count)):
             print("0x%04X: 0x%08X" % (a.addr + i, w))
@@ -148,6 +174,8 @@ def main(argv=None):
     top.add_argument("--target", default="model")
     top.add_argument("--state", help="model state file kept between runs")
     top.add_argument("--seed", type=int, default=0, help="power-up state of a fresh model")
+    top.add_argument("--lanes", type=int, choices=(3, 4), default=3, help="model build")
+    top.add_argument("--sram-dead", action="store_true", help="model SRAM returns 0")
     top.add_argument("rest", nargs=argparse.REMAINDER)
     g = top.parse_args(argv)
     groups, cur = [], []
@@ -162,7 +190,7 @@ def main(argv=None):
     if not cmds:
         top.error("no command")
     need = any(c.cmd != "image" for c in cmds)
-    tgt = Target(g.target, g.state, g.seed) if need else None
+    tgt = Target(g.target, g.state, g.seed, g.lanes, g.sram_dead) if need else None
     try:
         for c in cmds:
             run_one(c, tgt)

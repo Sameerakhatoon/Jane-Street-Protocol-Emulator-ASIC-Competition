@@ -3,14 +3,17 @@
 load(): enter load mode (rst_n high, then low: loaded clears), BEGIN, BIST,
 wait, STAT (raise FallbackNeeded if the self-test failed), WRB bursts,
 COMMIT, STAT (raise LoadError if refused), RDB every burst and compare.
+boot(): the power-up flow with a fallback image: the same steps, but when
+the self-test fails it loads the fallback image (into the fallback store,
+which needs no SRAM) instead of the SRAM image, and reports which ran.
 start(): leave load mode and write RUN over SPI. peek() and poke() use the
 byte bus (RD, WR) in load mode and SPI in run mode.
 
 Portable: CPython 3 and MicroPython.
 """
-from . import frames, regs_map, spi
+from . import frames, image, regs_map, spi
 
-BIST_WAIT = 12000       # clocks: the March test runs about 10,300
+BIST_WAIT = 13000       # clocks: the self-test runs about 11,500
 
 
 class LoadError(Exception):
@@ -69,16 +72,39 @@ class Session:
                     bad.append((addr + i, want[addr + i], got))
         return bad
 
+    def selftest(self):
+        """Enter load mode, BEGIN, BIST, wait. Returns 0 on a pass, else the BIST register."""
+        self.enter_load()
+        self.link.exchange(frames.prologue(True))
+        self.link.wait(BIST_WAIT)
+        st = self.stat()
+        if st["bist_done"] and st["bist_pass"]:
+            return 0
+        return self.peek(regs_map.BIST)[0] or 0xFFFFFFFF     # not done: no result to report
+
     def load(self, blocks, bist=True, verify=True):
         """The whole load. Returns the COMMIT CRC; leaves the chip in load mode."""
-        self.enter_load()
-        self.link.exchange(frames.prologue(bist))
         if bist:
-            self.link.wait(BIST_WAIT)
-            st = self.stat()
-            if not (st["bist_done"] and st["bist_pass"]):
-                raise FallbackNeeded("SRAM self-test failed (BIST 0x%08x)"
-                                     % self.peek(regs_map.BIST)[0])
+            res = self.selftest()
+            if res:
+                raise FallbackNeeded("SRAM self-test failed (BIST 0x%08x)" % res)
+        else:
+            self.enter_load()
+            self.link.exchange(frames.prologue(False))
+        return self.write(blocks, verify)
+
+    def boot(self, blocks, fallback, verify=True):
+        """Self-test, then the SRAM image on a pass or the fallback image on a fail.
+        Returns {"path": "sram" or "fallback", "crc": COMMIT CRC, "bist": 0 or
+        the BIST register}; leaves the chip in load mode."""
+        image.check_fallback(fallback)
+        res = self.selftest()
+        path = "fallback" if res else "sram"
+        crc = self.write(fallback if res else blocks, verify)
+        return {"path": path, "crc": crc, "bist": res}
+
+    def write(self, blocks, verify=True):
+        """Bursts, COMMIT, STAT and readback after BEGIN (and BIST). Returns the CRC."""
         body, crc = frames.load_body(blocks)
         self.link.exchange(body + frames.commit(crc))
         st = self.stat()

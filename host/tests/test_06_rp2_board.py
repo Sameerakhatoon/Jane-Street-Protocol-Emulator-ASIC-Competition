@@ -114,7 +114,7 @@ def test_07_runtime_regs(world, tmp_path):
     assert out == [((2 << 16) | 5, 1, 4, 9)] and epoch == 2
     regs.write32(regs_map.CHIP["MBOX_TX"]["addr"] + 1, 0x1234)
     assert world.chip.mbox_tx[1] == 0x1234
-    assert regs.read32(regs_map.ID) == model.ID_VALUE
+    assert regs.read32(regs_map.ID) == world.chip.id_value
 
 
 # 8: a state machine outside the PIO window is refused, as on the RP2350B
@@ -133,3 +133,22 @@ def test_09_same_streams(world, tmp_path):
     b.load_image(write_image(tmp_path))
     seen = b.link.exchange(F.rd(regs_map.STATUS))
     assert F.words_from(seen, 3, 1)[0] & 7 == 7
+
+
+# 10: boot_image on the board: a passing self-test loads the SRAM image, a dead
+#     macro loads the fallback image into the fallback store and runs from it
+def test_10_boot_image(world, tmp_path):
+    lo = regs_map.LANE["LANE_PROG"]["fields"]["fallback"][1]
+    fb_blocks = [(0x0800, [0x40114111, 0x40104200]), (0x1019, [1 << lo])]
+    fb = tmp_path / "fb.tsei"
+    fb.write_bytes(image.pack(fb_blocks, 60000000, b"fb", fallback=True))
+    main = write_image(tmp_path)
+    rep = TseBoard().boot_image(main, str(fb))
+    assert rep["path"] == "sram" and rep["name"] == b"demo"
+    assert world.chip.sram[:48] == BLOCKS[0][1]
+    world.chip.sram_dead = True
+    rep = TseBoard().boot_image(main, str(fb), run_mask=1)
+    assert rep["path"] == "fallback" and rep["name"] == b"fb" and rep["bist"] == model.BIST_DEAD
+    assert world.chip.fallback[:2] == fb_blocks[0][1] and rep["status"] >> 8 & 0xF == 1
+    with pytest.raises(image.ImageError):
+        TseBoard().boot_image(main, main)

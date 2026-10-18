@@ -163,3 +163,25 @@ class TseBoard:
         if run_mask is not None:
             st = self.session.start(run_mask)
         return name, crc, st, ticks_diff(ticks_ms(), t0)
+
+    def boot_image(self, path, fallback_path, verify=True, run_mask=None):
+        """The power-up flow: self-test, then the SRAM image, or the fallback image
+        when the self-test fails. Returns the session's boot report plus "name",
+        "status" (after RUN, or None) and "ms"."""
+        with open(path, "rb") as f:
+            name, clock_hz, blocks = image.unpack(f.read())
+        with open(fallback_path, "rb") as f:
+            blob = f.read()
+        if not image.is_fallback(blob):
+            raise image.ImageError("%s is not a fallback image" % fallback_path)
+        fb_name, fb_clock, fb_blocks = image.unpack(blob)
+        if fb_clock != clock_hz:
+            raise image.ImageError("images want %d Hz and %d Hz" % (clock_hz, fb_clock))
+        t0 = ticks_ms()
+        self.select()
+        self.link.start_clock(clock_hz)
+        rep = self.session.boot(blocks, fb_blocks, verify=verify)
+        rep["name"] = fb_name if rep["path"] == "fallback" else name
+        rep["status"] = None if run_mask is None else self.session.start(run_mask)
+        rep["ms"] = ticks_diff(ticks_ms(), t0)
+        return rep

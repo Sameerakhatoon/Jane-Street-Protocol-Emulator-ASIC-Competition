@@ -28,6 +28,9 @@ def reg_entry(r):
         e["stride"] = r["stride"]
     if "host" in r:
         e["host"] = r["host"]
+    if "bank" in r:
+        e["bank"] = r["bank"]
+        e["word"] = r["word"]
     return e
 
 
@@ -35,6 +38,9 @@ def regs_map():
     out = HEAD % "tse_regs.yaml"
     out += "# Register map of the host bus: CHIP[name] and LANE[name] give addr, class\n"
     out += "# (L config, F flop, P pulse, R read-only), mask and fields {name: (hi, lo)}.\n"
+    out += "# A class-L chip register also names its bank (in CHIP_BANKS) and word: the\n"
+    out += "# chip keeps one bank of BANK_WORDS x len(CHIP_BANKS) words addressed\n"
+    out += "# {bank index, word}.\n"
     tables = [
         ("CHIP", {n: reg_entry(r) for n, r in regs.CHIP.items()}),
         ("LANE", {n: reg_entry(r) for n, r in regs.LANE.items()}),
@@ -43,7 +49,7 @@ def regs_map():
     ]
     for name, t in tables:
         out += "\n%s = %s\n" % (name, pprint.pformat(t, width=100, sort_dicts=True))
-    out += "\n"
+    out += "\nCHIP_BANKS = %r\nBANK_WORDS = %d\n\n" % (tuple(regs.CHIP_BANKS), regs.BANK_WORDS)
     for n in ("RUN", "STATUS", "BIST", "LOAD_CRC", "ID", "EV_STATUS", "EV_POP", "TS",
               "MBOX_STATUS", "PIN_OPT"):
         out += "%s = 0x%04X\n" % (n, regs.CHIP[n]["addr"])
