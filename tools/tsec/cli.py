@@ -45,12 +45,14 @@ def arg_parser():
         if name == "build":
             p.add_argument("-o", dest="out", help="output directory")
             p.add_argument("--fclk", type=float, default=60e6)
-            p.add_argument("--slots", type=int, default=4, help="fetch slot period S")
+            p.add_argument("--slots", type=int, default=4, help="slot period S, fixed by the ISA table")
             p.add_argument("--entries", type=int, default=2, help="fetch buffer words per lane")
             p.add_argument("--lat", type=int, default=1, help="fetch_latency (2: registered A_DOUT)")
             p.add_argument("--ppm", type=int, default=50, help="clock budget against the peer")
             p.add_argument("--pad-min", type=float, default=0, help="least pad delay, ns")
             p.add_argument("--pad-max", type=float, default=25, help="largest pad delay, ns")
+            p.add_argument("--pad-skew", type=float, default=None,
+                           help="largest delay difference between two pads, ns (default max - min)")
             p.add_argument("--emit", default="img,lst,report,json",
                            help="comma list of img, lst, report, json, lir, xml, proof, or all")
     sub.add_parser("selftest")
@@ -127,10 +129,15 @@ def build(args, src, path):
     if sym is None:
         return EXIT_ERRORS
     fclk = Fr(int(args.fclk))
-    fm = FetchModel(args.slots, args.entries, args.lat)
+    try:
+        fm = FetchModel(args.slots, args.entries, args.lat)
+    except ValueError as e:
+        print(f"tsec: --slots {args.slots}: {e}", file=sys.stderr)
+        return EXIT_ERRORS
     emit = {"img", "lst", "report", "json", "lir", "xml", "proof"} if args.emit == "all" \
         else set(args.emit.split(","))
-    pads = (args.pad_min, args.pad_max)
+    skew = args.pad_max - args.pad_min if args.pad_skew is None else args.pad_skew
+    pads = (args.pad_min, args.pad_max, skew)
     text = report.header(sym, fclk, fm, args.ppm)
     rejected, accepted, warned = [], [], []
     for lane, role in enumerate(sym.roles):

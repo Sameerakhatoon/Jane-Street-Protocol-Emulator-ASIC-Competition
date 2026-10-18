@@ -64,7 +64,7 @@ def fsm_section(res, rows, fclk, pads):
 
 def fsm_obligations(att, fclk, pads):
     from . import printer
-    pmin, pmax = (Fr(p) * fclk / 10**9 for p in pads)
+    pmin, pmax = (Fr(p) * fclk / 10**9 for p in pads[:2])
 
     def ns(t):
         return f"{float(t / fclk * 10**9):.1f}"
@@ -88,6 +88,9 @@ def fsm_obligations(att, fclk, pads):
                        f"edge, needs at least {float(ins.sep.ticks):.2f} ticks"
                        + (f" and at most {float(ins.sep.hi):.2f}" if ins.sep.hi is not None else "")
                        + (" with pad skew" if ins.sep.skew else "") + "  ok")
+    for st, k, err, budget, where, ok, skew in getattr(att, "pace_rows", []):
+        out.append(f"  line {st.span.line:2d} {printer.stmt(st, 0).rstrip(';')[:40]:<40} placement "
+                   f"error {float(err):.2f} of {float(budget):.2f} ticks  ok")
     if att.res.abort_latency is not None:
         out.append(f"  abort: reaches the abort state within {att.res.abort_latency} cycles of the "
                    "alternate condition being seen (stated bound)")

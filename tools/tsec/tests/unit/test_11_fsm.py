@@ -69,7 +69,7 @@ def test_spi_lowering_shape():
     assert ("PULL", None) in ops and ("JMP", "YDEC") in ops and ("JMP", "TOUT") in ops
     waits = [i for i in prog if i.op == "WAIT"]
     assert sum(1 for w in waits if w.a.get("alt")) == 3        # the level before the loop and two edges
-    loop = labels["loop3"]
+    loop = next(i for name, i in labels.items() if name.startswith("loop"))
     assert loop % 2 == 0                                         # the loop head starts a word
     assert any("OB-WIN shift miso" in line for line in lir.listing(prog))
 
@@ -78,16 +78,16 @@ def test_spi_first_bit_numbers_and_fix():
     sym = front(SPI)
     att, tried = Scheduler(sym, sym.roles[0], 0, FCLK, FetchModel(), (0, 25)).compile()
     assert att is None
-    first = next(v for v in tried[-1].violations if v.span.line == 46)
+    first = next(v for v in tried[-1].violations if v.span.line == 50)
     fields = dict(first.fields)
-    assert fields["late by"] == "63.3 ns"
-    assert fields["fix"] == "t_css >= 164 ns (139 ns with ideal pads)"
+    assert fields["late by"] == "13.3 ns"          # the reaction is buffered on every path
+    assert fields["fix"] == "t_css >= 114 ns,\nor pads characterised at or below 11.7 ns"
 
 
 def test_spi_relaxed_is_accepted():
     sym = front(SPI, t_css="170e-9", f_sck="3.8e6")
     att, _ = Scheduler(sym, sym.roles[0], 0, FCLK, FetchModel(), (0, 25)).compile()
-    assert att is not None and att.mode == "rolled" and len(att.prog) == 16
+    assert att is not None and att.mode == "rolled" and len(att.prog) == 20
 
 
 def test_fix_solves_a_frequency_and_rounds_safely():

@@ -30,6 +30,8 @@ def lane_config(sym, res, fclk):
             cfg["jmp_pin"] = vin[f.jmp_pin]
         if f.alt is not None:
             cfg.update(alt_pol=f.alt[0], alt_src=f.alt[1], alt_idx=f.alt[2])
+        if f.side:
+            cfg.update(side_en=1, ss_base=f.pin_out[f.side[0]])
         notes = dict(f.host_notes)
     else:
         uses = [u.text for u in role.uses]

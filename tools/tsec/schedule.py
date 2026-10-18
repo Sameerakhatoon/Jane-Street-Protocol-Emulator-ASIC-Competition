@@ -100,7 +100,7 @@ def compile_role(sym, role, lane, fclk, fm, ppm, pads=(0, 25)):
         if e.code != "R300":
             raise
         res.kind = "fsm"
-        res.chosen, res.tried = Scheduler(sym, role, lane, fclk, fm, pads).compile()
+        res.chosen, res.tried = Scheduler(sym, role, lane, fclk, fm, pads, ppm).compile()
         return res
     for mode in STRATEGIES:
         low = Lowering(sym, role, fclk, mode)

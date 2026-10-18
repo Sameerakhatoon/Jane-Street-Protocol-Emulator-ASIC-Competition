@@ -1,4 +1,4 @@
-tools/tsec/tests/neg/R300-unsupported-shape.tse:7:38: error: not supported by this version of tsec: 'for', 'each' and '~' outside a paced frame (one anchor edge and one seq back to the initial state) [R300]
- 7 |     state f { seq { drive tx = 0 for 1 us; } -> g; }
-   |                                      ^
+tools/tsec/tests/neg/R300-unsupported-shape.tse:6:56: error: not supported by this version of tsec: 'for', 'each' and '~' outside a seq [R300]
+ 6 |     state idle { on host.pull(b) do { drive tx = 0 for 1 us; } -> idle; }
+   |                                                        ^
 1 obligation(s) or limit(s) not met; no image written (rule R1)

@@ -55,6 +55,14 @@ class Sep:
 
 
 @dataclass(eq=False)
+class Pace:
+    """The instruction performs this timed statement of a paced chain (pace.Chain)."""
+    chain: object
+    stmt: object
+    entry: int = None           # the timeline entry, when the code is unrolled and reordered
+
+
+@dataclass(eq=False)
 class WinOb:
     """OB-WIN on one instruction: its effect at the pins within [lo, hi] ticks after event."""
     code: str

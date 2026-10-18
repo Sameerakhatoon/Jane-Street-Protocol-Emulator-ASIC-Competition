@@ -28,10 +28,12 @@ from dataclasses import dataclass, field
 from fractions import Fraction as Fr
 
 from . import ast as A
-from . import cycles, printer
+from . import cycles, isa, printer
+from .diag import TseError
 from .semantics import min_separation, opposite, stable_after
 
-DATA_FRAME = 16                 # the slot phase is kept modulo the data frame (LDW, STW)
+MAX_STATES = 1_500_000         # beyond this the analysis gives up (R325) instead of exhausting memory
+DATA_FRAME = isa.DATA_SLOT_PERIOD   # the slot phase is kept modulo the data frame (LDW, STW)
 
 
 @dataclass
@@ -73,6 +75,8 @@ class Result:
     reads: dict = field(default_factory=dict)       # id(ins) -> worst Read
     abort_latency: int = None
     states: int = 0
+    paces: dict = field(default_factory=dict)       # id(chain) -> {entry: [dmin, dmax, ins, where]}
+    pace_bad: dict = field(default_factory=dict)    # id(ins) -> (ins, why)
 
 
 class Analysis:
@@ -82,6 +86,12 @@ class Analysis:
         self.ms_cache, self.events = {}, {}
         self.abort_pcs = {labels[t] for t in abort_targets if t in labels}
         self.refs = {id(ins.sep.ref) for ins in prog if ins.sep is not None}
+        self.mark_far = {}          # per reference: distances beyond this all act the same
+        for ins in prog:
+            if ins.sep is not None:
+                far = math.ceil(max(ins.sep.ticks, ins.sep.hi or 0)) + 2 * DATA_FRAME
+                k = id(ins.sep.ref)
+                self.mark_far[k] = max(self.mark_far.get(k, 0), far)
         self.res = Result()
         self.clamp = self.horizon()
         self.liveness()
@@ -147,6 +157,8 @@ class Analysis:
 
         def sets_reg(r):
             return lambda i: i.op in ("SET", "OUT", "MOV") and i.a.get("dst") == r
+        self.need_chain = self.live(lambda i: bool(getattr(i, "paces", None)),
+                                    lambda i: waits(i) or pull(i))
         self.need_x = self.live(reads_reg("X"), sets_reg("X"))
         self.need_y = self.live(reads_reg("Y"), sets_reg("Y"))
         self.phase_mod = DATA_FRAME if any(i.op in ("LDW", "STW") for i in self.prog) else self.fm.S
@@ -166,14 +178,18 @@ class Analysis:
 
     # ------------------------------------------------------------ search
     def run(self):
-        t0 = cycles.first_slot(0, self.fm.S, self.lane) + self.fm.lat
-        start = (0, t0, (0,), None, None, 0, None, None, None, (), None)
+        t0 = cycles.start_cycle(self.lane, self.fm)
+        start = (0, t0, (0,), None, None, 0, None, None, None, (), None, None)
         todo, seen = [self.norm(start)], set()
         while todo:
             st = todo.pop()
             if st in seen:
                 continue
             seen.add(st)
+            if len(seen) > MAX_STATES:
+                raise TseError("R325", f"timing analysis of role '{self.role.name.text}' exceeds "
+                               f"{MAX_STATES} states; split long waits or shorten the role",
+                               self.role.name.span)
             for nxt in self.step(st):
                 n = self.norm(nxt)
                 if n not in seen:
@@ -182,7 +198,7 @@ class Analysis:
         return self.res
 
     def norm(self, s):
-        pc, t, buf, x, y, tf, last, anchor, pre, marks, abort = s
+        pc, t, buf, x, y, tf, last, anchor, pre, marks, abort, chain = s
         if pc >= len(self.prog):
             return s
         m = self.phase_mod
@@ -194,14 +210,16 @@ class Analysis:
         anchor = None if anchor is None or not self.need_anchor[pc] else \
             (anchor[0], off(anchor[1]), off(anchor[2]))
         pre = None if pre is None or not self.need_pre[pc] else (pre[0], off(pre[1]))
-        marks = tuple((k, off(v)) for k, v in marks if self.need_mark[k][pc])
+        marks = tuple((k, max(off(v), t % m - self.mark_far[k])) for k, v in marks
+                      if self.need_mark[k][pc])
         abort = off(abort)
         x = x if self.need_x[pc] else None
         y = y if self.need_y[pc] else None
-        return (pc, t - base, buf, x, y, tf, last, anchor, pre, marks, abort)
+        chain = None if chain is None or not self.need_chain[pc] else (chain[0], chain[1] - base, chain[2])
+        return (pc, t - base, buf, x, y, tf, last, anchor, pre, marks, abort, chain)
 
     def step(self, s):
-        pc, t, buf, x, y, tf, last, anchor, pre, marks, abort = s
+        pc, t, buf, x, y, tf, last, anchor, pre, marks, abort, chain = s
         if pc >= len(self.prog):
             return []
         ins = self.prog[pc]
@@ -230,17 +248,22 @@ class Analysis:
         if ins.reads is not None and anchor is not None and checking \
                 and not getattr(ins, "abort_check", False):
             self.record_read(ins, t, anchor)
+        for pc_ in getattr(ins, "paces", None) or ():
+            if checking:
+                chain = self.record_pace(ins, pc_, t, chain, where)
+        w = ins.wait
+        if (w is not None and w.kind in ("edge", "pre", "pull")) or (ins.op == "PULL" and ins.a.get("blk")):
+            chain = None                # waiting for the environment ends a paced chain
         out = []
 
         def go(npc, end=None, **kw):
             b = list(buf)
-            nt = cycles.step(ins.op, ins.a, t, npc, b, self.lane, self.fm, end)
+            nt = cycles.step(ins.op, ins.a, t, pc, npc, b, self.lane, self.fm, end)
             st = dict(x=x, y=y, tf=tf, last=last, anchor=anchor, pre=pre, marks=marks, abort=abort)
             st.update(kw)
             out.append((npc, nt, tuple(b), st["x"], st["y"], st["tf"], st["last"], st["anchor"],
-                        st["pre"], st["marks"], st["abort"]))
+                        st["pre"], st["marks"], st["abort"], chain))
 
-        w = ins.wait
         if ins.op == "WAIT" and w is not None and w.kind in ("edge", "pre"):
             self.wait(ins, w, t, last, anchor, pre, abort, go, where)
         elif ins.op == "WAIT" and w is not None and w.kind == "test":
@@ -321,9 +344,11 @@ class Analysis:
                 if t >= lim:
                     self.record_miss(Miss(ins, t - lim, 0, w.abort.event, self.events[last[0]],
                                           self.ms(last[0], A_)[1], where, alt=True))
+            host = w.abort.mode == "host"       # the host's word ends it: no abort, a branch
             for j in range(S):          # ended on the alternate: its own level was absent at end
                 end = t + j
-                go(npc, end, tf=1, abort=end, pre=(w.wire, end) if w.kind == "edge" else pre)
+                go(npc, end, tf=1, abort=None if host else end,
+                   pre=(w.wire, end) if w.kind == "edge" else pre)
 
     def rewait_check(self, ins, t, change, where):
         """After a change that was not the abort event (a start where a stop aborts), the wait
@@ -375,6 +400,40 @@ class Analysis:
             stat.dmin, stat.where_min = lo, where
         if stat.dmax is None or hi > stat.dmax:
             stat.dmax, stat.where_max = hi, where
+
+    def record_pace(self, ins, pc_, t, chain, where):
+        """One timed action of a paced chain: its distance from the chain's first action, per
+        entry of the timeline (the entry count since the first action says which one)."""
+        ent = pc_.chain.entries
+        if pc_.entry is not None and pc_.entry > 0 and chain is not None and chain[0] == id(pc_.chain):
+            k = pc_.entry               # reordered unrolled code: the entry is known
+            self.note_pace(chain, k, t, ins, where)
+            return (chain[0], chain[1], max(chain[2], k + 1))
+        if chain is None or chain[0] != id(pc_.chain) or chain[2] >= len(ent) or pc_.entry == 0:
+            if not any(x is pc_.stmt for x in ent[0].stmts):
+                self.res.pace_bad.setdefault(id(ins), (ins, f"on some path it runs without the first "
+                                                       f"action of its sequence before it ({where})"))
+                return chain
+            chain = (id(pc_.chain), t, 0)
+        k = chain[2]
+        if not any(x is pc_.stmt for x in ent[k].stmts):
+            self.res.pace_bad.setdefault(id(ins), (ins, f"it runs out of the order of its sequence "
+                                                   f"({where})"))
+            return None
+        self.note_pace(chain, k, t, ins, where)
+        return (chain[0], chain[1], k + 1)
+
+    def note_pace(self, chain, k, t, ins, where):
+        d = t - chain[1]
+        rec = self.res.paces.setdefault(chain[0], {})
+        r = rec.get(k)
+        if r is None:
+            rec[k] = [d, d, ins, where, where]
+        else:
+            if d < r[0]:
+                r[0], r[3] = d, where
+            if d > r[1]:
+                r[1], r[4] = d, where
 
     def record_read(self, ins, t, anchor):
         hi = t - anchor[1] + 1

@@ -12,10 +12,11 @@ import math
 from dataclasses import dataclass, field
 from fractions import Fraction as Fr
 
-from . import fix, isa, printer
+from . import fix, isa, pace, printer
 from .diag import TseError
 from .fsm import STRATEGIES, Fsm, layout
 from .fsmtime import Analysis, stability_warnings
+from .units import drift_budget
 
 
 @dataclass
@@ -43,9 +44,10 @@ def ticks_ns(t, fclk):
 
 
 class Scheduler:
-    def __init__(self, sym, role, lane, fclk, fm, pads):
-        self.sym, self.role, self.lane, self.f, self.fm = sym, role, lane, fclk, fm
+    def __init__(self, sym, role, lane, fclk, fm, pads, ppm=50):
+        self.sym, self.role, self.lane, self.f, self.fm, self.ppm = sym, role, lane, fclk, fm, ppm
         self.pads = (Fr(pads[0]) * fclk / 10**9, Fr(pads[1]) * fclk / 10**9)   # ns to ticks
+        self.skew = Fr(pads[2] if len(pads) > 2 else pads[1] - pads[0]) * fclk / 10**9
         self.pads_ns = pads
 
     def analyse(self, att):
@@ -78,7 +80,7 @@ class Scheduler:
         if sep.kind == "in":
             lo, shift_hi = sep.ticks + 3 + pmax, 3 + pmin
         else:
-            skew = pmax - pmin if sep.skew else 0
+            skew = self.skew if sep.skew else 0
             lo, shift_hi = sep.ticks + skew, -skew
         return lo, (None if sep.hi is None else sep.hi + shift_hi)
 
@@ -93,7 +95,79 @@ class Scheduler:
         got = res.seps.get(id(ins))
         return None if got is None else got[1]
 
+    def lay(self, att):
+        att.prog, att.labels = layout(att.ir)
+        f = att.fsm
+        pace.apply_side(att.prog, att.labels, f.side, f.pin_out, f.side_levels(), self.role.name.span)
+
+    def solve_paces(self, att):
+        """Set each pacing delay so that every action of a chain issues at its ideal instant
+        rounded to a cycle: the delay after an action sets the distance to the action issued next
+        (its first visit decides; later visits of a rolled loop are checked, not solved). Pacing
+        delays that are not needed leave the program."""
+        if not att.fsm.chain_list:
+            return
+        for _ in range(400):
+            res = self.analyse(att)
+            moved = False
+            for chain in att.fsm.chain_list:
+                rec = res.paces.get(id(chain), {})
+                e0 = chain.entries[0]
+                order = sorted(rec.items(), key=lambda kv: (kv[1][0], kv[0]))     # issue order
+                seen = set()
+                for (ka, ra), (kb, rb) in zip(order, order[1:]):
+                    a = ra[2]
+                    ctl = getattr(a, "pace_dly", None)
+                    fld = "delay" if ctl is a and a.pace_field == "delay" else "d"
+                    if a is rb[2] or ctl is None or ctl.a.get(fld, 0) < 0 or id(ctl) in seen:
+                        continue
+                    seen.add(id(ctl))
+                    want = self.target(chain, kb, e0) - self.target(chain, ka, e0)
+                    top = 7 if fld == "delay" else isa.DLY_MAX
+                    new = max(0, min(top, ctl.a.get(fld, 0) + want - (rb[0] - ra[0])))
+                    if new != ctl.a.get(fld, 0):    # one delay per pass, earliest first: a change
+                        ctl.a[fld], moved = new, True       # moves every later fetch
+                        break
+                if moved:
+                    break
+            if not moved:
+                return
+
+    def target(self, chain, k, e0):
+        """Issue cycle of entry k after entry 0's issue that puts it nearest its ideal."""
+        e = chain.entries[k]
+        o = (pace.OUT_OFFSET if e.kind == "out" else 0) - (pace.OUT_OFFSET if e0.kind == "out" else 0)
+        return math.floor(e.ideal - o + Fr(1, 2))
+
+    def pace_rows(self, att):
+        """(stmt, entry, error ticks, budget ticks, where, ok) per timed statement of each chain:
+        the worst entry over every visit, slot phase and buffer state."""
+        rows = []
+        for chain in att.fsm.chain_list:
+            rec = att.res.paces.get(id(chain), {})
+            e0 = chain.entries[0]
+            worst = {}
+            for k, e in enumerate(chain.entries):
+                st = e.stmts[0]
+                r = rec.get(k)
+                if r is None:
+                    worst.setdefault(id(st), (st, k, None, None, "never reached on any path", False, 0))
+                    continue
+                o = (pace.OUT_OFFSET if e.kind == "out" else 0) - \
+                    (pace.OUT_OFFSET if e0.kind == "out" else 0)
+                skew = self.skew if (set(e.wires) != set(e0.wires) or e.kind != e0.kind) else 0
+                err = max(abs(r[0] + o - e.ideal), abs(r[1] + o - e.ideal)) + skew
+                budget = drift_budget(e.tol, e.ideal, self.ppm)
+                where = r[3] if abs(r[0] + o - e.ideal) >= abs(r[1] + o - e.ideal) else r[4]
+                row = (st, k, err, budget, where, err <= budget, skew)
+                old = worst.get(id(st))
+                if old is None or (old[2] is not None and err - budget > old[2] - old[3]):
+                    worst[id(st)] = row
+            rows += worst.values()
+        return rows
+
     def solve(self, att):
+        self.solve_paces(att)
         tunables = [ins for ins in att.prog if ins.tune and ins.serves is not None]
         res = self.analyse(att)
         for safety in (1, 0):
@@ -128,15 +202,19 @@ class Scheduler:
         tried = []
         for mode in STRATEGIES:
             fsm = Fsm(self.sym, self.role, self.f, mode)
-            prog, labels = layout(fsm.lower())
+            ir = fsm.lower()
+            att = FsmAttempt(mode, fsm, [], {})
+            att.ir = ir
+            self.lay(att)
+            prog = att.prog
             if len(prog) > isa.MAX_INSTRUCTIONS:
                 if mode == STRATEGIES[-1] and not tried:
                     raise TseError("R301", f"program too large: {len(prog)} instructions, a lane holds "
                                    f"{isa.MAX_INSTRUCTIONS} (8-bit jump targets)", self.role.name.span)
                 continue
-            att = FsmAttempt(mode, fsm, prog, labels)
             att.res = self.solve(att)
             att.violations = self.diagnostics(att)
+            att.pace_rows = self.pace_rows(att)
             att.warnings = self.warnings(att)
             att.hint = HINTS[mode]
             tried.append(att)
@@ -167,6 +245,13 @@ class Scheduler:
                     out.append(self.sep_error(ins, got, need))
         for m in res.misses.values():
             out.append(self.miss_error(m))
+        for ins, why in res.pace_bad.values():
+            st = ins.paces[-1].stmt
+            out.append(TseError("R310", f"obligation unproven in role '{self.role.name.text}': "
+                                f"{printer.stmt(st, 0).rstrip(';')}: {why}", st.span))
+        for st, k, err, budget, where, ok, skew in self.pace_rows(att):
+            if not ok:
+                out.append(self.pace_error(st, k, err, budget, where, skew))
         return sorted(out, key=lambda e: (e.span.line, e.span.col))
 
     def warnings(self, att):
@@ -180,6 +265,27 @@ class Scheduler:
                                 f"{printer.event(ev)} -> edge({wire}) >= {ticks_ns(latest, self.f)}",
                                 guard_span(att, ins, span)))
         return out
+
+    def pace_error(self, st, k, err, budget, where, skew):
+        out = pace.is_out(st)
+        code = "R310" if out else "R312"
+        title = "output placement outside tolerance" if out else "sample placement outside tolerance"
+        text = printer.stmt(st, 0).rstrip(";")
+        if err is None:
+            return TseError(code, f"obligation unproven in role '{self.role.name.text}': {text}: {where}",
+                            st.span)
+        return TseError(code, f"{title} in role '{self.role.name.text}': {text}", st.span, fields=[
+            ("obligation", f"{'OB-EDGE' if out else 'OB-SAMP'} '{text}', timeline entry {k} of its "
+                           f"sequence, role {self.role.name.text}, lane {self.lane}"),
+            ("achieved", f"error up to {float(err):.2f} ticks ({ticks_ns(err, self.f)}) from the ideal "
+                         f"instant, worst at {where}, pad skew between different pins included "
+                         f"({ticks_ns(self.skew, self.f)})"),
+            ("budget", f"{float(budget):.2f} ticks ({ticks_ns(budget, self.f)}) after {self.ppm} ppm "
+                       "of drift"),
+            ("fix", f"pads characterised with a skew at or below {ticks_ns(budget - err + skew, self.f)} "
+                    "between these pins (--pad-skew)" if skew and budget - err + skew >= 0 else
+             "a wider tolerance; a rolled loop repeats its delays, so a period that is not a whole "
+             "number of cycles drifts, and unrolled code places every action")])
 
     def unproven(self, ins, why):
         ob = ins.ob

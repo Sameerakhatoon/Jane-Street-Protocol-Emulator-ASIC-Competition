@@ -10,20 +10,28 @@ uart_rx.tse|-|0|-|-
 uart_rx.tse|--fclk 50e6|0|-|-
 uart_rx.tse|-D baud=1000000|0|-|-
 uart_rx.tse|-D baud=1000000 --fclk 50e6|0|-|-
-spi_controller_mode0.tse|-|2|R300|not supported by this version of tsec: 'for', 'each' and '~' outside a paced frame (one anchor edge and one seq back to the initial state)
-spi_controller_mode1.tse|-|2|R300|not supported by this version of tsec: 'for', 'each' and '~' outside a paced frame (one anchor edge and one seq back to the initial state)
-spi_controller_mode2.tse|-|2|R300|not supported by this version of tsec: 'for', 'each' and '~' outside a paced frame (one anchor edge and one seq back to the initial state)
-spi_controller_mode3.tse|-|2|R300|not supported by this version of tsec: 'for', 'each' and '~' outside a paced frame (one anchor edge and one seq back to the initial state)
+spi_controller_mode0.tse|-|2|R310|output placement outside tolerance in role 'ctl': drive cs_n = 0 for t_css ~ 10 %
+spi_controller_mode1.tse|-|2|R310|output placement outside tolerance in role 'ctl': drive cs_n = 0 for t_css ~ 10 %
+spi_controller_mode2.tse|-|2|R310|output placement outside tolerance in role 'ctl': drive cs_n = 0 for t_css ~ 10 %
+spi_controller_mode3.tse|-|2|R310|output placement outside tolerance in role 'ctl': drive cs_n = 0 for t_css ~ 10 %
 spi_target.tse|-|2|R311|response window not met in role 'tgt': shift miso late
 spi_target_mode1.tse|-|2|R311|response window not met in role 'tgt': shift miso late
 spi_target_mode2.tse|-|2|R311|response window not met in role 'tgt': shift miso late
 spi_target_mode3.tse|-|2|R311|response window not met in role 'tgt': shift miso late
 spi_flash_target.tse|-|2|R300|not supported by this version of tsec: a guard on 'wel': on some path into this state it is not the variable last shifted in (a push or another shift reused the register)
 i2c_target.tse|-|2|R314|re-arm too late in role 'tgt': the wait that detects stop (abort) starts 12 cycles after stop may already be visible
-i2c_controller_fm.tse|-|2|R300|not supported by this version of tsec: a guard on 'cmd': on some path into this state it is not the variable last shifted in (a push or another shift reused the register)
-i2c_controller_sm.tse|-|2|R300|not supported by this version of tsec: a guard on 'cmd': on some path into this state it is not the variable last shifted in (a push or another shift reused the register)
-can_node.tse|-|2|R300|not supported by this version of tsec: edges on different events in state 'idle' (host.pull(txw) and fall(rxd))
-swd_probe.tse|-|2|R300|not supported by this version of tsec: 'for', 'each' and '~' outside a paced frame (one anchor edge and one seq back to the initial state)
-jtag_probe.tse|-|2|R307|pin plan impossible: tdi and tms are all shifted out, and shifts use virtual pin 0 only
-ps2_device.tse|-|2|R300|not supported by this version of tsec: edges on different events in state 'idle' (host.pull(sc) and fall(clk))
-ps2_host.tse|-|2|R300|not supported by this version of tsec: edges on different events in state 'idle' (fall(clk) and host.pull(cmd))
+i2c_controller_fm.tse|-|0|-|-
+i2c_controller_sm.tse|-|0|-|-
+can_node.tse|-|2|R300|not supported by this version of tsec: 'set' in a state machine
+swd_probe.tse|-|2|R300|not supported by this version of tsec: shift of 'data': it is not in the transmit shift register (pull it from the host first; a guard reuses the register)
+jtag_probe.tse|-|2|R310|output placement outside tolerance in role 'probe': shift cmd lsb 2 -> (tms, tdi) for half ~ t_jit
+ps2_device.tse|-|2|R300|not supported by this version of tsec: abort on taken(clk)
+ps2_host.tse|-|0|-|-
+spi_controller_mode0.tse|--pad-skew 0|0|-|-
+spi_controller_mode1.tse|--pad-skew 0|0|-|-
+spi_controller_mode2.tse|--pad-skew 0|0|-|-
+spi_controller_mode3.tse|--pad-skew 0|0|-|-
+jtag_probe.tse|--pad-skew 0|0|-|-
+spi_target.tse|-D t_css=114e-9|0|-|-
+spi_target.tse|-D t_css=130e-9 -D f_sck=3.5e6 --fclk 50e6|0|-|-
+i2c_controller_fm.tse|--fclk 50e6|0|-|-

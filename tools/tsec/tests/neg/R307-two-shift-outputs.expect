@@ -1,4 +1,4 @@
-tools/tsec/tests/neg/R307-two-shift-outputs.tse:6:8: error: pin plan impossible: a and b are all shifted out, and shifts use virtual pin 0 only [R307]
+tools/tsec/tests/neg/R307-two-shift-outputs.tse:6:8: error: pin plan impossible: a and b are all shifted out by different statements, and OUT fills the pins from virtual pin 0 [R307]
  6 |   role r : controller uses a, b, go {
    |        ^
 1 obligation(s) or limit(s) not met; no image written (rule R1)

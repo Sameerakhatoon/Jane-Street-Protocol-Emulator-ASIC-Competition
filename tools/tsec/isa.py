@@ -35,6 +35,7 @@ CLASS_L = {a for a in range(256) if regs.is_cfg(a)}     # a CSRW to one costs 3 
 _CMD = regs.LANE["CMD"]["fields"]
 CMD_DPLL_ON, CMD_DPLL_OFF = 1 << _CMD["dpll_on"]["lo"], 1 << _CMD["dpll_off"]["lo"]
 EV_BIT_START = TABLE["wait_idx"]["EV"]["BITSTART"]
+TABLE_FLAG_HTXF = TABLE["wait_idx"]["FLAG"]["HTXF"]     # host TX mailbox full
 FRAME_SLOTS = TABLE["frame_slots"]                      # SRAM slot frame S
 FETCH_ENTRIES = TABLE["fetch_entries"]                  # fetch buffer words per lane
 FETCH_LATENCY = TABLE["fetch_latency"]

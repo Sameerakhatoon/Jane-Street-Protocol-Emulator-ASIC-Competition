@@ -106,11 +106,11 @@ protocol swd_probe {
           drive swclk = 1 for half ~ t_jit;
         }
         drive swclk = 0 for half - t_rd ~ t_jit;           // parity
+        push host data;                  // one 32-bit receive register: data first
         shift swdio -> par lsb 1 for t_rd ~ t_jit;
         drive swclk = 1 for half ~ t_jit;
         drive swclk = 0 for half ~ t_jit;                  // Trn: the target lets go
         drive swclk = 1 for half ~ t_jit;
-        push host data;
         push host par;
       } -> idle;
     }

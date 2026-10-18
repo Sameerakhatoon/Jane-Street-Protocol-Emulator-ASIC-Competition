@@ -4,7 +4,7 @@ It pins the seam in isa.py: a swap to
 the generated tables must still give these encodings and these cycle counts.
 """
 from . import cycles, isa
-from .cycles import FetchModel, base_duration, first_slot
+from .cycles import FetchModel, duration
 
 SAMPLES = [("JMP", dict(cond="XDEC", target=6, ss=1), 0x0A06),
            ("OUT", dict(dst="PINS", n=1, delay=6), 0x8006),
@@ -24,7 +24,7 @@ SQUARE = [("SET", dict(dst="PINDIRS", imm=0xF3)), ("DLY", dict(d=0)), ("DLY", di
 def pin_runs(prog, lane, fm, frames, bit=0, ss_base=2, side=True, max_cycles=400):
     """Free-running executor for small programs; returns (level, cycles) runs of one pin."""
     pc, x, osr, pins = 0, 0, 0, 0
-    c, buf, data, tr = first_slot(0, fm.S, lane) + fm.lat, [0], list(frames), []
+    c, buf, data, tr = cycles.start_cycle(lane, fm), [0], list(frames), []
     while c < max_cycles:
         mn, f = prog[pc]
         npc, new = pc + 1, pins
@@ -53,7 +53,7 @@ def pin_runs(prog, lane, fm, frames, bit=0, ss_base=2, side=True, max_cycles=400
         if ((new ^ pins) >> bit) & 1:
             tr.append((c + 1, (new >> bit) & 1))
         pins = new
-        c, pc = cycles.step(mn, f, c, npc, buf, lane, fm), npc
+        c, pc = cycles.step(mn, f, c, pc, npc, buf, lane, fm), npc
     return [(v, t1 - t0) for (t0, v), (t1, _) in zip(tr, tr[1:])]
 
 
@@ -83,14 +83,14 @@ def checks():
     for e, want in ((1, [(1, 5), (0, 7)]), (2, [(1, 5), (0, 4)])):
         sq = pin_runs(SQUARE, 1, FetchModel(entries=e), [], ss_base=0, max_cycles=80)[2:4]
         out.append((f"square wave with {e} buffer word(s): {sq} (expected {want})", sq == want))
-    ld = sorted({base_duration("LDW", {}, c, 0, fm) for c in range(16)})
-    st = sorted({base_duration("STW", {}, c, 0, fm) for c in range(16)})
+    ld = sorted({duration("LDW", {}, c, 0, fm) for c in range(16)})
+    st = sorted({duration("STW", {}, c, 0, fm) for c in range(16)})
     out.append((f"LDW lasts {ld[0]} to {ld[-1]}, STW {st[0]} to {st[-1]} cycles over the 16 "
                 "data-frame phases (expected 2 to 17, 1 to 16)",
                 (ld[0], ld[-1], st[0], st[-1]) == (2, 17, 1, 16)))
     out.append(("CSRW LANE_CFG (class L) costs 3 cycles, CSRW TXDATA (class F) 1",
-                base_duration("CSRW", {"addr": 0x18}, 0, 0, fm) == 3
-                and base_duration("CSRW", {"addr": 0x20}, 0, 0, fm) == 1))
+                duration("CSRW", {"addr": 0x18}, 0, 0, fm) == 3
+                and duration("CSRW", {"addr": 0x20}, 0, 0, fm) == 1))
     return out
 
 

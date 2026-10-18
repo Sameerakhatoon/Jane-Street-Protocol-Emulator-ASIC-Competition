@@ -7,10 +7,11 @@ tsec build specs/spi_target.tse -o "$TMP/spi" > /dev/null 2> "$TMP/err" || st=$?
 err="$(cat "$TMP/err")"
 assert_eq 2 "$st" "spi exit status"
 assert_contains "$err" "response window not met in role 'tgt': shift miso late [R311]" "first_bit"
-assert_contains "$err" "achieved   : 66.7 ns .. 158.3 ns" "first_bit achieved"
-assert_contains "$err" "late by    : 63.3 ns" "first_bit late by"
-assert_contains "$err" "fix        : t_css >= 164 ns (139 ns with ideal pads)" "first_bit fix"
-assert_contains "$err" "fix        : f_sck <= 3.89 MHz," "mosi fix"
+assert_contains "$err" "achieved   : 66.7 ns .. 108.3 ns" "first_bit achieved"
+assert_contains "$err" "program 1 to 1 cycles" "first_bit reaction buffered"
+assert_contains "$err" "late by    : 13.3 ns" "first_bit late by"
+assert_contains "$err" "fix        : t_css >= 114 ns," "first_bit fix"
+assert_eq 1 "$(grep -c ': error: ' "$TMP/err")" "spi rejections"
 [ ! -e "$TMP/spi/spi_target.img" ] || fail "spi wrote an image"
 st=0
 tsec build specs/i2c_target.tse -o "$TMP/i2c" > /dev/null 2> "$TMP/err" || st=$?

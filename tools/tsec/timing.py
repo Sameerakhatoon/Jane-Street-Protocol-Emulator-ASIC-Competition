@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 from fractions import Fraction as Fr
 
 from . import cycles, isa
-from .cycles import FetchModel, base_duration, first_slot, next_dispatch  # noqa: F401 (re-export)
+from .cycles import FetchModel  # noqa: F401 (re-export)
 from .diag import TseError
 from .semantics import hold_ok, rearm_ok
 from .units import drift_budget
@@ -85,7 +85,7 @@ def simulate(low, labels, lane, fm, t0, buf0, nco_phase=Fr(0)):
                 x = (x - 1) & 0xFFFF
             if taken:
                 npc = labels[ins.a["target"]]
-        pc, t, first = npc, cycles.step(ins.op, ins.a, t, npc, buf, lane, fm, end), False
+        pc, t, first = npc, cycles.step(ins.op, ins.a, t, pc, npc, buf, lane, fm, end), False
     raise TseError("R399", "expected path did not return to the anchor")
 
 
