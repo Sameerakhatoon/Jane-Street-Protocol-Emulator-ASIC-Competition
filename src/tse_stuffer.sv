@@ -2,7 +2,7 @@
 // Bit stuffer (TX) and destuffer (RX), config as inputs.
 // After cfg_n equal bits of a selected polarity, insert (TX) or drop and
 // check (RX) one complement bit. cfg_mode[0]: runs of ones, [1]: runs of
-// zeros (3 = CAN, 1 = USB).
+// zeros (3 = CAN, 1 = USB). cfg_n = 0 turns stuffing off.
 module tse_stuffer (
     input  logic       clk,
     input  logic       rst_n,
@@ -27,8 +27,8 @@ module tse_stuffer (
         inc_sat = (v == 4'hf) ? v : v + 4'd1;
     endfunction
 
-    assign tx_pending = (trun == cfg_n) && ((cfg_mode[0] && tlast) || (cfg_mode[1] && !tlast));
-    assign rstuff     = (rrun == cfg_n) && ((cfg_mode[0] && rlast) || (cfg_mode[1] && !rlast));
+    assign tx_pending = cfg_n != 4'd0 && (trun == cfg_n) && ((cfg_mode[0] && tlast) || (cfg_mode[1] && !tlast));
+    assign rstuff     = cfg_n != 4'd0 && (rrun == cfg_n) && ((cfg_mode[0] && rlast) || (cfg_mode[1] && !rlast));
     assign tx_dout    = tx_pending ? ~tlast : tx_din;
     assign tx_take    = tx_step && !tx_pending;
 

@@ -73,9 +73,9 @@ module tse_dpll (
             else if (s[20]) ph <= '0;
             else if (wrap)  ph <= s[19:0] - cfg_period;
             else            ph <= s[19:0];
-            q_done <= !bit_start && (q_done || q1);
-            h_done <= !bit_start && (h_done || half);
-            s_done <= !bit_start && (s_done || sample);
+            q_done <= enable && !bit_start && (q_done || q1);    // a restart begins a fresh bit
+            h_done <= enable && !bit_start && (h_done || half);
+            s_done <= enable && !bit_start && (s_done || sample);
         end
 endmodule
 `default_nettype wire

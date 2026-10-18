@@ -29,6 +29,5 @@ def build(c):
 test_01_dpll = block_test("test_01_dpll", CFGS, STEADY, build, OUTS, lambda i: DpllIn(**i),
                           doc="free running, hard sync, resync with both edge senses, dual edge")
 test_02_dpll_restart = block_test(
-    "test_02_dpll_restart", CFGS, TOGGLED, build, OUTS, lambda i: DpllIn(**i), expect_fail=True,
-    doc="RTL keeps the strobe-done flags while the DPLL is off: turned off after a strobe and on "
-        "again, the first bit has no q1, half or sample")
+    "test_02_dpll_restart", CFGS, TOGGLED, build, OUTS, lambda i: DpllIn(**i),
+    doc="turned off after a strobe and on again, the first bit gets its q1, half and sample")

@@ -51,7 +51,7 @@ JOBS = {
     ]),
     "dpll": ("dpll", ["tse_dpll.sv"], [
         ("sample_strobe_repeats", None, "tse_dpll.sv",
-         "s_done <= !bit_start && (s_done || sample);", "s_done <= 1'b0;"),
+         "s_done <= enable && !bit_start && (s_done || sample);", "s_done <= 1'b0;"),
     ]),
 }
 

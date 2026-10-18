@@ -328,7 +328,7 @@ module tse_seq #(
     end
 
     // data window: the dispatch cycle, then any wait for the data slot
-    assign dacc       = avail && (ic == tse_isa_pkg::I_STW || ic == tse_isa_pkg::I_LDW);
+    assign dacc       = avail && legal && (ic == tse_isa_pkg::I_STW || ic == tse_isa_pkg::I_LDW);
     assign dmem_req   = dacc || dpend;
     assign dmem_we    = dpend ? dwe_q : ic == tse_isa_pkg::I_STW;
     assign dmem_addr  = dpend ? daddr_q : f_ind ? x[6:0] : f_a7;

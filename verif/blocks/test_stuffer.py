@@ -21,6 +21,5 @@ def build(c):
 test_01_stuffer = block_test("test_01_stuffer", cfgs(range(1, 16)), STREAM, build, OUTS,
                              lambda i: StuffIn(**i), doc="n from 1 to 15, every mode")
 test_02_stuffer_n0 = block_test(
-    "test_02_stuffer_n0", cfgs([0]), STREAM, build, OUTS, lambda i: StuffIn(**i), expect_fail=True,
-    doc="RTL STUFF_CFG n = 0 does not disable stuffing: after reset or clear, with runs of zeros "
-        "counted, the first TX bit is a stuff bit and the first RX bit is dropped")
+    "test_02_stuffer_n0", cfgs([0]), STREAM, build, OUTS, lambda i: StuffIn(**i),
+    doc="STUFF_CFG n = 0 disables stuffing: no TX bit inserted, no RX bit dropped")

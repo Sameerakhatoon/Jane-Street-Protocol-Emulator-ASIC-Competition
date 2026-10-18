@@ -78,6 +78,5 @@ test_10_synced = lane_test(
     "FLAG 6 (SYNCED) reads 1 while the DPLL is idle")
 test_11_illegal_data = lane_test(
     "test_11_illegal_data", P.no_cfg(), P.body([P.ILLEGAL_DATA]),
-    "RTL tse_seq starts the data window access of an illegal LDW or STW (indirect with a nonzero "
-    "address): the request is not gated by tse_legal, so OSR loads the word (or STW writes it) "
-    "although the lane halts with no effect", expect_fail=True)
+    "an illegal LDW or STW (indirect with a nonzero address) halts the lane without touching "
+    "the data window: no request, OSR and the window unchanged")
