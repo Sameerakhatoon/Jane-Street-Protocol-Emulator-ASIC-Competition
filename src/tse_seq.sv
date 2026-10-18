@@ -28,7 +28,12 @@
 // lane's slot); the fill replaces the entry that does not hold the current
 // instruction (least recently used). The successor's word is requested from
 // the dispatch cycle on, also while a WAIT, PUSH or PULL is still waiting.
-module tse_seq (
+// TX mailbox: with LATCH = 1 (the chip) a latch word whose enable is one
+// flop after h_tx_we; the host data register holds h_tx_data for 16 or more
+// cycles, so the word shows the new value from the next cycle, as a flop would.
+module tse_seq #(
+    parameter bit LATCH = 0
+) (
     input  logic        clk,
     input  logic        rst_n,
     input  logic        run,
@@ -354,7 +359,7 @@ module tse_seq (
             x <= '0; y <= '0; t <= '0; tc <= '0; osr <= '0; isr <= '0; tflag <= 1'b0; aflag <= 1'b0;
             c_q <= '0; gsel <= '0; pin0 <= '0; halted <= 1'b0; dpend <= 1'b0; dld <= 1'b0; dwe_q <= 1'b0; daddr_q <= '0;
             pin_out <= '0; pin_oe <= '0; irq <= '0; emit_v <= 1'b0; emit_code <= '0; emit_data <= '0;
-            h_tx_full <= 1'b0; h_tx_data_q <= '0; h_rx_full <= 1'b0; h_rx_data <= '0;
+            h_tx_full <= 1'b0; h_rx_full <= 1'b0; h_rx_data <= '0;
         end else begin
             irq <= irq_n;
             emit_v <= emit_n;
@@ -388,9 +393,23 @@ module tse_seq (
                 if (dld) osr <= dmem_rdata;
             end
             if (pull_take) h_tx_full <= 1'b0;
-            if (h_tx_we) begin h_tx_full <= 1'b1; h_tx_data_q <= h_tx_data; end
+            if (h_tx_we) h_tx_full <= 1'b1;
             if (h_rx_re) h_rx_full <= 1'b0;
             if (push_set) begin h_rx_full <= 1'b1; h_rx_data <= isr; end
         end
+
+    if (LATCH) begin : g_txl
+        logic tx_en_q;
+        always_ff @(posedge clk or negedge rst_n)
+            if (!rst_n) tx_en_q <= 1'b0;
+            else        tx_en_q <= h_tx_we;
+        always_latch
+            if (!rst_n)       h_tx_data_q = '0;
+            else if (tx_en_q) h_tx_data_q = h_tx_data;
+    end else begin : g_txf
+        always_ff @(posedge clk or negedge rst_n)
+            if (!rst_n)       h_tx_data_q <= '0;
+            else if (h_tx_we) h_tx_data_q <= h_tx_data;
+    end
 endmodule
 `default_nettype wire

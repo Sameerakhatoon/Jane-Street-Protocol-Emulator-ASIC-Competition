@@ -8,7 +8,8 @@
 module tse_lane #(
     parameter int K  = 2,
     parameter int PW = 16,
-    parameter int V  = 4
+    parameter int V  = 4,
+    parameter bit LATCH = 0
 ) (
     input  logic         clk,
     input  logic         rst_n,
@@ -318,7 +319,7 @@ module tse_lane #(
         endcase
     end
 
-    tse_seq u_seq (
+    tse_seq #(.LATCH(LATCH)) u_seq (
         .clk, .rst_n, .run, .imem_req, .imem_addr, .imem_gnt, .imem_rdata,
         .start_pc(cw[tse_regs_pkg::LW_LANE_PROG][tse_regs_pkg::LR_LANE_PROG_START_PC_HI:tse_regs_pkg::LR_LANE_PROG_START_PC_LO]),
         .dmem_req, .dmem_we, .dmem_addr, .dmem_wdata, .dmem_gnt, .dmem_rdata,

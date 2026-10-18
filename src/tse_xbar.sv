@@ -41,6 +41,7 @@ module tse_xbar #(
 );
     logic [23:0] pin_eff, p1, sp, n1, n2, sn;
     logic [31:0] spx, snx;
+    logic [15:0] act;
 
     assign pin_eff = {pin_out[7:0], (loopback || lb_test) ? pin_out : pin_in};
 
@@ -67,6 +68,8 @@ module tse_xbar #(
             sink_n[i] = snx[c[4:0]] ^ c[5];
         end
 
+    assign act = src_live & src_oe;
+
     always_ff @(posedge clk)
         if (lb_test) begin
             pin_out <= lb_pat; pin_oe <= '0;
@@ -76,7 +79,7 @@ module tse_xbar #(
                 logic       o, idle;
                 c    = cfg_out[9*p +: 9];
                 o    = src_out[c[3:0]] ^ c[4];
-                idle = !src_live[c[3:0]] || !src_oe[c[3:0]];
+                idle = !act[c[3:0]];
                 if (ovr_en[p])  begin pin_out[p] <= ovr_val[p]; pin_oe[p] <= 1'b1;  end
                 else if (!c[6]) begin pin_out[p] <= 1'b0;       pin_oe[p] <= 1'b0;  end
                 else if (idle) begin

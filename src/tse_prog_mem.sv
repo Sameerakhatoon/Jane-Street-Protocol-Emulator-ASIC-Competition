@@ -88,7 +88,7 @@ module tse_prog_mem #(
     assign fb_hw = h_req && h_fb && h_we && !fb_busy;
     assign fb_hr = h_req && h_fb && !h_we && !fb_busy && f_gnt == '0;
 
-    tse_cfg_bank #(.WORDS(8), .LATCH(LATCH)) u_fb (
+    tse_cfg_bank #(.WORDS(8), .LATCH(LATCH), .WD_REG(0)) u_fb (
         .clk, .rst_n, .clr, .we(fb_hw), .addr(h_addr[2:0]), .wdata(h_wdata), .busy(fb_busy),
         .rd_addr(fb_ra), .rd_data(fb_rd), .q(fb_q)
     );

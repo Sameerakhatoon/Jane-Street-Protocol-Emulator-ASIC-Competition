@@ -11,7 +11,7 @@
 // Refused, setting the sticky host error: a class L or P lane write while
 // that lane runs or is about to; an SRAM write into a program window a
 // running lane fetches from; a fallback store write while a running lane
-// fetches from it; any SRAM access during the self-test, or SRAM program
+// fetches from it; any memory access during the self-test, or SRAM program
 // access while lanes run with 4 lanes (no system slot); RUN in run mode
 // while not loaded (in load mode the runtime flops are in reset and a RUN
 // write does nothing). A refused read returns 0.
@@ -137,7 +137,7 @@ module tse_top #(
 
     logic acc, err_sram, err_fb, err_lane, err_run, sram_go;
     assign acc      = h_we || h_re;
-    assign err_sram = a_sram_only && (st_busy || (LANES == 4 && lane_run != '0) || (h_we && busy_win[a_win]));
+    assign err_sram = (a_mem && st_busy) || (a_sram_only && ((LANES == 4 && lane_run != '0) || (h_we && busy_win[a_win])));
     assign err_fb   = a_fb && h_we && busy_fb;
     assign err_lane = a_lane && h_we && (hcls == tse_regs_pkg::RC_L || hcls == tse_regs_pkg::RC_P) && lane_run[hl];
     assign err_run  = h_we && h_addr == tse_regs_pkg::HR_RUN && !loaded && !load_mode;
@@ -148,9 +148,12 @@ module tse_top #(
     assign h_wr = h_we && !h_err;
 
     // ---------------- program memory, data window, fallback store, self-test
+    // h_wdata is the decoder's data register: it changes only when the next
+    // word completes, 16 or more clocks later, so the memory stores and the
+    // chip bank write straight from it (a pending access waits at most 16).
     logic        pm_pend, pm_we, pm_dw, pm_fb, pm_gnt, pm_rd_q;
     logic [8:0]  pm_addr;
-    logic [31:0] pm_wdata, pm_rdata;
+    logic [31:0] pm_rdata;
     logic        st_m_en, st_m_req, st_m_we, frame_end;
     logic [8:0]  st_m_addr;
     logic [31:0] st_m_wdata;
@@ -168,12 +171,12 @@ module tse_top #(
     always_ff @(posedge clk or negedge sys_rst_n)
         if (!sys_rst_n) begin
             pm_pend <= 1'b0; pm_we <= 1'b0; pm_dw <= 1'b0; pm_fb <= 1'b0; pm_addr <= '0;
-            pm_wdata <= '0; pm_rd_q <= 1'b0;
+            pm_rd_q <= 1'b0;
         end else begin
             pm_rd_q <= pm_gnt && !pm_we;
             if (pm_gnt) pm_pend <= 1'b0;
             if (sram_go) begin
-                pm_pend <= 1'b1; pm_we <= h_we; pm_wdata <= h_wdata;
+                pm_pend <= 1'b1; pm_we <= h_we;
                 pm_dw <= a_dwin; pm_fb <= a_fb; pm_addr <= h_addr[8:0];
             end
         end
@@ -183,7 +186,7 @@ module tse_top #(
         .l_req, .l_addr, .l_win, .l_fb, .l_gnt, .l_rdata,
         .d_req(l_dreq), .d_we(l_dwe), .d_addr(l_daddr), .d_wdata(l_dwdata), .d_gnt(l_dgnt), .d_rdata(l_drdata),
         .h_req(pm_pend && !st_busy), .h_we(pm_we), .h_dw(pm_dw), .h_fb(pm_fb), .h_addr(pm_addr),
-        .h_wdata(pm_wdata), .h_gnt(pm_gnt), .h_rdata(pm_rdata),
+        .h_wdata, .h_gnt(pm_gnt), .h_rdata(pm_rdata),
         .t_en(st_m_en), .t_req(st_m_req), .t_we(st_m_we), .t_addr(st_m_addr), .t_wdata(st_m_wdata),
         .cnt(slot_cnt), .frame_end
     );
@@ -200,7 +203,7 @@ module tse_top #(
     logic [64*32-1:0] chip_q;
     logic [31:0]      chip_rdata;
     logic             chip_busy;
-    tse_cfg_bank #(.WORDS(64), .LATCH(CFG_LATCH), .MASK(CHIP_MASK)) u_ccfg (
+    tse_cfg_bank #(.WORDS(64), .LATCH(CFG_LATCH), .WD_REG(0), .MASK(CHIP_MASK)) u_ccfg (
         .clk, .rst_n(sys_rst_n), .clr(cfg_clr),
         .we(h_wr && ccfg.hit), .addr(cw), .wdata(h_wdata),
         .busy(chip_busy), .rd_addr(cw), .rd_data(chip_rdata), .q(chip_q)
@@ -232,16 +235,25 @@ module tse_top #(
         assign hb_we = h_wr && sel && hcls == tse_regs_pkg::RC_L;
         assign live_pins[V*i +: V] = {V{lane_live[i]}};
 
-        tse_cfg_bank #(.WORDS(32), .LATCH(CFG_LATCH), .MASK(tse_regs_pkg::LANE_BANK_MASK)) u_cfg (
+        // The bank writes straight from its source: the lane holds {Y, X}
+        // through its 3-cycle CSRW, the host data register holds longer.
+        // lsrc_q keeps the lane selected until a lane write completes, even
+        // if the lane stops meanwhile.
+        logic lsrc_q;
+        always_ff @(posedge clk or negedge sys_rst_n)
+            if (!sys_rst_n) lsrc_q <= 1'b0;
+            else            lsrc_q <= lane_live[i] || (lsrc_q && lane_busy[i]);
+
+        tse_cfg_bank #(.WORDS(32), .LATCH(CFG_LATCH), .WD_REG(0), .MASK(tse_regs_pkg::LANE_BANK_MASK)) u_cfg (
             .clk, .rst_n(sys_rst_n), .clr(cfg_clr),
             .we(lane_live[i] ? l_cfg_we[i] : hb_we),
             .addr(lane_live[i] ? l_cfg_word[5*i +: 5] : hword),
-            .wdata(lane_live[i] ? l_cfg_wdata[32*i +: 32] : h_wdata),
+            .wdata(lsrc_q ? l_cfg_wdata[32*i +: 32] : h_wdata),
             .busy(lane_busy[i]), .rd_addr(hword), .rd_data(lane_rd[i]),
             .q(lcfg[1024*i +: 1024])
         );
 
-        tse_lane #(.K(2), .PW(16), .V(V)) u_lane (
+        tse_lane #(.K(2), .PW(16), .V(V), .LATCH(CFG_LATCH)) u_lane (
             .clk, .rst_n(eng_rst_n), .run(lane_live[i]),
             .cfg(lcfg[1024*i +: 1024]), .cfg_we(l_cfg_we[i]), .cfg_word(l_cfg_word[5*i +: 5]),
             .cfg_wdata(l_cfg_wdata[32*i +: 32]),
@@ -355,14 +367,9 @@ module tse_top #(
         end
     end
 
-    always_ff @(posedge clk or negedge sys_rst_n)
-        if (!sys_rst_n) begin
-            h_rvalid <= 1'b0; h_rdata <= '0;
-        end else begin
-            h_rvalid <= pm_rd_q || (h_re && !sram_go);
-            if (pm_rd_q)                h_rdata <= pm_rdata;
-            else if (h_re && !sram_go)  h_rdata <= h_err ? 32'd0 : rmux;
-        end
+    // Read data goes to the decoder unregistered; its read buffer is the register.
+    assign h_rvalid = pm_rd_q || (h_re && !sram_go);
+    assign h_rdata  = pm_rd_q ? pm_rdata : h_err ? 32'd0 : rmux;
 
     wire _unused = &{lane_busy, chip_busy, ld_rst_n, chip_q, slot_cnt, 1'b0};
 endmodule

@@ -14,10 +14,13 @@
 // MASK marks the bits that exist (to be generated from the config
 // table); the others read as 0 and synthesis removes their storage. With
 // READBACK = 0 the read port is left out (saves its 32:1 multiplexer).
+// WD_REG = 0 leaves out wd_q: the writer then holds wdata, from a flop,
+// from the accept cycle until edge 3, and the latches write straight from it.
 module tse_cfg_bank #(
     parameter int WORDS = 32,
     parameter bit LATCH = 1,
     parameter bit READBACK = 1,
+    parameter bit WD_REG = 1,
     parameter logic [WORDS*32-1:0] MASK = '1,
     localparam int AW = $clog2(WORDS)
 ) (
@@ -32,7 +35,7 @@ module tse_cfg_bank #(
     output logic [31:0]       rd_data,
     output logic [WORDS*32-1:0] q
 );
-    logic [31:0]      wd_q;
+    logic [31:0]      wd_q, wd;
     logic [AW-1:0]    sel_q;
     logic [WORDS-1:0] en_q;
     logic [1:0]       ph;
@@ -55,15 +58,17 @@ module tse_cfg_bank #(
             endcase
         end
 
+    assign wd = WD_REG ? wd_q : wdata;
+
     for (genvar i = 0; i < WORDS; i++) begin : g_word
         if (LATCH) begin : g_lat
             always_latch
                 if (clr_q)        qraw[32*i +: 32] = '0;
-                else if (en_q[i]) qraw[32*i +: 32] = wd_q;
+                else if (en_q[i]) qraw[32*i +: 32] = wd;
         end else begin : g_ff
             always_ff @(posedge clk)
                 if (clr_q)        qraw[32*i +: 32] <= '0;
-                else if (en_q[i]) qraw[32*i +: 32] <= wd_q;
+                else if (en_q[i]) qraw[32*i +: 32] <= wd;
         end
     end
 

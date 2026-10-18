@@ -73,15 +73,20 @@ module tse_loader (
     logic [7:0]  cmd;
     logic [15:0] count;
     logic [1:0]  nbyte;
+    logic [31:0] buf_q, rsrc, crc;
     logic [23:0] wbuf;
-    logic [31:0] rbuf, rsrc, crc;
     logic        lm_q;
 
     assign bv = load_mode ? (prime == 2'd3 && (st_sync[2] ^ st_sync[1])) : s_valid;
     assign bf = load_mode ? ld_frame : s_first;
     assign bd = load_mode ? ld_data : s_data;
     assign load_crc = ~crc;
-    assign rsrc     = h_rvalid ? h_rdata : rbuf;   // a word may arrive with the strobe that shows it
+    assign rsrc     = h_rvalid ? h_rdata : buf_q;  // a word may arrive with the strobe that shows it
+    // One buffer serves reads (the word being shifted out) and writes (the
+    // bytes of a data word or COMMIT CRC before its last byte): a command is
+    // one or the other, and a read word arrives long before the data bytes
+    // of a following command.
+    assign wbuf     = buf_q[23:0];
 
     logic is_wr, is_burst, may_ctl, c_begin, c_commit_ok, c_refuse, crc_byte;
     assign is_wr    = cmd == C_WR || cmd == C_WRB;
@@ -95,7 +100,7 @@ module tse_loader (
     always_ff @(posedge clk or negedge rst_n)
         if (!rst_n) begin
             st_sync <= '0; prime <= '0; ph <= P_IDLE; cmd <= '0; count <= '0; nbyte <= '0;
-            wbuf <= '0; rbuf <= '0; ld_dout <= '0; h_we <= 1'b0; h_re <= 1'b0; h_addr <= '0;
+            buf_q <= '0; ld_dout <= '0; h_we <= 1'b0; h_re <= 1'b0; h_addr <= '0;
             h_wdata <= '0; cfg_clr <= 1'b0; bist_start <= 1'b0;
         end else begin
             st_sync    <= {st_sync[1:0], ld_strobe};
@@ -104,7 +109,7 @@ module tse_loader (
             h_re       <= 1'b0;
             cfg_clr    <= 1'b0;
             bist_start <= 1'b0;
-            if (h_rvalid) rbuf <= h_rdata;
+            if (h_rvalid) buf_q <= h_rdata;
             if (h_we || h_re) h_addr <= h_addr + 16'd1;    // bursts advance after each word
             if (bv && bf) begin
                 cmd   <= bd;
@@ -137,7 +142,7 @@ module tse_loader (
                     end
                     P_DATA: begin
                         nbyte <= nbyte + 2'd1;
-                        wbuf  <= {wbuf[15:0], bd};
+                        buf_q[23:0] <= {wbuf[15:0], bd};
                         if (nbyte == 2'd3) begin
                             h_we    <= 1'b1;
                             h_wdata <= {wbuf, bd};
@@ -148,7 +153,7 @@ module tse_loader (
                     P_READ: begin
                         nbyte   <= nbyte + 2'd1;
                         ld_dout <= rsrc[31:24];
-                        rbuf    <= {rsrc[23:0], 8'h00};
+                        buf_q   <= {rsrc[23:0], 8'h00};
                         if (nbyte == 2'd3) begin
                             count <= count - 16'd1;
                             if (count == 16'd1) ph <= P_IDLE;
@@ -157,7 +162,7 @@ module tse_loader (
                     end
                     P_CRC: begin
                         nbyte <= nbyte + 2'd1;
-                        wbuf  <= {wbuf[15:0], bd};
+                        buf_q[23:0] <= {wbuf[15:0], bd};
                         if (nbyte == 2'd3) ph <= P_IDLE;
                     end
                     default: ph <= P_IDLE;
