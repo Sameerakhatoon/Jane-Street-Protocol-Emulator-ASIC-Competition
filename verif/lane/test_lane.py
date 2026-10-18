@@ -51,33 +51,33 @@ test_01_core = lane_test(
     "straight-line code, mailboxes, runtime CSR reads and SET CMD frame resets through tse_lane")
 test_02_lane_cfg = lane_test(
     "test_02_lane_cfg", P.LANE_CFG, P.body([P.JMP_PIN]),
-    "RTL keeps LANE_CFG in configuration word 9 with its own bit layout; CSRW 0x18 (side-set, "
-    "jump pin) does not reach it", expect_fail=True)
+    "side-set and jump pin from LANE_CFG written with CSRW 0x18")
 test_03_ldw_stw = lane_test(
     "test_03_ldw_stw", P.no_cfg(), P.body(P.DATA),
-    "RTL has no LDW or STW: the words decode as CSRW and CSRR", expect_fail=True)
+    "LDW and STW through the data window in the lane data slot")
 test_04_timer_flag = lane_test(
     "test_04_timer_flag", P.TIMER_CFG, P.body([P.WAIT_TIMER, P.FRAME_RST]),
-    "RTL does not clear the TIMER flag when a WAIT 1, EV, 0 it satisfied ends (and TIMER_CTL is "
-    "not at 0x15)", expect_fail=True)
+    "a WAIT 1, EV, 0 that ends on the TIMER flag clears it; TIMER_CTL at 0x15")
 test_05_rule_chain = lane_test(
     "test_05_rule_chain", P.RULES_CFG, P.body(),
-    "RTL has no rule chaining (RULE1_CTL.chain), and the rule registers are not at 0x40 to 0x48",
-    expect_fail=True)
+    "response rules from 0x40 to 0x48, rule 1 chained to rule 0")
 test_06_illegal = lane_test(
     "test_06_illegal", P.no_cfg(), P.body([P.ILLEGAL]),
-    "RTL does not halt on an illegal word, set STATUS.illegal or raise interrupt bit 3",
-    expect_fail=True)
+    "an illegal word halts the lane and raises interrupt bit 3")
 test_07_wait_flags = lane_test(
     "test_07_wait_flags", P.no_cfg(), P.wait_pairs(),
-    "RTL clears TFLAG and AFLAG when a WAIT ends, not when it is dispatched", expect_fail=True)
+    "TFLAG and AFLAG clear when the next WAIT is dispatched")
 test_08_clock_ts = lane_test(
     "test_08_clock_ts", P.no_cfg(), P.body([P.CLOCK]),
-    "RTL CSRR of CLOCK (0x26) and TS (0x28) read 0", expect_fail=True)
+    "CSRR of CLOCK (0x26) and TS (0x28)")
 test_09_status = lane_test(
-    "test_09_status", P.no_cfg(), P.body(), "RTL STATUS has its own layout: no TFLAG at bit 8, "
-    "running at 10, hit flags at 12:11 or PC at 31:24", expect_fail=True, status=True)
+    "test_09_status", P.no_cfg(), P.body(),
+    "STATUS in the register table layout, read by the host every cycle", status=True)
 test_10_synced = lane_test(
     "test_10_synced", P.no_cfg(), P.body([P.WAIT_SYNCED]),
-    "RTL ties FLAG 6 (SYNCED) to 0: an idle DPLL is not waiting for a hard sync, so it reads 1",
-    expect_fail=True)
+    "FLAG 6 (SYNCED) reads 1 while the DPLL is idle")
+test_11_illegal_data = lane_test(
+    "test_11_illegal_data", P.no_cfg(), P.body([P.ILLEGAL_DATA]),
+    "RTL tse_seq starts the data window access of an illegal LDW or STW (indirect with a nonzero "
+    "address): the request is not gated by tse_legal, so OSR loads the word (or STW writes it) "
+    "although the lane halts with no effect", expect_fail=True)

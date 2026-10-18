@@ -25,9 +25,8 @@ def ports(c):
     return dict(cfg_pat=r0["pat"] | r1["pat"] << 16, cfg_msk=r0["msk"] | r1["msk"] << 16,
                 cfg_pos=(r0["pos"] | r0["any"] << 8) | (r1["pos"] | r1["any"] << 8) << 9,
                 cfg_resp=r0["resp"] | r1["resp"] << 16,
-                cfg_ctl=(r0["ctl"] & 0x1FFF) | (r1["ctl"] & 0x1FFF) << 13,
-                cfg_src=c["cfg_src"], cfg_edge=c["cfg_edge"], cfg_tdly=c["cfg_tdly"],
-                chain=r1["ctl"] >> 13 & 1)
+                cfg_ctl=r0["ctl"] | r1["ctl"] << 14,
+                cfg_src=c["cfg_src"], cfg_edge=c["cfg_edge"], cfg_tdly=c["cfg_tdly"])
 
 
 STREAM = merge(levels(["pin_clk", "pin_dat"], max_run=8),
@@ -42,7 +41,7 @@ class RulePorts:
         for k in range(2):
             f = lambda name, w, lsb: (c[name] >> lsb) & ((1 << w) - 1)
             pos = f("cfg_pos", 9, 9 * k)
-            ctl = f("cfg_ctl", 13, 13 * k) | (c["chain"] << 13 if k else 0)
+            ctl = f("cfg_ctl", 14, 14 * k)
             rs.append(Rule(f("cfg_pat", 16, 16 * k) | f("cfg_msk", 16, 16 * k) << 16,
                            f("cfg_resp", 16, 16 * k) | (pos & 0xFF) << 16 | (pos >> 8) << 24, ctl))
         self.r = Rules(rs, c["cfg_src"] | c["cfg_edge"] << 3 | c["cfg_tdly"] << 4)
@@ -61,18 +60,12 @@ def to_rtl(i):
     return i
 
 
-def drop_chain(c):
-    return {k: v for k, v in c.items() if k != "chain"}
-
-
 def test(name, chain, doc, expect_fail=False):
     return block_test(name, cfgs(chain), STREAM.map(lambda s: [to_rtl(i) for i in s]),
-                      RulePorts, OUTS, lambda i: i, expect_fail=expect_fail, doc=doc,
-                      rtl_cfg=drop_chain)
+                      RulePorts, OUTS, lambda i: i, expect_fail=expect_fail, doc=doc)
 
 
 test_01_rules = test("test_01_rules", 0, "bit mode and pin-edge mode, tick delay, conditions, "
                      "offset, priority, saturation, hit flags")
 test_02_rules_chain = test(
-    "test_02_rules_chain", 1, "RTL has no rule chaining: rule 1 with chain set matches without "
-    "an earlier rule 0 hit in the frame", expect_fail=True)
+    "test_02_rules_chain", 1, "rule 1 with chain set matches only after a rule 0 hit in the frame")

@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
 # Loader path end to end: the host CLI drives the Verilated full chip through
 # --pin-server. It loads a UART image over the byte bus (BEGIN, BIST, WRB,
-# COMMIT with CRC-32), peeks the program words back and reads STATUS.
-# Readback verify is off: lane config word 0x1018 reads 0x00 on the RTL
-# where the host expects 0x60.
+# COMMIT with CRC-32, readback verify), peeks the program words back and
+# reads STATUS.
 . "$(dirname "$0")/lib.sh"
 
 dir="$(make -s --no-print-directory print-RTL_DIR)"
@@ -15,7 +14,7 @@ python3 ../host/tse_cli.py image build -o "$img" --lane 0=../tools/tseasm/tests/
     || fail "image build"
 sim="$SIM_ROOT/build/chip/tse_sim --pin-server"
 out="$(timeout 120 python3 ../host/tse_cli.py --target "pipe:$sim" \
-        load "$img" --no-verify + peek 0 2 + status 2>&1)" || fail "$out"
+        load "$img" + peek 0 2 + status 2>&1)" || fail "$out"
 assert_contains "$out" "0x0000: 0x41FD4011" "word 0"
 assert_contains "$out" "0x0001: 0x4207C300" "word 1"
 assert_contains "$out" "bist_pass=1" "self-test"

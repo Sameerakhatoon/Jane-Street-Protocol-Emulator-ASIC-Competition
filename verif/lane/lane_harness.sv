@@ -3,12 +3,10 @@
 // stopped, the fetch grant with the slot counter aligned to RUN (cycle 0 is
 // the first cycle with run = 1), the lane's configuration bank written only
 // by the lane itself (programs configure the lane with CSRW, so the harness
-// never needs the bank layout; cfg_clr empties it, as BEGIN does), the
-// host mailboxes and the host read port. Assists are idle unless a program
-// starts them. Ports the lane may or may not have are switched by
-// HAS_<port> defines from the build script: the data window (dmem_*), a
-// separate read-valid (imem_rvalid), the interrupt port (irq, else ev_code)
-// and the timestamp (ts).
+// never needs the bank layout; cfg_clr empties it, as BEGIN does), the data
+// window served in the lane's data slot, the host mailboxes and the host
+// read port. Assists are idle unless a program starts them; chip flags are
+// tied to 0 and the timestamp counts from RUN, which is what the model assumes.
 module lane_harness (
   input  logic        clk,
   input  logic        rst_n,
@@ -71,58 +69,31 @@ module lane_harness (
     .rd_addr(5'd0), .rd_data(cfg_rd), .q(cfg)
   );
 
-  // the data window, served in this lane's data slot (cycle mod 16 = 4 lane + 3)
-  logic [31:0] imem_rdata;
-`ifdef HAS_DMEM_REQ
+  // data window: the access happens in the grant cycle s (cycle mod 16 =
+  // 4 lane + 3), the LDW word is on dmem_rdata in s + 1
   logic [31:0] dwin [128];
   logic [31:0] drdata, dmem_wdata;
   logic [6:0]  dmem_addr;
-  logic        dmem_req, dmem_we, dgnt, d_rv;
+  logic        dmem_req, dmem_we, dgnt;
   assign dgnt = run && dmem_req && cyc == {lane, 2'd3};
   always_ff @(posedge clk) begin
     if (dwin_we) dwin[dwin_addr] <= dwin_data;
     if (dgnt && dmem_we) dwin[dmem_addr] <= dmem_wdata;
     if (dgnt && !dmem_we) drdata <= dwin[dmem_addr];
-    d_rv <= dgnt && !dmem_we;
   end
-  assign imem_rdata = d_rv ? drdata : rdata;
-`else
-  assign imem_rdata = rdata;
-  wire _unused_dwin = &{dwin_we, dwin_addr, dwin_data, 1'b0};
-`endif
-`ifdef HAS_IMEM_RVALID
-  logic i_rv;
-  always_ff @(posedge clk) i_rv <= gnt;
-`endif
 
-`ifdef HAS_IRQ
-  logic [3:0] irq_w;
-  assign irq = irq_w;
-`else
-  logic       ev_valid;
-  logic [3:0] ev_code;
-  assign irq = ev_code;
-  wire _unused_ev = &{ev_valid, 1'b0};
-`endif
+  logic       ev_valid, halted, sig_we;
+  logic [5:0] ev_code;
+  logic [7:0] ev_data;
+  logic [3:0] sig_mask, sig_val;
   tse_lane u_lane (
     .clk, .rst_n, .run, .cfg, .cfg_we, .cfg_word, .cfg_wdata,
     .h_we(1'b0), .h_re, .h_addr, .h_wdata(32'd0), .h_rdata,
     .h_tx_we, .h_tx_data, .h_rx_re, .h_rx_data, .h_flags,
-`ifdef HAS_IRQ
-    .irq(irq_w),
-`else
-    .ev_valid, .ev_code,
-`endif
-`ifdef HAS_DMEM_REQ
-    .dmem_req, .dmem_we, .dmem_addr, .dmem_wdata, .dmem_gnt(dgnt), .dmem_rvalid(d_rv),
-`endif
-`ifdef HAS_IMEM_RVALID
-    .imem_rvalid(i_rv),
-`endif
-`ifdef HAS_TS
-    .ts,
-`endif
-    .imem_req, .imem_addr, .imem_gnt(gnt), .imem_rdata,
+    .ev_valid, .ev_code, .ev_data, .irq, .halted, .sig_we, .sig_mask, .sig_val,
+    .imem_req, .imem_addr, .imem_gnt(gnt), .imem_rdata(rdata),
+    .dmem_req, .dmem_we, .dmem_addr, .dmem_wdata, .dmem_gnt(dgnt), .dmem_rdata(drdata),
+    .chip_flags(6'd0), .ts,
     .vin_p(pins), .vin_n(pins), .vout, .voe
   );
 
@@ -135,6 +106,6 @@ module lane_harness (
   assign osr   = u_lane.u_seq.osr;
   assign aflag = u_lane.u_seq.aflag_o;
   assign tflag = u_lane.u_seq.tflag_o;
-  wire _unused = &{cfg_rd, cfg_busy, ts, 1'b0};
+  wire _unused = &{cfg_rd, cfg_busy, ev_valid, ev_code, ev_data, halted, sig_we, sig_mask, sig_val, 1'b0};
 endmodule
 `default_nettype wire

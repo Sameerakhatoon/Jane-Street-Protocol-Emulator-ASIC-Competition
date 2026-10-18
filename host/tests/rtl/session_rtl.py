@@ -261,12 +261,10 @@ async def test_06_run_timing(dut):
     assert max(starts) - min(starts) == 15
 
 
-@cocotb.test(expect_fail=True)
+@cocotb.test()
 async def test_07_lane_cfg_readback(dut):
     """LANE_CFG (lane register 0x18) keeps the bits of its table mask: the UART example
-    writes 0x60. The chip's lane bank still masks that word with the lanes' earlier
-    layout (only bits 27:22), so it reads 0: expected to fail until the lane bank
-    stores the table layout."""
+    writes 0x60 and reads it back."""
     addr = 0x1000 + regs_map.LANE["LANE_CFG"]["addr"]
 
     def fn(s, pins):

@@ -54,8 +54,9 @@ RULES_CFG = st.builds(
 ILLEGAL = st.sampled_from([0xC000 | 0x0100 | 0x80 | 0x05,     # PUSH/PULL group reserved bits
                            E("OUT", dst=5) | 0x0600,          # OUT selector 7
                            E("IN") | 0x0600,                  # IN selector 6
-                           0xC780 | 0x01,                     # LDW X with nonzero addr
                            E("SIG") | 0x0100])                # SIG reserved bit 8
+# LDW X and STW X with a nonzero address field
+ILLEGAL_DATA = st.sampled_from([E("LDW", ind=1, addr=0) | 0x01, E("STW", ind=1, addr=0) | 0x01])
 
 # WAIT pairs: a WAIT at an even pc and a filler in the same word, so the
 # successor never needs a fetch and the WAIT fetch timing stays out of the test
