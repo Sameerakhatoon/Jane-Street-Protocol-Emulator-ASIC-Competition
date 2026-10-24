@@ -5,7 +5,9 @@
       "codes": {"start": 1, "scl_fall": 2, "viol_hd_sta": 9},
       "obligations": [
         {"name": "tHD;STA", "from": "start", "to": "scl_fall", "min": "4.0us", "lane": 1},
-        {"name": "flagged", "forbid": "viol_hd_sta"}
+        {"name": "flagged", "forbid": "viol_hd_sta"},
+        {"name": "tSU;STA", "from": "scl_rise", "to": "start", "min": "4.7us",
+         "same_lane": false, "cancel": ["stop"]}
       ]
     }
 
@@ -66,8 +68,13 @@ def load(text, clock_hz=None):
             if "forbid" in o:
                 obs.append(Obligation(name, forbid=_code(o["forbid"], codes), lane=o.get("lane"), **lim))
             else:
+                same = o.get("same_lane", True)
+                cancel = o.get("cancel", [])
+                if not isinstance(same, bool) or not isinstance(cancel, list):
+                    raise ObError("same_lane is true or false, cancel a list of codes")
                 obs.append(Obligation(name, _code(o.get("from"), codes), _code(o.get("to"), codes),
-                                      lane=o.get("lane"), **lim))
+                                      lane=o.get("lane"), same_lane=same,
+                                      cancel=[_code(c, codes) for c in cancel], **lim))
         except ValueError as e:
             raise ObError("%s: %s" % (name, e))
     if not obs:

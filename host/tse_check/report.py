@@ -2,9 +2,13 @@
 
 An interval obligation reads "after event A, event B follows no sooner than
 min and no later than max ticks". Each A (re)starts a measurement, the next
-B on a matching lane ends it, as the monitor lane does with its clock C. A
-forbid obligation names a code that must never appear, such as a monitor's
-violation event; its data byte is the measured ticks the lane saw.
+B on a matching lane ends it, as the monitor lane does with its clock C.
+When one bus is watched by several lanes (one lane sees the clock, another
+the START and STOP conditions), same_lane=False pairs A and B from any
+lane, and cancel codes end an open measurement without a verdict (a STOP
+cancels "SCL rise to repeated START"). A forbid obligation names a code
+that must never appear, such as a monitor's violation event; its data byte
+is the measured ticks the lane saw.
 
 Both edges of a measurement are asynchronous inputs sampled 0 to 1 tick
 late, so a measured n ticks means a true interval strictly between n - 1 and
@@ -20,15 +24,19 @@ SATURATED = (1 << DATA_BITS) - 1
 
 
 class Obligation:
-    def __init__(self, name, start=None, end=None, min=None, max=None, lane=None, forbid=None):
+    def __init__(self, name, start=None, end=None, min=None, max=None, lane=None, forbid=None,
+                 same_lane=True, cancel=()):
         if forbid is None and (start is None or end is None):
             raise ValueError("%s: an interval obligation needs start and end codes" % name)
         if forbid is None and min is None and max is None:
             raise ValueError("%s: give min, max or both" % name)
         if min is not None and max is not None and min > max:
             raise ValueError("%s: min %s above max %s" % (name, min, max))
+        if forbid is not None and (cancel or not same_lane):
+            raise ValueError("%s: cancel and same_lane apply to intervals only" % name)
         self.name, self.start, self.end = name, start, end
         self.min, self.max, self.lane, self.forbid = min, max, lane, forbid
+        self.same_lane, self.cancel = same_lane, tuple(cancel)
 
     def lane_ok(self, e):
         return self.lane is None or e.lane == self.lane
@@ -98,12 +106,15 @@ def check(events, obligations):
             for e in events:
                 if not ob.lane_ok(e):
                     continue
-                if e.code == ob.end and e.lane in started:
-                    t0 = started.pop(e.lane)
+                key = e.lane if ob.same_lane else None
+                if e.code == ob.end and key in started:
+                    t0 = started.pop(key)
                     v, m = judge(e.ts - t0, ob.min, ob.max)
                     r.meas.append(Measurement(t0, e.ts, e.lane, e.ts - t0, v, m))
+                if e.code in ob.cancel:
+                    started.pop(key, None)
                 if e.code == ob.start:
-                    started[e.lane] = e.ts
+                    started[key] = e.ts
             r.open = len(started)
         results.append(r)
     return results
@@ -142,15 +153,16 @@ def lines(results, clock_hz):
                    % ("{:,}".format(t), m.verdict, r.ob.name, meas, _limit(r.ob, clock_hz), m.lane))
     if flagged:
         out.append("")
-    out.append("%-12s %6s %6s %6s %10s %10s %10s  %s"
-               % ("obligation", "count", "poss", "viol", "worst", "margin", "window", "verdict"))
+    nw = max([12] + [len(r.ob.name) for r in results])
+    out.append("%-*s %6s %6s %6s %10s %10s %10s  %s"
+               % (nw, "obligation", "count", "poss", "viol", "worst", "margin", "window", "verdict"))
     for r in results:
         w = r.worst()
         worst = "-" if w is None else "%d t" % w.ticks
         margin = "-" if w is None or w.margin is None else "%+g t" % w.margin
         lo = "-" if r.ob.min is None else "%g" % r.ob.min
         hi = "-" if r.ob.max is None else "%g" % r.ob.max
-        out.append("%-12s %6d %6d %6d %10s %10s %10s  %s"
-                   % (r.ob.name, len(r.meas), r.count(POSSIBLE), r.count(VIOLATION),
+        out.append("%-*s %6d %6d %6d %10s %10s %10s  %s"
+                   % (nw, r.ob.name, len(r.meas), r.count(POSSIBLE), r.count(VIOLATION),
                       worst, margin, "%s..%s" % (lo, hi), r.verdict()))
     return out

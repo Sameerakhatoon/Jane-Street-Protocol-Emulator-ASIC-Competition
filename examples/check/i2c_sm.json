@@ -1,0 +1,17 @@
+{
+  "clock_hz": 60e6,
+  "codes": {"scl_fall": 1, "scl_rise": 2, "sda_chg": 3, "start": 4, "stop": 5},
+  "obligations": [
+    {"name": "tHD;STA", "from": "start", "to": "scl_fall", "min": "4.0us", "same_lane": false},
+    {"name": "tLOW", "from": "scl_fall", "to": "scl_rise", "min": "4.7us", "same_lane": false},
+    {"name": "tHIGH", "from": "scl_rise", "to": "scl_fall", "min": "4.0us", "same_lane": false},
+    {"name": "tSU;STA", "from": "scl_rise", "to": "start", "min": "4.7us", "same_lane": false,
+     "cancel": ["stop"]},
+    {"name": "tSU;DAT", "from": "sda_chg", "to": "scl_rise", "min": "250ns", "same_lane": false},
+    {"name": "tHD;DAT", "from": "scl_fall", "to": "sda_chg", "min": "0t", "same_lane": false},
+    {"name": "tSU;STO", "from": "scl_rise", "to": "stop", "min": "4.0us", "same_lane": false},
+    {"name": "tBUF", "from": "stop", "to": "start", "min": "4.7us", "same_lane": false},
+    {"name": "SCL period (fSCL)", "from": "scl_rise", "to": "scl_rise", "min": "10us",
+     "same_lane": false, "cancel": ["start"]}
+  ]
+}
