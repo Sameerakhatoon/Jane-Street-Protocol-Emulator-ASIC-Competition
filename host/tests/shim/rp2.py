@@ -231,7 +231,7 @@ class StateMachine:
         if self.out_base is not None:
             for i in range(n):
                 WORLD.owner[self.out_base + i] = "pio"
-                WORLD.pio_out.setdefault(self.out_base + i, o["out_init"][i] & 1)
+                WORLD.pio_out[self.out_base + i] = o["out_init"][i] & 1
             WORLD.dirty = True
         WORLD.pio_progs.add(id(prog))
         WORLD.sms = [s for s in WORLD.sms if s.id != sm_id] + [self]

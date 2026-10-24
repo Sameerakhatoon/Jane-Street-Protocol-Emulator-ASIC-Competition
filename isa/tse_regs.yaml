@@ -5,6 +5,8 @@
 # the loader, not by rst_n; lane CSRW costs 3 cycles; programs cannot read it),
 # F runtime flop (reset by rst_n), P write-only command pulse (reads 0),
 # R read-only (computed, no storage of its own).
+# Chip configuration (class L in the chip map) is write-only for the host:
+# reads return 0; the load CRC and COMMIT protect it.
 # Field form: [hi, lo], or {bits: [hi, lo], min, max, enum}. A register may
 # list require rules: {if: {field: value}, then: {field: value}}.
 # count/stride: an array of registers starting at addr.
@@ -20,12 +22,12 @@ classes:
   F: {storage: flop, reset: 0, cleared_by: rst_n, lane: rw, host: rw_stopped}
   P: {storage: pulse, lane: w, host: w_stopped}
   R: {storage: none, lane: r, host: r}
-lane_window: {host_base: 0x1000, stride: 0x100, size: 0x100, max_lanes: 4}
+lane_window: {host_base: 0x1000, stride: 0x100, size: 0x100, max_lanes: 2}
 regions:
   sram:     {base: 0x0000, size: 0x0200, doc: program SRAM words; window w at 0x80 x w; 6x4 window 3 is the data window}
   data:     {base: 0x0400, size: 0x0080, doc: data window for LDW and STW (alias of window 3 in 6x4)}
   fallback: {base: 0x0800, size: 0x0008, doc: fallback latch program store}
-  lanes:    {base: 0x1000, size: 0x0400, doc: lane registers at 0x1000 + 0x100 x lane + reg}
+  lanes:    {base: 0x1000, size: 0x0200, doc: lane registers at 0x1000 + 0x100 x lane + reg}
   xbar:     {base: 0x2000, size: 0x0040, doc: crossbar}
   event:    {base: 0x3000, size: 0x0040, doc: event unit}
   chip:     {base: 0x4000, size: 0x0040, doc: "chip control, status and mailboxes"}
@@ -66,7 +68,7 @@ lane_regs:
   CMD:         {addr: 0x24, class: P, doc: command pulses (also SET CMD),
                 fields: {frame_rst: [0, 0], crc_clear: [1, 1], hard_arm: [2, 2], tx_abort: [3, 3],
                          dpll_on: [4, 4], dpll_off: [5, 5], line_set: [6, 6], line_val: [7, 7]}}
-  CRC_RESULT:  {addr: 0x25, class: R, fields: {result: [31, 0]}, doc: "CRC register XOR CRC_XOR, right-aligned"}
+  CRC_RESULT:  {addr: 0x25, class: R, fields: {result: [31, 0]}, doc: "CRC register XOR CRC_XOR, left-aligned (reflected, so right-aligned, with refout)"}
   CLOCK:       {addr: 0x26, class: R, fields: {c: [15, 0]}, doc: current value of the clock C}
   TS:          {addr: 0x28, class: R, fields: {ts: [31, 0]}, doc: chip timestamp (alias of the event unit TS)}
   RULE0_MATCH:    {addr: 0x40, class: L, fields: {pattern: [15, 0], mask: [31, 16]}, doc: rule 0 pattern and compare mask}
@@ -81,38 +83,38 @@ lane_regs:
   RULE1_CTL:      {addr: 0x46, class: L, doc: rule 1 control (chain extends rule 0 to 32-bit patterns),
                    fields: {rlen_m1: [3, 0], offset: [7, 4], cond: {bits: [9, 8], enum: {NONE: 0, CRC_GOOD: 1, CRC_BAD: 2, TX_IDLE: 3}},
                             drive: [10, 10], abort: [11, 11], en: [12, 12], chain: [13, 13]}}
-  RULE_CLK:       {addr: 0x48, class: L, doc: what clocks both rules (bit mode or pin-edge mode),
-                   fields: {src: [0, 0], clk_pin: [2, 1], edge: [3, 3], tick_delay: [11, 4]},
+  RULE_CLK:       {addr: 0x48, class: L, doc: "what clocks both rules (bit mode or pin-edge mode); hold: a drive keeps its last bit until the program writes txpin",
+                   fields: {src: [0, 0], clk_pin: [2, 1], edge: [3, 3], tick_delay: [11, 4], hold: [12, 12]},
                    require: [{if: {src: 0}, then: {tick_delay: 0}}]}
 
 chip_regs:
-  PAD_OUT:     {addr: 0x2000, count: 16, class: L, bank: xbar, doc: "output pad p (0 to 7 uo_out, 8 to 15 uio)",
+  PAD_OUT:     {addr: 0x2000, count: 16, class: L, bank: xbar, host: w, doc: "output pad p (0 to 7 uo_out, 8 to 15 uio)",
                 fields: {src: [3, 0], inv: [4, 4], od: [5, 5], en: [6, 6], idle: [7, 7], idle_oe: [8, 8]}}
-  LANE_IN:     {addr: 0x2020, count: 16, class: L, bank: xbar, doc: "input of lane virtual pin i = lane x 4 + vpin",
+  LANE_IN:     {addr: 0x2020, count: 8,  class: L, bank: xbar, host: w, doc: "input of lane virtual pin i = lane x 4 + vpin",
                 fields: {src: {bits: [4, 0], max: 23}, inv: [5, 5], delay: [8, 6]}}
-  PIN_OPT:     {addr: 0x2030, class: L, bank: event, fields: {host_spi_off: [0, 0], trig_pad: [1, 1], irq_pad: [2, 2], loopback: [3, 3]},
+  PIN_OPT:     {addr: 0x2030, class: L, bank: event, host: w, fields: {host_spi_off: [0, 0], trig_pad: [1, 1], irq_pad: [2, 2], loopback: [3, 3]},
                 doc: pin options}
-  EV_CTL:      {addr: 0x3000, class: L, bank: event, fields: {log_en: [0, 0], lane_mask: [4, 1], tick_k: [9, 5]}, doc: event log control}
+  EV_CTL:      {addr: 0x3000, class: L, bank: event, host: w, fields: {log_en: [0, 0], lane_mask: [2, 1], tick_k: [9, 5]}, doc: event log control}
   EV_STATUS:   {addr: 0x3001, class: R, fields: {count: [3, 0], dropped: [11, 4], armed: [12, 12], fired: [13, 13], stage: [15, 14]},
                 doc: event FIFO and trigger status}
   EV_POP:      {addr: 0x3002, class: R, fields: {record: [31, 0]}, doc: reading pops one event record}
   TS:          {addr: 0x3003, class: R, fields: {ts: [31, 0]}, doc: chip timestamp}
   EV_CLEAR:    {addr: 0x3005, class: P, host: w, fields: {fifo: [0, 0], drops: [1, 1]}, doc: "empty the FIFO, clear the drop counter"}
-  TRIG_MATCH:  {addr: 0x3008, count: 4, class: L, bank: event, host: rw, doc: trigger stage s match,
-                fields: {lanes: [3, 0], code: [9, 4], code_mask: [15, 10], data: [23, 16], data_mask: [31, 24]}}
-  TRIG_WIN:    {addr: 0x300C, count: 4, class: L, bank: event, host: rw, fields: {window: [15, 0]}, doc: cycles allowed since the previous stage (0 no limit)}
-  TRIG_CTL:    {addr: 0x3010, class: L, bank: event, host: rw, doc: trigger control,
-                fields: {last: [1, 0], en: [2, 2], rearm: [3, 3], width_m1: [11, 4], pol: [12, 12], stop_mask: [16, 13]}}
+  TRIG_MATCH:  {addr: 0x3008, count: 3, class: L, bank: event, host: w, doc: trigger stage s match,
+                fields: {lanes: [1, 0], code: [9, 4], code_mask: [15, 10], data: [23, 16], data_mask: [31, 24]}}
+  TRIG_WIN:    {addr: 0x300C, count: 3, class: L, bank: event, host: w, fields: {window: [15, 0]}, doc: cycles allowed since the previous stage (0 no limit)}
+  TRIG_CTL:    {addr: 0x3010, class: L, bank: event, host: w, doc: trigger control,
+                fields: {last: {bits: [1, 0], max: 2}, en: [2, 2], rearm: [3, 3], width_m1: [11, 4], pol: [12, 12], stop_mask: [14, 13]}}
   TRIG_ARM:    {addr: 0x3011, class: P, host: w, fields: {arm: [0, 0]}, doc: "arm: stage pointer to 0, clear fired and TRIG"}
   ID:          {addr: 0x4000, class: R, fields: {magic: [7, 0], isa_version: [11, 8], lanes: [14, 12], cfg_latch: [15, 15], evq_depth: [19, 16]},
                 doc: "chip identity (magic 0x54)"}
-  RUN:         {addr: 0x4001, class: F, host: rw, fields: {run: [3, 0]}, doc: one bit per lane; takes effect at the next frame boundary}
+  RUN:         {addr: 0x4001, class: F, host: rw, fields: {run: [1, 0]}, doc: one bit per lane; takes effect at the next frame boundary}
   STATUS:      {addr: 0x4002, class: R, doc: chip status,
-                fields: {loaded: [0, 0], bist_done: [1, 1], bist_pass: [2, 2], host_err: [3, 3], halted: [7, 4], running: [11, 8]}}
+                fields: {loaded: [0, 0], bist_done: [1, 1], bist_pass: [2, 2], host_err: [3, 3], halted: [5, 4], running: [9, 8]}}
   BIST:        {addr: 0x4003, class: R, fields: {fail_word: [8, 0], element: [11, 9], background: [12, 12], fail: [13, 13]},
                 doc: memory self-test result}
   LOAD_CRC:    {addr: 0x4004, class: R, fields: {crc: [31, 0]}, doc: running CRC-32 since BEGIN}
-  IRQ:         {addr: 0x4006, class: R, fields: {irq: [15, 0]}, doc: "sticky interrupt bits, 4 per lane; reading clears"}
-  MBOX_TX:     {addr: 0x4008, count: 4, class: F, host: w, fields: {data: [31, 0]}, doc: host to lane mailbox (PULL)}
-  MBOX_RX:     {addr: 0x400C, count: 4, class: R, fields: {data: [31, 0]}, doc: lane to host mailbox (PUSH); reading empties it}
-  MBOX_STATUS: {addr: 0x4010, class: R, fields: {full: [7, 0]}, doc: "bit 2 x lane TX mailbox full, bit 2 x lane + 1 RX full"}
+  IRQ:         {addr: 0x4006, class: R, fields: {irq: [7, 0]}, doc: "sticky interrupt bits, 4 per lane; reading clears"}
+  MBOX_TX:     {addr: 0x4008, count: 2, class: F, host: w, fields: {data: [31, 0]}, doc: host to lane mailbox (PULL)}
+  MBOX_RX:     {addr: 0x400C, count: 2, class: R, fields: {data: [31, 0]}, doc: lane to host mailbox (PUSH); reading empties it}
+  MBOX_STATUS: {addr: 0x4010, class: R, fields: {full: [3, 0]}, doc: "bit 2 x lane TX mailbox full, bit 2 x lane + 1 RX full"}

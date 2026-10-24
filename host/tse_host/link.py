@@ -39,6 +39,7 @@ class PinLink:
 
     def leave_load(self):
         self.uio = 0
+        self.strobe = 0                 # the pin goes low, so the next load starts from 0
         self.pins.set_inputs(ui_in=0x01, uio_in=0, rst_n=1)     # CS_N idle high
         self.pins.tick(SETTLE)
 

@@ -93,6 +93,6 @@ def test_06_regs_map_matches():
     for name, r in regs.CHIP.items():
         assert regs_map.CHIP[name]["addr"] == r["addr"] and regs_map.CHIP[name]["mask"] == r["mask"]
     for name in regs.LANE:
-        for lane in range(3):
+        for lane in range(2):
             assert I.lane_addr(lane, name) == regs.host_addr(name, lane=lane)
     assert regs_map.RUN == regs.host_addr("RUN") and regs_map.STATUS == regs.host_addr("STATUS")

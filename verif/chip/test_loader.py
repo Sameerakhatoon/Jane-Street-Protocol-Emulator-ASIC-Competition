@@ -13,7 +13,7 @@ from tse_host import frames as F
 from tools.tseasm import regs
 from chip_pins import Pins
 
-LANES = int(os.environ.get("LANES", "3"))
+LANES = int(os.environ.get("LANES", "2"))
 LOADED, BIST_DONE, BIST_PASS, HOST_ERR = 0x01, 0x02, 0x04, 0x08
 
 
@@ -35,12 +35,16 @@ async def begin(p):
     await p.exchange(F.begin())
 
 
+# chip configuration is write-only for the host: it reads back as 0
+CHIP_CFG = {r["addr"] + i for r in regs.CHIP.values() if r["class"] == "L" for i in range(r["count"])}
+
+
 async def check_readback(p, blocks):
     stream, where = F.readback(blocks)
     seen = await p.exchange(stream)
     for addr, count, first in where:
         got = F.words_from(seen, first, count)
-        want = [w for a, ws in blocks for i, w in enumerate(ws) if addr <= a + i < addr + count]
+        want = [0 if a + i in CHIP_CFG else w for a, ws in blocks for i, w in enumerate(ws) if addr <= a + i < addr + count]
         assert got == want, "readback at 0x%04X: %s != %s" % (addr, [hex(x) for x in got], [hex(x) for x in want])
 
 

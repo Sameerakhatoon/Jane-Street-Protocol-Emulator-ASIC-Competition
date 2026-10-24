@@ -13,12 +13,12 @@ SRAM = st.lists(st.integers(0, 0xFFFFFFFF), min_size=1, max_size=96)
 
 @st.composite
 def loads(draw):
-    """Blocks in the program SRAM and lane 0 to 2 configuration, as an image would hold."""
+    """Blocks in the program SRAM and lane 0 and 1 configuration, as an image would hold."""
     blocks = []
     for win in draw(st.sets(st.integers(0, 3), min_size=1, max_size=2)):
         words = draw(SRAM)
         blocks.append((0x80 * win, words[:0x80]))
-    for lane in draw(st.sets(st.integers(0, 2), max_size=2)):
+    for lane in draw(st.sets(st.integers(0, 1), max_size=2)):
         blocks.append((0x1000 + 0x100 * lane + 0x18, [draw(st.integers(0, 0x0FFFFFFF))]))
     return blocks
 

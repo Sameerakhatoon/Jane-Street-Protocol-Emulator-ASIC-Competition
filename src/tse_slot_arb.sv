@@ -1,15 +1,14 @@
 `default_nettype none
 // Fixed-slot arbiter for the one single-port program SRAM. A free-running
 // 4-bit count frames 16 cycles: lane i owns every cycle with cnt mod 4 == i
-// (instruction fetch). With 3 lanes the fourth slot is the system slot: its
+// (instruction fetch). The fourth slot is the system slot: its
 // occurrence k (cnt == 4k + 3) is lane k's data-window slot (LDW, STW, window
 // 3) and occurrence 3 (cnt == 15) is the host's. While every lane is stopped
 // the host owns every cycle. Each grant depends only on the count and the
 // requester's own request, so no lane can change another lane's timing.
-// With 4 lanes there is no system slot; the data store then needs its own
-// arbiter with the same cnt == 4k + 3 rule.
+// Lanes 0 to LANES - 1 (at most 3) use slots 0 to LANES - 1; the others idle.
 module tse_slot_arb #(
-    parameter int LANES = 3
+    parameter int LANES = 2
 ) (
     input  logic                clk,
     input  logic                rst_n,
@@ -39,7 +38,7 @@ module tse_slot_arb #(
     output logic [31:0]         mem_din
 );
     logic sys_slot, host_turn;
-    assign sys_slot  = LANES < 4 && cnt[1:0] == 2'd3;
+    assign sys_slot  = cnt[1:0] == 2'd3;
     assign host_turn = sys_slot && cnt[3:2] == 2'd3;
 
     always_comb begin

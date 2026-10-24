@@ -19,7 +19,7 @@ host-lint: host-check
 host-test:
 	HYPOTHESIS_STORAGE_DIRECTORY=build/hypothesis $(PY) -m pytest -q -p no:cacheprovider host/tests
 
-# the streams and the session against the full chip at 3 and 4 lanes (cocotb, Icarus)
+# the streams and the session against the full chip (cocotb, Icarus)
 host-rtl:
 	$(PY) host/tests/rtl/run_rtl.py
 

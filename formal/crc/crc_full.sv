@@ -8,7 +8,7 @@
 // with that priority, and a byte is consumed one bit per cycle for 8 cycles.
 // The outputs must be the textbook functions of the shadow: busy, tx_bit
 // (bit 31), check_ok (register XOR xorout equals the check value) and result
-// (right-aligned, or reflected over 32 bits with refout).
+// (left-aligned, or reflected over 32 bits with refout).
 module crc_full (
   input logic       clk,
   input logic       clear,
@@ -65,6 +65,6 @@ module crc_full (
     assert (busy == hbusy);
     assert (tx_bit == r[31]);
     assert (check_ok == (t == check));
-    assert (result == (refout ? refl(t) : t >> (5'd31 - wm1)));
+    assert (result == (refout ? refl(t) : t));
   end
 endmodule

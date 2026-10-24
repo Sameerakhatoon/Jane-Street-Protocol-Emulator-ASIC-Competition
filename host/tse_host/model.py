@@ -20,18 +20,17 @@ What it models, one call of tick() per rising clock edge:
   - run mode: the SPI target on ui_in[0] CS_N, ui_in[1] SCK, ui_in[2] MOSI,
     uo_out[3] MISO, oversampled through 2-flop synchronizers.
   - the host-bus register map from regs_map: bits outside fields do not
-    exist; chip configuration in one bank addressed {bank, word}; the data
-    window (SRAM window 3 with 3 lanes, a DS_WORDS word store with 4); the
-    fallback store.
+    exist; chip configuration in one write-only bank addressed {bank, word}
+    (host reads of it return 0; the COMMIT CRC protects it); the data window
+    (SRAM window 3); the fallback store.
   - the 16-cycle slot frame: a RUN write is stored at once, but lanes start
     and stop (live) only at the frame end, cnt == 15, and only while loaded.
   - refusals, each setting the sticky host error (a refused read returns 0):
     a class L or P lane write while that lane runs or is about to; an SRAM
     write into a window such a lane fetches from; a fallback store write
-    while such a lane fetches from it; any SRAM access during the self-test,
-    and SRAM program access while lanes run with 4 lanes; RUN in run mode
-    while not loaded; BEGIN, BIST and COMMIT over SPI unless every lane is
-    stopped.
+    while such a lane fetches from it; any SRAM access during the self-test;
+    RUN in run mode while not loaded; BEGIN, BIST and COMMIT over SPI unless
+    every lane is stopped.
 Lanes themselves are not modelled: a lane runs while its live bit is set.
 
 Host timing faults (strobe edges closer than MIN_HOLD clocks, data changing
@@ -43,11 +42,10 @@ import random
 from . import regs_map
 from .frames import WR, RD, WRB, RDB, BEGIN, BIST, COMMIT, STAT, crc32_update
 
-LANES = 3
+LANES = 2
 SRAM_WORDS = 512
 WINDOW_WORDS = 0x80
-DATA_WINDOW = 3            # 3 lanes: SRAM window 3 is the data window
-DS_WORDS = 16              # 4 lanes: words in the data store; above read 0
+DATA_WINDOW = 3            # SRAM window 3 is the data window
 FRAME = 16                 # cycles per slot frame
 READ_LAT = 3               # edges from a read strobe event to the byte on uo_out
 BIST_CYCLES = 11500
@@ -89,7 +87,6 @@ class Chip:
         self.cycle = 0
         self.violations = []
         self.sram = [rng.getrandbits(32) for _ in range(SRAM_WORDS)]
-        self.dstore = [rng.getrandbits(32) for _ in range(DS_WORDS)]
         self.fallback = [rng.getrandbits(32) for _ in range(regs_map.REGIONS["fallback"]["size"])]
         self.lane_cfg = [_rand_regs(rng, regs_map.LANE, "L") for _ in range(self.lanes)]
         self.lane_flop = [_rand_regs(rng, regs_map.LANE, "F") for _ in range(self.lanes)]
@@ -100,10 +97,10 @@ class Chip:
                     unbuilt = name == "LANE_IN" and i >= VIRT_PINS * self.lanes
                     self.cbank_mask[bank_slot(name, i)] = 0 if unbuilt else r["mask"]
         self.cbank = [rng.getrandbits(32) & m for m in self.cbank_mask]
-        self.run = rng.getrandbits(4)
+        self.run = rng.getrandbits(32) & regs_map.CHIP["RUN"]["mask"]
         self.live = 0
         self.cnt = rng.getrandbits(4)
-        self.mbox_tx = [rng.getrandbits(32) for _ in range(4)]
+        self.mbox_tx = [rng.getrandbits(32) for _ in range(regs_map.CHIP["MBOX_TX"]["count"])]
         self.events = []
         self.ts = rng.getrandbits(32)
         # loader flops
@@ -212,7 +209,7 @@ class Chip:
         for f in self.lane_flop:
             for k in f:
                 f[k] = 0
-        self.mbox_tx = [0, 0, 0, 0]
+        self.mbox_tx = [0] * len(self.mbox_tx)
         self.events = []
         self.ts = 0
         self._spi_reset()
@@ -338,17 +335,14 @@ class Chip:
         return mask if lane is None else (mask >> lane) & 1
 
     def _decode(self, addr):
-        """('sram', i) | ('dstore', i) | ('fallback', i) | ('lane', lane, name)
-        | ('chip', name, index) | ('none',) for a mapped word that stores nothing | None"""
+        """('sram', i) | ('fallback', i) | ('lane', lane, name) | ('chip', name, index)
+        | None"""
         R = regs_map.REGIONS
         if addr < R["sram"]["base"] + R["sram"]["size"]:
             return ("sram", addr)
         d = R["data"]
         if d["base"] <= addr < d["base"] + d["size"]:
-            i = addr - d["base"]
-            if self.lanes < 4:
-                return ("sram", WINDOW_WORDS * DATA_WINDOW + i)
-            return ("dstore", i) if i < DS_WORDS else ("none",)
+            return ("sram", WINDOW_WORDS * DATA_WINDOW + addr - d["base"])
         f = R["fallback"]
         if f["base"] <= addr < f["base"] + f["size"]:
             return ("fallback", addr - f["base"])
@@ -383,8 +377,6 @@ class Chip:
     def _sram_refused(self, word, write):
         if self.bist_left:
             return True
-        if self.lanes == 4 and self.busy():
-            return True
         return write and self._busy_window(word // WINDOW_WORDS)
 
     def _refuse(self):
@@ -401,8 +393,6 @@ class Chip:
                 return self._refuse()
             if not self.sram_dead:
                 self.sram[word] = value
-        elif kind == "dstore":
-            self.dstore[where[1]] = value
         elif kind == "fallback":
             if self._busy_fallback():
                 return self._refuse()
@@ -443,10 +433,6 @@ class Chip:
                 self._refuse()
                 return 0
             return 0 if self.sram_dead else self.sram[where[1]]
-        if kind == "dstore":
-            return self.dstore[where[1]]
-        if kind == "none":
-            return 0
         if kind == "fallback":
             return self.fallback[where[1]]
         if kind == "lane":
@@ -462,9 +448,8 @@ class Chip:
                 return self.ts
             return 0                    # P reads 0; the other R registers are not modelled
         name, idx = where[1], where[2]
-        r = regs_map.CHIP[name]
-        if r["class"] == "L":
-            return self.cbank[bank_slot(name, idx)]
+        if regs_map.CHIP[name]["class"] == "L":
+            return 0                    # the chip configuration bank has no read port
         if name == "ID":
             return self.id_value
         if name == "RUN":
@@ -488,7 +473,7 @@ class Chip:
         return self.lane_cfg[lane][name]
 
     def chip_config(self, name, index=0):
-        """Backdoor read of a chip configuration word."""
+        """Backdoor read of a chip configuration word (the host reads 0)."""
         return self.cbank[bank_slot(name, index)]
 
     # ----------------------------------------------------------- SPI target
@@ -583,7 +568,7 @@ class Chip:
         """Architectural state as plain data (for the command line's state file)."""
         return {
             "lanes": self.lanes, "sram_dead": self.sram_dead,
-            "sram": list(self.sram), "dstore": list(self.dstore), "fallback": list(self.fallback),
+            "sram": list(self.sram), "fallback": list(self.fallback),
             "lane_cfg": [dict(c) for c in self.lane_cfg],
             "lane_flop": [dict(f) for f in self.lane_flop],
             "cbank": list(self.cbank),
@@ -599,7 +584,7 @@ class Chip:
             self.lanes = s["lanes"]
             self.power_up(0)
         self.sram_dead = s["sram_dead"]
-        self.sram, self.dstore, self.fallback = list(s["sram"]), list(s["dstore"]), list(s["fallback"])
+        self.sram, self.fallback = list(s["sram"]), list(s["fallback"])
         self.lane_cfg = [dict(c) for c in s["lane_cfg"]]
         self.lane_flop = [dict(f) for f in s["lane_flop"]]
         self.cbank = list(s["cbank"])

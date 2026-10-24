@@ -16,6 +16,10 @@
 // the match (0 = the matching edge); every drive change happens cfg_tdly
 // cycles after its edge (the drive register then changes at the end of that
 // cycle).
+// cfg_hold: the drive does not end after the last response bit; it keeps that
+// bit until seq_wr (the sequencer writes the driven pin, or the lane stops)
+// and ends at the same clock edge, so the pin passes to the program without
+// a gap. A new match in that cycle wins.
 module tse_resp_rule #(
     parameter int K  = 2,
     parameter int PW = 16
@@ -30,6 +34,8 @@ module tse_resp_rule #(
     input  logic          cfg_src,
     input  logic          cfg_edge,
     input  logic [7:0]    cfg_tdly,
+    input  logic          cfg_hold,
+    input  logic          seq_wr,
     input  logic          frame_rst,
     input  logic          bit_valid,
     input  logic          bit_in,
@@ -133,12 +139,13 @@ module tse_resp_rule #(
                         pending <= 1'b0; drv_en <= 1'b1;
                     end
                 end else if (drv_en) begin
-                    if (left == 4'd0) drv_en <= 1'b0;
+                    if (left == 4'd0) drv_en <= cfg_hold;
                     else begin
                         rsr <= {1'b0, rsr[15:1]}; left <= left - 4'd1;
                     end
                 end
             end
+            if (cfg_hold && seq_wr && !(any && wctl[10])) drv_en <= 1'b0;
         end
 endmodule
 `default_nettype wire

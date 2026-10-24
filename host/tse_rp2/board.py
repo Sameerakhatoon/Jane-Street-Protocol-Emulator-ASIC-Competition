@@ -64,6 +64,7 @@ class BoardLink:
         self.sm_rx = rp2.StateMachine(1, bytebus.loader_rx, freq=hz,
                                       out_base=Pin(bytebus.OUT_BASE), in_base=Pin(bytebus.IN_BASE))
         self.pio_hz = hz
+        self.ent = bytebus.Entries()    # out_init has driven the strobe pin low
         self.sm_tx.active(1)
 
     def leave_load(self):

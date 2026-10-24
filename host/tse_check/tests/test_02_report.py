@@ -67,7 +67,7 @@ def test_02_sound(t0, x, lo):
 @pytest.mark.parametrize("t0,ticks", [(1000.0, 187), (1000.6, 188)])
 def test_03_start_hold(t0, ticks):
     edges, _ = transaction(t0, hd_sta=187.5)
-    res = run(edges, lane=2)
+    res = run(edges, lane=1)
     hd = res[0]
     assert (len(hd.meas), hd.verdict(), hd.worst().ticks) == (1, P.VIOLATION, ticks)
     assert [r.verdict() for r in res[1:]] == [P.PASS] * 5
@@ -77,8 +77,8 @@ def test_03_start_hold(t0, ticks):
 # 4: the report line names time, parameter, measured value, limit and lane
 def test_04_report_text():
     edges, _ = transaction(1000.6, hd_sta=187.5)
-    out = P.lines(run(edges, lane=2), CLOCK)
-    assert out[0] == "t=1,189  VIOLATION  tHD;STA  measured 3.133 us  min 4.000 us  (lane 2)"
+    out = P.lines(run(edges, lane=1), CLOCK)
+    assert out[0] == "t=1,189  VIOLATION  tHD;STA  measured 3.133 us  min 4.000 us  (lane 1)"
     row = [x for x in out if x.startswith("tHD;STA ")][0].split()
     assert row[1:4] == ["1", "0", "1"] and row[-1] == "VIOLATION"
 

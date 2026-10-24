@@ -5,11 +5,12 @@ A record popped from EV_POP is one word, high bits first:
     lane | code | data | ts
 
 The widths come from the ISA and register tables: code is the EMIT code
-field, lane covers the lane window, data is X[7:0] at the EMIT, and ts is
-whatever is left of the EV_POP word (16 bits). The two codes above the
-highest code a program may emit are the event unit's own: TRIG (data holds
-stage information) and TIME, whose ts field carries timestamp bits [31:16]
-for the records after it. A TIME record precedes the first record of each
+field, data is X[7:0] at the EMIT, ts is the low half of the timestamp, and
+lane is whatever is left of the EV_POP word (2 bits, more than the lanes
+need). The two codes above the highest code a program may emit are the
+event unit's own: TRIG, whose data holds the lanes that matched the last
+stage and that stage's index (trig()), and TIME, whose ts field carries
+timestamp bits [31:16] for the records after it. A TIME record precedes the first record of each
 new epoch, so the host rebuilds full timestamps by tracking the epoch.
 """
 from tools.tseasm import isa, regs
@@ -22,9 +23,11 @@ CODE_BITS = _code["hi"] - _code["lo"] + 1
 CODE_MAX = _code["asm_max"]
 TRIG = CODE_MAX + 1
 TIME = CODE_MAX + 2
-LANE_BITS = (regs.LANE_WINDOW["max_lanes"] - 1).bit_length()
 DATA_BITS = 8
-TS_BITS = RECORD_BITS - LANE_BITS - CODE_BITS - DATA_BITS
+TS_BITS = 16
+LANE_BITS = RECORD_BITS - CODE_BITS - DATA_BITS - TS_BITS
+LANES = regs.LANE_WINDOW["max_lanes"]
+TRIG_STAGES = regs.CHIP["TRIG_MATCH"]["count"]
 EPOCH = 1 << TS_BITS
 
 DATA_SHIFT = TS_BITS
@@ -68,6 +71,14 @@ def pack(lane, code, data, ts16):
         if not 0 <= v < 1 << bits:
             raise RecordError("%s %d does not fit %d bits" % (what, v, bits))
     return lane << LANE_SHIFT | code << CODE_SHIFT | data << DATA_SHIFT | ts16
+
+
+def trig(data):
+    """(lane mask, stage index) of a TRIG record's data byte: {lanes[7:4], 0, stage[1:0]}."""
+    lanes, stage = data >> 4, data & 3
+    if lanes >> LANES or not lanes or stage >= TRIG_STAGES:
+        raise RecordError("TRIG data 0x%02X: lanes 0x%X, stage %d" % (data, lanes, stage))
+    return lanes, stage
 
 
 def decode(words, epoch=0):

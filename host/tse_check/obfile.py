@@ -4,7 +4,7 @@
       "clock_hz": 60e6,
       "codes": {"start": 1, "scl_fall": 2, "viol_hd_sta": 9},
       "obligations": [
-        {"name": "tHD;STA", "from": "start", "to": "scl_fall", "min": "4.0us", "lane": 2},
+        {"name": "tHD;STA", "from": "start", "to": "scl_fall", "min": "4.0us", "lane": 1},
         {"name": "flagged", "forbid": "viol_hd_sta"}
       ]
     }

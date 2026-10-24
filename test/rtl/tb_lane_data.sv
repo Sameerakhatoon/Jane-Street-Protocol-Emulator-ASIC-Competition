@@ -28,7 +28,7 @@ module tb_lane_data;
         return s;
     endfunction
 
-    logic [31:0] osr_at7;
+    logic [31:0] osr_at7, osr_end;
     always @(posedge clk) if (run && dut.u_seq.avail && !dut.u_seq.held && dut.u_seq.pc == 8) osr_at7 <= dut.u_seq.osr;
 
     initial begin
@@ -51,7 +51,7 @@ module tb_lane_data;
             emit(JMP(tse_isa_pkg::COND_ALWAYS, pq.size()));
             load_q();
             dwin[5] = 32'h0; dwin[6] = 32'hCAFE_BA00 + k; dwin[7] = 32'h5EED_0000 + k;
-            clear_disp(); start(); repeat (90) @(negedge clk); stop();
+            clear_disp(); start(); repeat (90) @(negedge clk); osr_end = dut.u_seq.osr; stop();
             c = at(5); s = slot_after(c);
             seen[int'(s - c)] = 1'b1;
             if (at(6) == mx(s + 1, fetch_after(c) + 1) && dwin[5] == {16'd0, 8'h12, 8'(8'h34 + k)}) ok_st++;
@@ -60,8 +60,8 @@ module tb_lane_data;
             if (at(8) == mx(s + 2, fetch_after(c) + 1) && osr_at7 == 32'hCAFE_BA00 + k) ok_ld++;
             else $display("FAIL phase %0d: LDW in %0d, slot %0d, successor %0d, OSR %h", k, c, s, at(8), osr_at7);
             c = at(9); s = slot_after(c);
-            if (at(10) == mx(s + 2, fetch_after(c) + 1) && dut.u_seq.osr == 32'h5EED_0000 + k) ok_x++;
-            else $display("FAIL phase %0d: LDW X in %0d, successor %0d, OSR %h", k, at(9), at(10), dut.u_seq.osr);
+            if (at(10) == mx(s + 2, fetch_after(c) + 1) && osr_end == 32'h5EED_0000 + k) ok_x++;
+            else $display("FAIL phase %0d: LDW X in %0d, successor %0d, OSR %h", k, at(9), at(10), osr_end);
         end
         check(ok_st == 16, $sformatf("lane %0d: STW lasts s + 1 - c (or until the successor word) and stores ISR in %0d of 16 phases", LANE, ok_st));
         check(ok_ld == 16, $sformatf("lane %0d: LDW lasts s + 2 - c (or until the successor word) and loads OSR in %0d of 16 phases", LANE, ok_ld));

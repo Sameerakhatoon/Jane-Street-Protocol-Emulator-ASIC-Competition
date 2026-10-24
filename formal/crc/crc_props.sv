@@ -2,10 +2,10 @@
 //  EQUIV: for every width 5..32, polynomial, initial value and input stream
 //         (single bits or whole bytes in either bit order) the left-aligned
 //         CRC register, read through the reflected output, equals the
-//         textbook MSB-first register shifted left. The right-aligned
+//         textbook MSB-first register shifted left. The unreflected
 //         output is covered by the CRC-15/CAN catalogue task.
 //  CAT:   with a catalogue configuration, feeding "123456789" as bytes gives
-//         the catalogue check value on result.
+//         the catalogue check value on result (left-aligned when unreflected).
 module crc_props (
   input logic       clk,
   input logic       clear_in,
@@ -109,7 +109,7 @@ module crc_props (
 
   always_comb if (started) begin
 `ifdef CAT
-    if (nb == 4'd9 && !gap && !busy) assert (result == C);
+    if (nb == 4'd9 && !gap && !busy) assert (result == (R ? C : C << (6'd32 - W)));
 `else
     assert (busy == (hcnt != 4'd0));
     assert (result == refl(s << sh));

@@ -1,33 +1,32 @@
 `default_nettype none
-// TSE chip core: LANES lanes (3 in 6x4, 4 in 8x4), one SRAM, configuration
+// TSE chip core: LANES lanes (2), one SRAM, configuration
 // banks, crossbar, event unit, self-test, and one host bus driven by the
 // command decoder from the load-mode byte bus or the run-mode SPI target.
 // Host map (16-bit word addresses, every name from tse_regs_pkg):
 //   0x0000 program SRAM, window w at 0x80 x w; 0x0400 data window (SRAM
-//   window 3 with 3 lanes, the latch data store with 4); 0x0800 fallback
+//   window 3); 0x0800 fallback
 //   program store; 0x1000 + 0x100 x lane + reg lane registers; 0x2000
 //   crossbar; 0x3000 event unit; 0x4000 chip registers and mailboxes.
 //   Unmapped addresses read 0 and ignore writes.
 // Refused, setting the sticky host error: a class L or P lane write while
 // that lane runs or is about to; an SRAM write into a program window a
 // running lane fetches from; a fallback store write while a running lane
-// fetches from it; any memory access during the self-test, or SRAM program
-// access while lanes run with 4 lanes (no system slot); RUN in run mode
+// fetches from it; any memory access during the self-test; RUN in run mode
 // while not loaded (in load mode the runtime flops are in reset and a RUN
 // write does nothing). A refused read returns 0.
 // Chip configuration (class L) is one 64-word bank addressed {bank, word}
 // with the bank and word numbers of chip_reg_cfg() in the register package:
 // bank 0 crossbar (PAD_OUT, LANE_IN), bank 1 event (PIN_OPT, EV_CTL and the
-// trigger words). LANE_IN words of lanes not built store nothing. Package
+// trigger words). LANE_IN words of lanes not built store nothing. The host
+// cannot read chip configuration back: those reads return 0. Package
 // names are written out in full (pkg::NAME) because Yosys takes neither a
 // wildcard nor a header import.
 // RUN takes effect at the end of the 16-cycle slot frame and only while
 // loaded, so every lane's data cycles have a fixed phase from its start.
 module tse_top #(
-    parameter int LANES      = 3,
+    parameter int LANES      = 2,
     parameter bit CFG_LATCH  = 1,
-    parameter int EVQ_DEPTH  = 4,
-    parameter int DS_WORDS   = 16
+    parameter int EVQ_DEPTH  = 4
 ) (
     input  logic        clk,
     input  logic        rst_n,
@@ -41,6 +40,7 @@ module tse_top #(
 );
     localparam int V  = 4;
     localparam int NI = LANES * V;
+    localparam int LB = LANES > 1 ? $clog2(LANES) : 1;     // lane index bits of a host address
 
 
     // chip bank word (bank x 32 + word) of each configuration register
@@ -95,7 +95,7 @@ module tse_top #(
 
     // address decode
     logic [7:0]  hreg;
-    logic [1:0]  hl;
+    logic [LB-1:0] hl;
     tse_regs_pkg::rclass_t     hcls;
     logic [4:0]  hword;
     tse_regs_pkg::chip_cfg_t ccfg;
@@ -104,7 +104,7 @@ module tse_top #(
     logic [1:0]  a_win;
     logic [3:0]  busy_win;
     assign hreg   = h_addr[7:0];
-    assign hl     = h_addr[9:8];
+    assign hl     = h_addr[8 +: LB];
     assign hcls   = tse_regs_pkg::lane_reg_class(hreg);
     assign hword  = tse_regs_pkg::lane_reg_word(hreg);
     assign ccfg   = tse_regs_pkg::chip_reg_cfg(h_addr);
@@ -130,14 +130,13 @@ module tse_top #(
         end
     end
 
-    // with 4 lanes the data window is the latch store, not the SRAM
     logic a_mem, a_sram_only;
     assign a_mem       = a_sram || a_dwin || a_fb;
-    assign a_sram_only = a_sram || (a_dwin && LANES < 4);
+    assign a_sram_only = a_sram || a_dwin;
 
     logic acc, err_sram, err_fb, err_lane, err_run, sram_go;
     assign acc      = h_we || h_re;
-    assign err_sram = (a_mem && st_busy) || (a_sram_only && ((LANES == 4 && lane_run != '0) || (h_we && busy_win[a_win])));
+    assign err_sram = (a_mem && st_busy) || (a_sram_only && h_we && busy_win[a_win]);
     assign err_fb   = a_fb && h_we && busy_fb;
     assign err_lane = a_lane && h_we && (hcls == tse_regs_pkg::RC_L || hcls == tse_regs_pkg::RC_P) && lane_run[hl];
     assign err_run  = h_we && h_addr == tse_regs_pkg::HR_RUN && !loaded && !load_mode;
@@ -181,7 +180,7 @@ module tse_top #(
             end
         end
 
-    tse_prog_mem #(.LANES(LANES), .LATCH(CFG_LATCH), .DS_WORDS(DS_WORDS)) u_pmem (
+    tse_prog_mem #(.LANES(LANES), .LATCH(CFG_LATCH)) u_pmem (
         .clk, .rst_n(sys_rst_n), .clr(cfg_clr), .all_stopped(lane_live == '0),
         .l_req, .l_addr, .l_win, .l_fb, .l_gnt, .l_rdata,
         .d_req(l_dreq), .d_we(l_dwe), .d_addr(l_daddr), .d_wdata(l_dwdata), .d_gnt(l_dgnt), .d_rdata(l_drdata),
@@ -203,7 +202,7 @@ module tse_top #(
     logic [64*32-1:0] chip_q;
     logic [31:0]      chip_rdata;
     logic             chip_busy;
-    tse_cfg_bank #(.WORDS(64), .LATCH(CFG_LATCH), .WD_REG(0), .MASK(CHIP_MASK)) u_ccfg (
+    tse_cfg_bank #(.WORDS(64), .LATCH(CFG_LATCH), .READBACK(0), .WD_REG(0), .MASK(CHIP_MASK)) u_ccfg (
         .clk, .rst_n(sys_rst_n), .clr(cfg_clr),
         .we(h_wr && ccfg.hit), .addr(cw), .wdata(h_wdata),
         .busy(chip_busy), .rd_addr(cw), .rd_data(chip_rdata), .q(chip_q)
@@ -231,7 +230,7 @@ module tse_top #(
 
     for (genvar i = 0; i < LANES; i++) begin : g_lane
         logic hb_we, sel;
-        assign sel   = a_lane && hl == 2'(i);
+        assign sel   = a_lane && hl == LB'(i);
         assign hb_we = h_wr && sel && hcls == tse_regs_pkg::RC_L;
         assign live_pins[V*i +: V] = {V{lane_live[i]}};
 
@@ -321,14 +320,14 @@ module tse_top #(
     // ---------------- event unit
     logic [31:0] ev_head;
     logic [15:0] ev_status;
-    logic [4*16-1:0] ev_win;
+    logic [3*16-1:0] ev_win;
     always_comb begin
-        for (int s = 0; s < 4; s++) ev_win[16*s +: 16] = chip_q[32*(CW_TRIG_WIN + s) +: 16];
+        for (int s = 0; s < 3; s++) ev_win[16*s +: 16] = chip_q[32*(CW_TRIG_WIN + s) +: 16];
     end
 
     tse_event_unit #(.LANES(LANES), .DEPTH(EVQ_DEPTH)) u_ev (
         .clk, .rst_n(eng_rst_n),
-        .cfg_ctl(chip_q[32*CW_EV_CTL +: 10]), .cfg_match(chip_q[32*CW_TRIG_MATCH +: 128]),
+        .cfg_ctl(chip_q[32*CW_EV_CTL +: 10]), .cfg_match(chip_q[32*CW_TRIG_MATCH +: 96]),
         .cfg_win(ev_win), .cfg_trig(chip_q[32*CW_TRIG_CTL +: 17]),
         .ev_valid, .ev_code, .ev_data, .cf_we(sig_we), .cf_mask(sig_mask), .cf_val(sig_val),
         .pop(h_re && h_addr == tse_regs_pkg::HR_EV_POP),

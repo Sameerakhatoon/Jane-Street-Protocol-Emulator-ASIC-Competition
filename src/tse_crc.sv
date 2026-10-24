@@ -2,9 +2,12 @@
 // Programmable bit-serial CRC, width 1..32 (its constants live
 // in the configuration bank). Left-aligned: the feedback tap is
 // always bit 31, so software writes poly, init, xo and check shifted left by
-// 32 - W. xo is the xorout mask in transmission order.
+// 32 - W. xo is the xorout mask in transmission order. result is the
+// register XOR xo, left-aligned like the constants, or reflected (so
+// right-aligned) with refout; RIGHT_ALIGN = 1 adds a shifter that
+// right-aligns the unreflected result as well.
 module tse_crc #(
-    parameter bit RIGHT_ALIGN = 1
+    parameter bit RIGHT_ALIGN = 0
 ) (
     input  logic        clk,
     input  logic        rst_n,

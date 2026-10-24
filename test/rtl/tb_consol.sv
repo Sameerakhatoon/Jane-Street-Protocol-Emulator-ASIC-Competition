@@ -59,7 +59,7 @@ module tb_consol;
     tse_resp_rule #(.K(2), .PW(16)) rr (.clk, .rst_n,
         .cfg_pat({16'h0, 16'h00A0}), .cfg_msk({16'h0, 16'h00FF}), .cfg_pos({9'd0, 9'd7}),
         .cfg_resp({16'h0, 16'h0000}), .cfg_ctl({14'h0, 14'h1400}),
-        .cfg_src(1'b1), .cfg_edge(1'b1), .cfg_tdly(8'd18), .frame_rst(frst),
+        .cfg_src(1'b1), .cfg_edge(1'b1), .cfg_tdly(8'd18), .cfg_hold(1'b0), .seq_wr(1'b0), .frame_rst(frst),
         .bit_valid(1'b0), .bit_in(1'b0), .bit_start(1'b0), .pin_clk(scl), .pin_dat(sda),
         .crc_ok(1'b0), .ext_flag(1'b0), .flags_clr(frst), .drv_en, .drv_val, .hit_flags(hits),
         .hit_pulse(), .abort_pulse());
@@ -68,7 +68,7 @@ module tb_consol;
     tse_resp_rule #(.K(2), .PW(16)) rr2 (.clk, .rst_n,
         .cfg_pat({16'h0, 16'h0005}), .cfg_msk({16'h0, 16'h000F}), .cfg_pos({9'd0, 9'd3}),
         .cfg_resp({16'h0, 16'h0001}), .cfg_ctl({14'h0, 14'h1420}),
-        .cfg_src(1'b0), .cfg_edge(1'b0), .cfg_tdly(8'd0), .frame_rst(frst2),
+        .cfg_src(1'b0), .cfg_edge(1'b0), .cfg_tdly(8'd0), .cfg_hold(1'b0), .seq_wr(1'b0), .frame_rst(frst2),
         .bit_valid(bv2), .bit_in(bin2), .bit_start(bst2), .pin_clk(1'b0), .pin_dat(1'b0),
         .crc_ok(1'b0), .ext_flag(1'b0), .flags_clr(frst2), .drv_en(d2en), .drv_val(), .hit_flags(),
         .hit_pulse(), .abort_pulse());

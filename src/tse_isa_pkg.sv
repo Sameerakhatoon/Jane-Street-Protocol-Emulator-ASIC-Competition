@@ -11,6 +11,7 @@ package tse_isa_pkg;
   localparam int LAT_PORT_TO_WAIT = 2;
   localparam int LAT_EMIT_TO_TRIG_PORT = 3;
   localparam int LAT_CFG_WRITE_VISIBLE = 2;
+  localparam int LAT_EDGE_TO_PORT = 1;
 
   // instruction classes (plain constants, not an enum, so Yosys reads the package)
   typedef logic [4:0] iclass_t;

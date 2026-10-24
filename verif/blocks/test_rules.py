@@ -26,7 +26,7 @@ def ports(c):
                 cfg_pos=(r0["pos"] | r0["any"] << 8) | (r1["pos"] | r1["any"] << 8) << 9,
                 cfg_resp=r0["resp"] | r1["resp"] << 16,
                 cfg_ctl=r0["ctl"] | r1["ctl"] << 14,
-                cfg_src=c["cfg_src"], cfg_edge=c["cfg_edge"], cfg_tdly=c["cfg_tdly"])
+                cfg_src=c["cfg_src"], cfg_edge=c["cfg_edge"], cfg_tdly=c["cfg_tdly"], cfg_hold=0)
 
 
 STREAM = merge(levels(["pin_clk", "pin_dat"], max_run=8),
@@ -57,6 +57,7 @@ class RulePorts:
 
 def to_rtl(i):
     i["flags_clr"] = i["frame_rst"]
+    i["seq_wr"] = 0
     return i
 
 

@@ -7,9 +7,9 @@
 // latency, so a program behaves identically from either; a fallback fetch
 // leaves the SRAM idle, so a dead macro does not matter to it.
 // Data window (LDW, STW), 128 word addresses: lane k owns the data cycles
-// with cnt == 4k + 3. With 3 lanes these are the system slot and the window
-// is SRAM window 3; the host has the system slot at cnt == 15. With 4 lanes
-// the window is tse_dstore. While every lane is stopped the host may use the
+// with cnt == 4k + 3, occurrences of the system slot, and the window is SRAM
+// window 3; the host has the system slot at cnt == 15. While every lane is
+// stopped the host may use the
 // SRAM in any cycle. frame_end (cnt == 15) closes the 16-cycle frame: RUN
 // changes there, so a lane's data cycles have a fixed phase from its start.
 // Lane data port, one per lane (the lane drives the first four):
@@ -26,9 +26,8 @@
 // Self-test: t_en switches the macro to its test port; the caller keeps the
 // functional port idle while it does.
 module tse_prog_mem #(
-    parameter int LANES    = 3,
-    parameter bit LATCH    = 1,
-    parameter int DS_WORDS = 16
+    parameter int LANES    = 2,
+    parameter bit LATCH    = 1
 ) (
     input  logic                clk,
     input  logic                rst_n,
@@ -103,12 +102,10 @@ module tse_prog_mem #(
         end
 
     // ---------------- SRAM slots
-    logic [LANES-1:0] a_dreq;
-    assign a_dreq = LANES < 4 ? d_req : '0;
     tse_slot_arb #(.LANES(LANES)) u_arb (
         .clk, .rst_n, .frame_sync(1'b0),
         .req(s_req), .addr(s_addr),
-        .dreq(a_dreq), .dwe(d_we), .daddr(d_addr), .dwdata(d_wdata),
+        .dreq(d_req), .dwe(d_we), .daddr(d_addr), .dwdata(d_wdata),
         .sys_req, .sys_we(h_we), .sys_addr, .sys_wdata(h_wdata), .all_stopped,
         .cnt, .gnt(s_gnt), .rvalid(s_rv), .dgnt(s_dgnt), .drvalid(s_drv),
         .sys_gnt, .sys_rvalid(sys_rv),
@@ -125,32 +122,18 @@ module tse_prog_mem #(
     assign frame_end = cnt == 4'd15;
 
     // ---------------- data window and host
-    logic        ds_hgnt;
-    logic [1:0]  hsrc;                 // source of the last host read: 0 SRAM, 1 fallback, 2 data store
-    logic [31:0] ds_rd;
-    if (LANES < 4) begin : g_win3
-        assign sys_req  = h_req && !h_fb;
-        assign sys_addr = h_dw ? {2'd3, h_addr[6:0]} : h_addr;
-        assign d_gnt    = s_dgnt;
-        assign d_rdata  = dout;
-        assign ds_hgnt  = 1'b0;
-        assign ds_rd    = '0;
-    end else begin : g_dstore
-        assign sys_req  = h_req && !h_fb && !h_dw;
-        assign sys_addr = h_addr;
-        tse_dstore #(.LANES(LANES), .WORDS(DS_WORDS), .LATCH(LATCH)) u_ds (
-            .clk, .rst_n, .cnt, .d_req, .d_we, .d_addr, .d_wdata, .d_gnt, .d_rdata,
-            .h_req(h_req && h_dw), .h_we, .h_addr(h_addr[6:0]), .h_wdata, .h_gnt(ds_hgnt), .h_rdata(ds_rd)
-        );
-    end
-
-    assign h_gnt = sys_gnt || fb_hw || fb_hr || ds_hgnt;
+    logic hfb_q;                       // the last host read was from the fallback store
+    assign sys_req  = h_req && !h_fb;
+    assign sys_addr = h_dw ? {2'd3, h_addr[6:0]} : h_addr;
+    assign d_gnt    = s_dgnt;
+    assign d_rdata  = dout;
+    assign h_gnt    = sys_gnt || fb_hw || fb_hr;
 
     always_ff @(posedge clk or negedge rst_n)
-        if (!rst_n)     hsrc <= 2'd0;
-        else if (h_gnt) hsrc <= h_fb ? 2'd1 : (h_dw && LANES == 4) ? 2'd2 : 2'd0;
+        if (!rst_n)     hfb_q <= 1'b0;
+        else if (h_gnt) hfb_q <= h_fb;
 
-    assign h_rdata = hsrc == 2'd1 ? fb_rd : hsrc == 2'd2 ? ds_rd : dout;
+    assign h_rdata = hfb_q ? fb_rd : dout;
 
     wire _unused = &{s_rv, s_drv, s_dgnt, sys_rv, fb_busy, fb_q, 1'b0};
 endmodule

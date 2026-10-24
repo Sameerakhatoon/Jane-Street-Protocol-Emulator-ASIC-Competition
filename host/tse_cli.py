@@ -14,10 +14,11 @@ Commands (several per run, separated by +):
     image show IMAGE
 Targets:
     model          the Python chip model (default); --state keeps it between runs,
-                   --lanes 3 or 4 picks the build, --sram-dead fails its self-test
+                   --sram-dead fails its self-test
     pipe:CMD       any pin server speaking the tse_host.pinpipe protocol, e.g.
                    "pipe:python3 -m tse_host.pinpipe" or a Verilated chip harness
 In load mode peek and poke use the byte bus (RD, WR); in run mode, SPI.
+Chip configuration registers read 0 on the chip; load verifies everything else.
 """
 import argparse
 import json
@@ -36,12 +37,12 @@ from tse_host.session import Session, LoadError  # noqa: E402
 
 
 class Target:
-    def __init__(self, spec, state, seed, lanes=3, sram_dead=False):
+    def __init__(self, spec, state, seed, sram_dead=False):
         self.state = state
         self.pins = None
         self.chip = None
         if spec == "model":
-            self.chip = Chip(seed=seed, lanes=lanes, sram_dead=sram_dead)
+            self.chip = Chip(seed=seed, sram_dead=sram_dead)
             if state and os.path.exists(state):
                 with open(state) as fh:
                     self.chip.restore(json.load(fh))
@@ -174,7 +175,6 @@ def main(argv=None):
     top.add_argument("--target", default="model")
     top.add_argument("--state", help="model state file kept between runs")
     top.add_argument("--seed", type=int, default=0, help="power-up state of a fresh model")
-    top.add_argument("--lanes", type=int, choices=(3, 4), default=3, help="model build")
     top.add_argument("--sram-dead", action="store_true", help="model SRAM returns 0")
     top.add_argument("rest", nargs=argparse.REMAINDER)
     g = top.parse_args(argv)
@@ -190,7 +190,7 @@ def main(argv=None):
     if not cmds:
         top.error("no command")
     need = any(c.cmd != "image" for c in cmds)
-    tgt = Target(g.target, g.state, g.seed, g.lanes, g.sram_dead) if need else None
+    tgt = Target(g.target, g.state, g.seed, g.sram_dead) if need else None
     try:
         for c in cmds:
             run_one(c, tgt)

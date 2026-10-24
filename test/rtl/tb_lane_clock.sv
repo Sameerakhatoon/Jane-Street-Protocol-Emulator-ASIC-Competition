@@ -35,10 +35,11 @@ module tb_lane_clock;
         p_tmr = pq.size(); emit(TMR(1, 0, 0, 3));
         p_mov2 = pq.size(); emit(MOV(tse_isa_pkg::MOVDST_Y, tse_isa_pkg::MOVSRC_C, 0));
         emit(JMP(tse_isa_pkg::COND_ALWAYS, pq.size()));
-        load_q(); clear_disp(); start(); repeat (40) @(negedge clk); stop();
+        load_q(); clear_disp(); start(); repeat (40) @(negedge clk);
         check(dut.u_seq.x == 16'(at(p_mov)), $sformatf("MOV X, C in cycle %0d gives X = %0d", at(p_mov), dut.u_seq.x));
         check(at(p_mov2) - at(p_tmr) == 4 && dut.u_seq.y == 16'd3,
               $sformatf("TMR cclr [3], then MOV Y, C: Y = %0d (C reads 0 in the cycle after TMR)", dut.u_seq.y));
+        stop();
 
         // 2. guard idiom: TMR cclr, gsel=1 at odd pc p, WAIT GUARD at p + 1 (even), successor in its word
         pq.delete();
@@ -67,9 +68,10 @@ module tb_lane_clock;
         p_ts = pq.size(); emit(CSRR(tse_regs_pkg::LR_TS));
         emit(JMP(tse_isa_pkg::COND_ALWAYS, pq.size()));
         ts_pc = p_ts;
-        load_q(); clear_disp(); start(); repeat (40) @(negedge clk); stop();
+        load_q(); clear_disp(); start(); repeat (40) @(negedge clk);
         check(dut.u_seq.isr == 32'(at(p_rd)), $sformatf("CSRR CLOCK in cycle %0d reads %0d", at(p_rd), dut.u_seq.isr));
         check(yx() == ts_seen, $sformatf("CSRR TS reads the timestamp of its cycle (%0d)", ts_seen));
+        stop();
 
         // 5. WAIT CHIP: TRIG (index 4) from the chip flags; index 6 reads 0 (times out); SYNCED
         pq.delete();

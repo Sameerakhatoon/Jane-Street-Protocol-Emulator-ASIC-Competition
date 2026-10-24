@@ -15,10 +15,9 @@ from tse_host import frames as F
 from tools.tseasm import regs
 from chip_pins import Pins
 
-LANES = int(os.environ.get("LANES", "3"))
+LANES = int(os.environ.get("LANES", "2"))
 LOADED, BIST_DONE, BIST_PASS, HOST_ERR = 0x01, 0x02, 0x04, 0x08
 FB = 0x0800
-DS_WORDS = 16
 
 # SET PINDIRS 0x11; loop: SET PINS 0x11; SET X 0; SET PINS 0x10; JMP 1 (pin 0 high 2,
 # low 2 instructions; the loop spans three words, so every iteration refetches)
@@ -73,8 +72,7 @@ async def test_01_bist_fault_classes(dut):
     await p.start()
     await set_fault(dut, 0)
     await p.enter_load()
-    kinds = range(7) if LANES == 3 else (0, 1, 6)
-    for kind in kinds:
+    for kind in range(7):
         await set_fault(dut, kind)
         st, res = await run_bist(p)
         assert st & BIST_DONE, "kind %d: not done" % kind
@@ -136,9 +134,8 @@ async def test_03_fallback_same_timing(dut):
 @cocotb.test()
 async def test_04_host_access(dut):
     """Data window and fallback store from the host: load-mode writes read back over
-    the loader and SPI; while lanes run the data window stays writable (window 3 of
-    the SRAM with 3 lanes, the latch store with 4, where words past the store read
-    0); a fallback store write is refused while a lane runs from it."""
+    the loader and SPI; while lanes run the data window (window 3 of the SRAM)
+    stays writable; a fallback store write is refused while a lane runs from it."""
     p = Pins(dut)
     await p.start()
     await set_fault(dut, 0)
@@ -151,16 +148,12 @@ async def test_04_host_access(dut):
     await p.exchange(body + F.commit(crc))
     assert await p.read(FB, 3) == PROG
     assert await p.read(0x0400, 8) == data
-    if LANES < 4:
-        assert await p.read(0x0180, 8) == data
+    assert await p.read(0x0180, 8) == data
     await p.leave_load()
     await p.spi_write(regs.host_addr("RUN"), 1)
     await p.tick(40)
     await p.spi_write(0x0403, 0xCAFEF00D)
     assert (await p.spi_read(0x0400, 4)) == data[:3] + [0xCAFEF00D]
-    if LANES == 4:
-        await p.spi_write(0x0400 + DS_WORDS, 0x12345678)
-        assert (await p.spi_read(0x0400 + DS_WORDS))[0] == 0
     st = (await p.spi_read(regs.host_addr("STATUS")))[0]
     assert not st & HOST_ERR
     await p.spi_write(FB + 1, 0)

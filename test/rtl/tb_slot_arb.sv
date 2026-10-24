@@ -5,7 +5,7 @@
 // its own slot, and at most one requester may own the port per cycle.
 // all_stopped is held 0: the host owns every cycle only while no lane runs.
 `ifndef LANES_TB
-`define LANES_TB 3
+`define LANES_TB 2
 `endif
 module tb_slot_arb;
     localparam int L = `LANES_TB;

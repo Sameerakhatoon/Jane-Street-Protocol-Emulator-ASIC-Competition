@@ -40,7 +40,7 @@ def test_02_byte_input_gives_the_check_value():
         c = Crc.catalogue(w, p, i, ri, ro, x)
         c.step(CrcIn(clear=1))
         feed_bytes(c, MSG)
-        assert c.out()["result"] == check, name
+        assert c.out()["result"] == (check if ro else left(check, w)), name
 
 
 def test_03_byte_takes_eight_cycles_and_busy_follows():
@@ -82,7 +82,7 @@ def test_05_tx_load_and_shift_send_the_crc_in_order():
 def test_06_clear_wins_over_a_bit():
     c = Crc(poly=left(0x07, 8), init=left(0xA5, 8), wm1=7)
     c.step(CrcIn(clear=1, bit_valid=1, bit_in=1))
-    assert c.out()["result"] == 0xA5
+    assert c.out()["result"] == left(0xA5, 8)
 
 
 @settings(max_examples=200, deadline=None)
@@ -100,4 +100,5 @@ def test_07_every_configuration_matches_the_textbook(cfg, data, bitwise):
             feed_bits(c, [(b >> k) & 1 for k in range(7, -1, -1)])
     else:
         feed_bytes(c, data)
-    assert c.out()["result"] == crc_textbook(data, w, p, i, ri, ro, x)
+    want = crc_textbook(data, w, p, i, ri, ro, x)
+    assert c.out()["result"] == (want if ro else left(want, w))

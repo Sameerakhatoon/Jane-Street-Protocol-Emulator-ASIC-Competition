@@ -15,12 +15,12 @@ module tb_lane_rules;
     logic [1:0] hit_c, hit_n;
     tse_resp_rule #(.K(2), .PW(16)) rc (.clk, .rst_n, .cfg_pat({16'h003C, 16'h00A5}), .cfg_msk({16'h00FF, 16'h00FF}),
         .cfg_pos({9'h100, 9'h100}), .cfg_resp('0), .cfg_ctl({CTL1, CTL0}),
-        .cfg_src(1'b0), .cfg_edge(1'b0), .cfg_tdly(8'd0), .frame_rst(frst), .bit_valid(bv), .bit_in(bi),
+        .cfg_src(1'b0), .cfg_edge(1'b0), .cfg_tdly(8'd0), .cfg_hold(1'b0), .seq_wr(1'b0), .frame_rst(frst), .bit_valid(bv), .bit_in(bi),
         .bit_start(1'b0), .pin_clk(1'b0), .pin_dat(1'b0), .crc_ok(1'b0), .ext_flag(1'b0), .flags_clr(frst),
         .drv_en(), .drv_val(), .hit_flags(hit_c), .hit_pulse(), .abort_pulse());
     tse_resp_rule #(.K(2), .PW(16)) rn (.clk, .rst_n, .cfg_pat({16'h003C, 16'h00A5}), .cfg_msk({16'h00FF, 16'h00FF}),
         .cfg_pos({9'h100, 9'h100}), .cfg_resp('0), .cfg_ctl({CTL1 & ~14'(1 << tse_regs_pkg::LR_RULE1_CTL_CHAIN_LO), CTL0}),
-        .cfg_src(1'b0), .cfg_edge(1'b0), .cfg_tdly(8'd0), .frame_rst(frst), .bit_valid(bv), .bit_in(bi),
+        .cfg_src(1'b0), .cfg_edge(1'b0), .cfg_tdly(8'd0), .cfg_hold(1'b0), .seq_wr(1'b0), .frame_rst(frst), .bit_valid(bv), .bit_in(bi),
         .bit_start(1'b0), .pin_clk(1'b0), .pin_dat(1'b0), .crc_ok(1'b0), .ext_flag(1'b0), .flags_clr(frst),
         .drv_en(), .drv_val(), .hit_flags(hit_n), .hit_pulse(), .abort_pulse());
 

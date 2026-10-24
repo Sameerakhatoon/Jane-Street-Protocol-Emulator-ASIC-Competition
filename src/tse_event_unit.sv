@@ -1,15 +1,16 @@
 `default_nettype none
 // Event unit: chip-wide timestamp, event log, sequence trigger, chip flags.
-// A lane event (ev_valid with a 6-bit code and 8 data bits) is captured with
-// timestamp bits [16:0] of its own cycle into the lane's holding register
-// when logging is on for that lane. One record per cycle enters the FIFO: a
+// A lane event (ev_valid with a 6-bit code and 8 data bits) arrives the cycle
+// after its EMIT and is captured with timestamp bits [16:0] of the EMIT's
+// cycle (ts - 1) into the lane's holding register when logging is on for that
+// lane; a TRIG record carries the cycle of the EMIT that fired it. One record per cycle enters the FIFO: a
 // pending TRIG record first, then the holding registers in rotating order.
 // Record: {lane[31:30], code[29:24], data[23:16], ts[15:0]}; code 0x3E is a
 // TRIG record, 0x3F a TIME record whose low half is timestamp bits [31:16].
 // A TIME record goes in before the first record of every new 65,536-cycle
 // epoch, so the host rebuilds full timestamps. An event that finds its
 // holding register still full is dropped and counted (saturating).
-// Trigger: stage s matches an event when its lane is in the lane mask and
+// Trigger: three stages; stage s matches an event when its lane is in the lane mask and
 // code and data agree under their masks; a nonzero window bounds the cycles
 // since the previous stage matched, and an expired window returns the
 // pointer to 0. Matching the last stage fires: TRIG flag, a pulse of
@@ -18,15 +19,16 @@
 // chip_flags = {TICK, TRIG, CF3..CF0}; on a same-cycle CF write the highest
 // lane wins.
 module tse_event_unit #(
-    parameter int LANES = 3,
+    parameter int LANES = 2,
     parameter int DEPTH = 4,
-    localparam int DW = $clog2(DEPTH)
+    localparam int DW = $clog2(DEPTH),
+    localparam int NS = 3                   // trigger stages
 ) (
     input  logic               clk,
     input  logic               rst_n,
     input  logic [9:0]         cfg_ctl,       // {tick_k[9:5], lane_mask[4:1], log_en[0]}
-    input  logic [4*32-1:0]    cfg_match,     // per stage {data_mask, data, code_mask, code, lanes}
-    input  logic [4*16-1:0]    cfg_win,       // per stage window in cycles, 0 = no limit
+    input  logic [NS*32-1:0]   cfg_match,     // per stage {data_mask, data, code_mask, code, lanes}
+    input  logic [NS*16-1:0]   cfg_win,       // per stage window in cycles, 0 = no limit
     input  logic [16:0]        cfg_trig,      // {stop_mask, pol, width_m1, rearm, en, last}
     input  logic [LANES-1:0]   ev_valid,
     input  logic [LANES*6-1:0] ev_code,
@@ -63,6 +65,8 @@ module tse_event_unit #(
     logic [30:0]      hw [LANES];           // {code, data, ts[16:0]}
     logic             tp;                   // TRIG record pending
     logic [26:0]      tw;                   // {lane, data, ts[16:0]}
+    logic [16:0]      ts_e;                 // cycle of the EMIT behind this cycle's events
+    assign ts_e = ts[16:0] - 17'd1;
     logic [15:0]      last_ep;
     logic             ep_ok;
     logic [31:0]      fifo [DEPTH];
@@ -122,8 +126,9 @@ module tse_event_unit #(
     assign t_pol   = cfg_trig[12];
 
     always_comb begin
-        m   = cfg_match[32*st +: 32];
-        win = cfg_win[16*st +: 16];
+        m = '0; win = '0;
+        for (int s = 0; s < NS; s++)
+            if (st == 2'(s)) begin m = cfg_match[32*s +: 32]; win = cfg_win[16*s +: 16]; end
         f_lane = '0;
         for (int i = LANES - 1; i >= 0; i--) begin
             hl[i] = ev_valid[i] && m[i] && ((ev_code[6*i +: 6] ^ m[9:4]) & m[15:10]) == 6'd0
@@ -149,7 +154,7 @@ module tse_event_unit #(
                         if (dropped != 8'hFF) dropped <= dropped + 8'd1;
                     end else begin
                         hold[i] <= 1'b1;
-                        hw[i]   <= {ev_code[6*i +: 6], ev_data[8*i +: 8], ts[16:0]};
+                        hw[i]   <= {ev_code[6*i +: 6], ev_data[8*i +: 8], ts_e};
                     end
                 end
             end
@@ -159,7 +164,7 @@ module tse_event_unit #(
                     if (dropped != 8'hFF) dropped <= dropped + 8'd1;
                 end else begin
                     tp <= 1'b1;
-                    tw <= {f_lane, {4'(hl), 2'd0, st}, ts[16:0]};
+                    tw <= {f_lane, {4'(hl), 2'd0, st}, ts_e};
                 end
             end
             if (done && !sel_t) rr <= (32'(sel_l) + 1 >= LANES) ? 2'd0 : sel_l + 2'd1;

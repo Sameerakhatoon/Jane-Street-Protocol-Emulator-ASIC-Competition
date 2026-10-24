@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Area of the calibration block, the Tiny Tapeout top, every chip block and
-# the whole chip in its four configurations. File lists are fixed and in a
+# the whole chip with latch and with flop configuration. File lists are fixed and in a
 # fixed order because ABC's result moves by a few tenths of a percent when
 # Yosys reads extra or reordered files.
 set -eu
@@ -22,15 +22,12 @@ for b in tse_crc tse_stuffer tse_codec tse_dpll tse_resp_rule tse_xbar tse_pin_d
     $A $b "" $(s $b.sv)
 done
 $A tse_timer "" $(s tse_timer.sv tse_nco.sv)
-$A tse_prog_mem "" $(s tse_prog_mem.sv tse_slot_arb.sv tse_dstore.sv tse_cfg_bank.sv tse_sram_512x32.sv tse_sram_bb.v)
-$A tse_prog_mem "-chparam LANES 4" $(s tse_prog_mem.sv tse_slot_arb.sv tse_dstore.sv tse_cfg_bank.sv tse_sram_512x32.sv tse_sram_bb.v)
+$A tse_prog_mem "" $(s tse_prog_mem.sv tse_slot_arb.sv tse_cfg_bank.sv tse_sram_512x32.sv tse_sram_bb.v)
 $A tse_lane "" $(s tse_isa_pkg.sv tse_regs_pkg.sv $lane)
 
 chip=$(s tse_isa_pkg.sv tse_regs_pkg.sv tse_chip.sv tse_top.sv tse_rst_sync.sv tse_cfg_bank.sv $lane tse_xbar.sv tse_pin_delay.sv \
-         tse_prog_mem.sv tse_slot_arb.sv tse_dstore.sv tse_sram_512x32.sv tse_loader.sv tse_selftest.sv tse_event_unit.sv \
+         tse_prog_mem.sv tse_slot_arb.sv tse_sram_512x32.sv tse_loader.sv tse_selftest.sv tse_event_unit.sv \
          tse_host_spi.sv tse_sram_bb.v)
-for l in 3 4; do
-    for c in 1 0; do
-        $A tse_chip "-chparam LANES $l -chparam CFG_LATCH $c" $chip
-    done
+for c in 1 0; do
+    $A tse_chip "-chparam CFG_LATCH $c" $chip
 done

@@ -10,7 +10,7 @@ from tse_host import frames as F
 from tools.tseasm import regs
 from chip_pins import Pins
 
-LANES = int(os.environ.get("LANES", "3"))
+LANES = int(os.environ.get("LANES", "2"))
 LOADED, HOST_ERR = 0x01, 0x08
 
 
@@ -29,26 +29,25 @@ async def loaded_chip(dut, extra=()):
 
 @cocotb.test()
 async def test_01_registers(dut):
-    """ID, STATUS, chip configuration readback, bursts and the data window alias."""
+    """ID, STATUS, chip configuration reads 0 (write-only), bursts and the data window alias."""
     pad = (regs.host_addr("PAD_OUT", index=5), [0x1C3])
     p = await loaded_chip(dut, [pad])
     ident = (await p.spi_read(regs.host_addr("ID")))[0]
     assert ident & 0xFF == 0x54 and (ident >> 12) & 7 == LANES and (ident >> 16) & 0xF == 4
     assert (await p.spi_read(regs.host_addr("STATUS")))[0] & (LOADED | HOST_ERR) == LOADED
-    assert (await p.spi_read(regs.host_addr("PAD_OUT", index=5)))[0] == 0x1C3
+    assert (await p.spi_read(regs.host_addr("PAD_OUT", index=5)))[0] == 0
     assert await p.spi_stat() & LOADED
     await p.spi(bytes([F.WRB]) + F.be16(0x0100) + F.be16(3) + F.words_bytes([7, 8, 9]), 0)
     assert await p.spi_read(0x0100, 3) == [7, 8, 9]
-    if LANES < 4:
-        await p.spi_write(0x0405, 0xDEADBEEF)
-        assert (await p.spi_read(0x0185))[0] == 0xDEADBEEF
+    await p.spi_write(0x0405, 0xDEADBEEF)
+    assert (await p.spi_read(0x0185))[0] == 0xDEADBEEF
     assert (await p.spi_read(0x7777))[0] == 0                 # unmapped
 
 
 @cocotb.test()
 async def test_02_refusals_while_running(dut):
     """With lane 0 running: BEGIN, a lane 0 configuration write and a window 0 write are
-    refused and set host error; window 1 is writable (3 lanes); after RUN = 0 BEGIN is
+    refused and set host error; window 1 is writable; after RUN = 0 BEGIN is
     accepted and clears the error."""
     p = await loaded_chip(dut)
     await p.spi_write(regs.host_addr("RUN"), 1)
@@ -60,9 +59,8 @@ async def test_02_refusals_while_running(dut):
     assert (await p.spi_read(poly))[0] == 0
     await p.spi_write(0x0001, 0x55)
     assert (await p.spi_read(0x0001))[0] == 0
-    if LANES < 4:
-        await p.spi_write(0x0081, 0x66)
-        assert (await p.spi_read(0x0081))[0] == 0x66
+    await p.spi_write(0x0081, 0x66)
+    assert (await p.spi_read(0x0081))[0] == 0x66
     await p.spi(bytes([F.BEGIN]), 0)
     st = (await p.spi_read(regs.host_addr("STATUS")))[0]
     assert st & (LOADED | HOST_ERR) == LOADED | HOST_ERR

@@ -43,11 +43,11 @@ def retag(blob, magic):
 
 # 1: build_fallback places one program in the store and selects it in LANE_PROG
 def test_01_build_fallback():
-    blocks = fallback_blocks((0, 2))
+    blocks = fallback_blocks((0, 1))
     words = dict((a + i, w) for a, ws in blocks for i, w in enumerate(ws))
     assert [words[FB + i] for i in range(3)] == [0x40114111, 0x40104200, 0xE0000001]
     lo = regs_map.LANE["LANE_PROG"]["fields"]["fallback"][1]
-    assert words[0x1019] == 1 << lo and words[0x1219] == 1 << lo
+    assert words[0x1019] == 1 << lo and words[0x1119] == 1 << lo
     assert words[0x2000] == 0x1C0
 
 

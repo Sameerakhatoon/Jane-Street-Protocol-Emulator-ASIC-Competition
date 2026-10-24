@@ -12,8 +12,8 @@ The fallback variant has the magic "TSEF" and the same layout. It is what
 the host loads when the SRAM self-test fails, so it must not touch the SRAM:
 its program lives in the fallback store (8 words, 16 instructions, shared by
 every lane that runs from it), every LANE_PROG it writes selects that store,
-and it has no SRAM or data window blocks (with 3 lanes the data window is
-SRAM). check_fallback() states those rules; pack() and unpack() apply them.
+and it has no SRAM or data window blocks (the data window is SRAM window
+3). check_fallback() states those rules; pack() and unpack() apply them.
 
 Portable: CPython 3 and MicroPython.
 """
@@ -263,7 +263,7 @@ def region_of(addr):
 
 
 def describe_block(addr, n):
-    """Human name of a block: 'sram window 1', 'lane 2 config', 'chip', ..."""
+    """Human name of a block: 'sram window 1', 'lane 1 registers', 'chip', ..."""
     reg = region_of(addr)
     if reg == "sram":
         return "sram window %d" % (addr // WINDOW_WORDS)

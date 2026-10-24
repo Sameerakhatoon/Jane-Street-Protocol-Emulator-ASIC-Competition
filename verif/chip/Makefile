@@ -5,16 +5,15 @@
 #            info_chip.yaml, with the SRAM model instead of the black box.
 #   TB=pmem  tse_prog_mem alone with stub lanes and host: data slots, host turn,
 #            fallback fetches, random traffic against a shadow memory.
-# make LANES=4 runs the 4-lane build.
 TOP      := $(abspath ../..)
-LANES    ?= 3
+LANES    ?= 2
 TB       ?= chip
 SOURCES  := $(shell sed -n '/^ *source_files:/,/^[^ ]/s/^ *- *"\([^"]*\)".*/\1/p' $(TOP)/info_chip.yaml)
 
 SIM              ?= icarus
 TOPLEVEL_LANG    := verilog
 ifeq ($(TB),pmem)
-VERILOG_SOURCES  := $(addprefix $(TOP)/src/,tse_prog_mem.sv tse_slot_arb.sv tse_dstore.sv tse_cfg_bank.sv tse_sram_512x32.sv tse_sram_model.v)
+VERILOG_SOURCES  := $(addprefix $(TOP)/src/,tse_prog_mem.sv tse_slot_arb.sv tse_cfg_bank.sv tse_sram_512x32.sv tse_sram_model.v)
 COCOTB_TOPLEVEL  := tse_prog_mem
 COCOTB_TEST_MODULES := test_pmem
 else

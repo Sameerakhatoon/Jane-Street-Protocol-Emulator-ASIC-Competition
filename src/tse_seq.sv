@@ -20,6 +20,8 @@
 //   SET PINS and SET PINDIRS write imm[3:0] under the mask imm[7:4].
 //   A word tse_legal rejects halts the lane at its dispatch: no effect, no
 //   further fetch, halted set and interrupt bit 3 pulsed.
+// X, Y, T, ISR, OSR, TFLAG, AFLAG, PINS and PINDIRS clear while stopped, so
+// every run starts with them at 0, like PC at start_pc and C at 0.
 // Each instruction takes 1 + delay cycles when its word is buffered on time.
 // Four virtual pins; side-set drives ss_base and ss_base + 1 modulo 4.
 // Fetch: 32-bit words (two instructions) from a synchronous memory, data one
@@ -53,6 +55,7 @@ module tse_seq #(
     input  logic [3:0]  pin_in,
     output logic [3:0]  pin_out,
     output logic [3:0]  pin_oe,
+    output logic [3:0]  pin_wr,             // PINS bits the instruction dispatching now writes
     input  logic        side_en,
     input  logic [1:0]  ss_base,
     input  logic [1:0]  jmp_pin,
@@ -199,7 +202,7 @@ module tse_seq #(
     always_comb begin
         retire = 1'b0; npc = pc + 8'd1; delay = '0; tflag_n = tflag; aflag_n = aflag;
         x_n = x; y_n = y; t_n = t; tc_n = tc; osr_n = osr; isr_n = isr;
-        pins_n = pin_out; dirs_n = pin_oe; irq_n = '0;
+        pins_n = pin_out; dirs_n = pin_oe; irq_n = '0; pin_wr = '0;
         csr_we = 1'b0; csr_re = 1'b0; csr_addr = f_csr; csr_wdata = {y, x};
         cmd_we = 1'b0; cmd = f_imm; pull_take = 1'b0; push_set = 1'b0;
         sig_we = 1'b0; sig_mask = f_smask; sig_val = f_sval; emit_n = 1'b0; cclr = 1'b0; gwe = 1'b0;
@@ -239,7 +242,9 @@ module tse_seq #(
                 tse_isa_pkg::I_SET: begin
                     retire = 1'b1;
                     case (f_dst)
-                        tse_isa_pkg::SETDST_PINS:    pins_n = (pin_out & ~f_imm[7:4]) | (f_imm[3:0] & f_imm[7:4]);
+                        tse_isa_pkg::SETDST_PINS:    begin
+                            pins_n = (pin_out & ~f_imm[7:4]) | (f_imm[3:0] & f_imm[7:4]); pin_wr = f_imm[7:4];
+                        end
                         tse_isa_pkg::SETDST_PINDIRS: dirs_n = (pin_oe & ~f_imm[7:4]) | (f_imm[3:0] & f_imm[7:4]);
                         tse_isa_pkg::SETDST_X:       x_n = {8'd0, f_imm};
                         tse_isa_pkg::SETDST_Y:       y_n = {8'd0, f_imm};
@@ -264,7 +269,7 @@ module tse_seq #(
                     case (f_dst)
                         tse_isa_pkg::MOVDST_X:       x_n = mv;
                         tse_isa_pkg::MOVDST_Y:       y_n = mv;
-                        tse_isa_pkg::MOVDST_PINS:    pins_n = mv[3:0];
+                        tse_isa_pkg::MOVDST_PINS:    begin pins_n = mv[3:0]; pin_wr = 4'hF; end
                         tse_isa_pkg::MOVDST_PINDIRS: dirs_n = mv[3:0];
                         tse_isa_pkg::MOVDST_ISR:     isr_n = {16'd0, mv};
                         tse_isa_pkg::MOVDST_OSR:     osr_n = {16'd0, mv};
@@ -275,7 +280,7 @@ module tse_seq #(
                 tse_isa_pkg::I_OUT: begin
                     retire = 1'b1; delay = {6'd0, f_dly3}; osr_n = osr_sh[31:0];
                     case (f_dst)
-                        tse_isa_pkg::OUTDST_PINS:    pins_n = (pin_out & ~lm[3:0]) | outv[3:0];
+                        tse_isa_pkg::OUTDST_PINS:    begin pins_n = (pin_out & ~lm[3:0]) | outv[3:0]; pin_wr = lm[3:0]; end
                         tse_isa_pkg::OUTDST_PINDIRS: dirs_n = (pin_oe & ~lm[3:0]) | outv[3:0];
                         tse_isa_pkg::OUTDST_X:       x_n = outv[15:0];
                         tse_isa_pkg::OUTDST_Y:       y_n = outv[15:0];
@@ -323,6 +328,8 @@ module tse_seq #(
             if (first && side_en) begin
                 pins_n[ss_base]        = ss[0];
                 pins_n[ss_base + 2'd1] = ss[1];
+                pin_wr[ss_base]        = 1'b1;
+                pin_wr[ss_base + 2'd1] = 1'b1;
             end
         end
     end
@@ -367,6 +374,8 @@ module tse_seq #(
             if (!run) begin
                 pc <= start_pc; held <= 1'b0; dly <= '0; fresh <= 1'b0; e_val <= '0; c_q <= '0; gsel <= '0;
                 dpend <= 1'b0; dld <= 1'b0; halted <= 1'b0;
+                x <= '0; y <= '0; t <= '0; tc <= '0; osr <= '0; isr <= '0; tflag <= 1'b0; aflag <= 1'b0;
+                pin_out <= '0; pin_oe <= '0;
             end else begin
                 if (cclr)                 c_q <= '0;
                 else if (c_q != 16'hffff) c_q <= c_q + 16'd1;

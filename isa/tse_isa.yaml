@@ -14,11 +14,12 @@ frame_slots: 4      # S: lane k owns SRAM cycles s with s mod 4 == k
 fetch_entries: 2    # words kept per lane, least recently used replaced
 fetch_latency: 1    # 1: decode from A_DOUT; 2: registered A_DOUT (timing fallback)
 data_frame: 16      # lane k owns data cycles s with s mod 16 == 4k + 3
-latency:            # pipeline constants, to be measured by test/test_latency.py
+latency:            # pipeline constants; test/rtl/tb_chip_pins.sv measures the pin paths
   instr_to_port: 2      # dispatch in cycle c, TT output port changes at edge c+2
   port_to_wait: 2       # input change during cycle k is seen by WAIT in cycle k+2
   emit_to_trig_port: 3  # EMIT in cycle c, trigger-out port changes at edge c+3
   cfg_write_visible: 2  # CSRW to a class-L word in cycle c: assists use the new value from c+2
+  edge_to_port: 1       # pin-edge rule: counted edge seen in cycle e, TT output port changes at edge e+tick_delay+1
 common:
   op: {bits: [15, 13]}
   ss: {bits: [12, 11], doc: side-set value for pins ss_base and ss_base+1}

@@ -13,15 +13,11 @@ chip-lint:
 	iverilog -g2012 -o /dev/null -s $(CHIP_TOP) $(CHIP_SRC)
 	python3 -c "import json; json.load(open('src/config_chip.json'))"
 
-# program memory alone with stub lanes, then the whole chip, at 3 and 4 lanes
+# program memory alone with stub lanes, then the whole chip
 chip-pmem:
-	for l in 3 4; do \
-	    $(MAKE) -C verif/chip TB=pmem LANES=$$l || exit 1; \
-	    ! grep -q '<failure' build/verif-chip/results_pmem_L$$l.xml || exit 1; \
-	done
+	$(MAKE) -C verif/chip TB=pmem
+	! grep -q '<failure' build/verif-chip/results_pmem_L2.xml
 
 chip-test: chip-pmem
-	for l in 3 4; do \
-	    $(MAKE) -C verif/chip TB=chip LANES=$$l || exit 1; \
-	    ! grep -q '<failure' build/verif-chip/results_chip_L$$l.xml || exit 1; \
-	done
+	$(MAKE) -C verif/chip TB=chip
+	! grep -q '<failure' build/verif-chip/results_chip_L2.xml

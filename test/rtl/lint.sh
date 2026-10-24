@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Lint gate: every module in src/ as its own top with verilator -Wall and no
-# waivers, the Tiny Tapeout top and tse_chip (3 and 4 lanes, latch and flop
-# config) through iverilog too. Prints one line per check, fails on any warning.
+# waivers, the Tiny Tapeout top and tse_chip (latch and flop configuration)
+# through iverilog too. Prints one line per check, fails on any warning.
 set -u
 cd "$(dirname "$0")/../.."
 
@@ -36,14 +36,13 @@ for f in $rtl; do
     vl $m $m
 done
 iv $top $top
-[ -f src/tse_slot_arb.sv ] && vl tse_slot_arb_L4 tse_slot_arb -GLANES=4
 [ -f src/tse_cfg_word.sv ] && vl tse_cfg_word_flop tse_cfg_word -GLATCH=0
 
 if [ -f src/tse_chip.sv ]; then
-    for L in 3 4; do for C in 1 0; do
-        vl tse_chip_L${L}_C$C tse_chip -GLANES=$L -GCFG_LATCH=$C
-        iv tse_chip_L${L}_C$C tse_chip -Ptse_chip.LANES=$L -Ptse_chip.CFG_LATCH=$C
-    done; done
+    for C in 1 0; do
+        vl tse_chip_C$C tse_chip -GCFG_LATCH=$C
+        iv tse_chip_C$C tse_chip -Ptse_chip.CFG_LATCH=$C
+    done
 fi
 
 if [ -f src/tse_sram_model.v ]; then

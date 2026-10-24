@@ -188,12 +188,12 @@ def test_12_run_mode_rules():
 
     chip, link, s = fresh()
     s.load(PROG, bist=False)
-    assert s.start(0b011) & 0xF01 == 0x301
+    assert s.start(0b01) & 0xF01 == 0x101
     cfg = 0x1000 + regs_map.LANE["LANE_CFG"]["addr"]
     s.poke(cfg, 5)
     assert chip.lane_config(0, "LANE_CFG") == 0 and s.stat()["host_err"] == 1
-    s.poke(0x1200 + regs_map.LANE["LANE_CFG"]["addr"], 5)     # lane 2 is stopped
-    assert chip.lane_config(2, "LANE_CFG") == 5
+    s.poke(0x1100 + regs_map.LANE["LANE_CFG"]["addr"], 5)     # lane 1 is stopped
+    assert chip.lane_config(1, "LANE_CFG") == 5
     mosi, n = (bytes((F.BEGIN,)), 0)
     link.spi(mosi, n)
     assert chip.loaded == 1
@@ -219,8 +219,8 @@ def test_13_run_mode_reads():
 def test_14_reload():
     chip, link, s = fresh()
     s.load(PROG, bist=False)
-    s.start(0b111)
-    assert chip.run == 0b111
+    s.start(0b11)
+    assert chip.run == 0b11
     s.enter_load()
     assert chip.loaded == 0 and chip.run == 0
     rng = random.Random(5)
@@ -235,3 +235,17 @@ def test_15_host_spi_off():
     s.load(PROG + [(regs_map.PIN_OPT, [1])], bist=False)
     s.leave_load()
     assert s.peek(regs_map.ID) == [0]
+
+
+# 16: a load that ends with the strobe pin high (an odd number of strobes), then run
+#     mode and a reload in the same session: the reload's BEGIN is a real edge
+def test_16_reload_after_odd_strobes():
+    chip, link, s = fresh()
+    s.load(PROG, bist=False)
+    if not link.strobe:
+        link.exchange([(0x00, 0)])              # a stray byte: does nothing, flips the level
+    assert link.strobe == 1
+    s.start(1)
+    other = [(0x80, [0x12345678, 0x9ABCDEF0])]
+    s.load(other, bist=False)
+    assert chip.loaded == 1 and not chip.violations

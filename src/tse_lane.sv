@@ -60,7 +60,7 @@ module tse_lane #(
     logic [7:0]  s_addr, s_cmd;
     logic [31:0] s_wdata, rdata;
     logic [7:0]  ev;
-    logic [3:0]  pins, dirs, vp, vn;
+    logic [3:0]  pins, dirs, pwr, vp, vn;
     assign vp = 4'(vin_p);
     assign vn = 4'(vin_n);
 
@@ -182,7 +182,8 @@ module tse_lane #(
         .clk, .rst_n, .cfg_pat(r_pat), .cfg_msk(r_msk), .cfg_pos(r_pos), .cfg_resp(r_resp),
         .cfg_ctl(r_ctl), .cfg_src(rclk[tse_regs_pkg::LR_RULE_CLK_SRC_HI]),
         .cfg_edge(rclk[tse_regs_pkg::LR_RULE_CLK_EDGE_HI]),
-        .cfg_tdly(rclk[tse_regs_pkg::LR_RULE_CLK_TICK_DELAY_HI:tse_regs_pkg::LR_RULE_CLK_TICK_DELAY_LO]), .frame_rst,
+        .cfg_tdly(rclk[tse_regs_pkg::LR_RULE_CLK_TICK_DELAY_HI:tse_regs_pkg::LR_RULE_CLK_TICK_DELAY_LO]),
+        .cfg_hold(rclk[tse_regs_pkg::LR_RULE_CLK_HOLD_HI]), .seq_wr(pwr[txpin] || !run), .frame_rst,
         .bit_valid(rx_v), .bit_in(rx_b), .bit_start,
         .pin_clk(vp[rclk[tse_regs_pkg::LR_RULE_CLK_CLK_PIN_HI:tse_regs_pkg::LR_RULE_CLK_CLK_PIN_LO]]),
         .pin_dat(vp[rxpin]), .crc_ok,
@@ -324,7 +325,7 @@ module tse_lane #(
         .start_pc(cw[tse_regs_pkg::LW_LANE_PROG][tse_regs_pkg::LR_LANE_PROG_START_PC_HI:tse_regs_pkg::LR_LANE_PROG_START_PC_LO]),
         .dmem_req, .dmem_we, .dmem_addr, .dmem_wdata, .dmem_gnt, .dmem_rdata,
         .alt_cfg, .flg({1'b1, synced, !h_flags[1], h_flags[0], edge_seen, half, sample, 1'b0}),
-        .pin_in(vp), .pin_out(pins), .pin_oe(dirs),
+        .pin_in(vp), .pin_out(pins), .pin_oe(dirs), .pin_wr(pwr),
         .side_en, .ss_base, .jmp_pin, .ev, .chip_flags,
         .gt({cw[tse_regs_pkg::LW_GUARD23], cw[tse_regs_pkg::LW_GUARD01]}), .clock, .pc_o(s_pc),
         .csr_we(s_we), .csr_re(s_re), .csr_addr(s_addr), .csr_wdata(s_wdata), .csr_rdata(rdata),

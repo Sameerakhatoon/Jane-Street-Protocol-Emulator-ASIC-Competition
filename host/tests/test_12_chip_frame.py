@@ -1,12 +1,12 @@
 """The model against the chip: RUN at the end of the 16-cycle frame, the one
-configuration bank, the data window at 3 and 4 lanes, the fallback store and the
+write-only configuration bank, the data window, the fallback store and the
 refusals around the self-test."""
 import pytest
 
 from tse_host import frames as F
 from tse_host import model, regs_map
 from tse_host.link import PinLink
-from tse_host.session import Session
+from tse_host.session import LoadError, Session, readable, unreadable
 
 FB = regs_map.REGIONS["fallback"]["base"]
 DW = regs_map.REGIONS["data"]["base"]
@@ -31,8 +31,8 @@ class Watch(model.Chip):
             self.changes.append(("live", self.cycle))
 
 
-def loaded(lanes=3, blocks=(), chip_cls=model.Chip, verify=True):
-    chip = chip_cls(seed=11, lanes=lanes)
+def loaded(blocks=(), chip_cls=model.Chip, verify=True):
+    chip = chip_cls(seed=11)
     s = Session(PinLink(chip))
     s.load([(0x0000, [7, 8, 9])] + list(blocks), bist=False, verify=verify)
     return chip, s
@@ -60,15 +60,16 @@ def test_01_run_at_frame_end():
 # 2: STATUS shows live lanes; a lane stops at the frame end after RUN clears
 def test_02_stop_at_frame_end():
     chip, s = loaded(chip_cls=Watch)
-    s.start(0b101)
-    assert chip.running() == 0b101 and s.peek(regs_map.STATUS)[0] >> 8 & 0xF == 0b101
+    s.start(0b11)
+    assert chip.running() == 0b11 and s.peek(regs_map.STATUS)[0] >> 8 & 0xF == 0b11
     chip.changes = []
     s.poke(regs_map.RUN, 0)
     chip.tick(20)
     assert [k for k, _ in chip.changes] == ["run", "live"]
 
 
-# 3: every class-L chip register has its own word of the one bank, {bank, word}
+# 3: every class-L chip register has its own word of the one bank, {bank, word};
+#    the bank keeps the bits of each mask, and the host reads 0 there
 def test_03_config_bank():
     slots = {}
     for name, r in regs_map.CHIP.items():
@@ -77,58 +78,46 @@ def test_03_config_bank():
                 k = model.bank_slot(name, i)
                 assert 0 <= k < 64 and k not in slots
                 slots[k] = (name, i)
-    assert len(slots) == 43
+    assert len(slots) == 33
     writes = [(regs_map.CHIP[n]["addr"] + i, [0xFFFFFFFF]) for n, i in slots.values()]
-    for lanes in (3, 4):
-        chip, s = loaded(lanes, writes, verify=False)
-        for n, i in slots.values():
-            r = regs_map.CHIP[n]
-            want = 0 if n == "LANE_IN" and i >= 4 * lanes else r["mask"]
-            assert chip.chip_config(n, i) == want
-            assert s.peek(r["addr"] + i) == [want]
+    chip, s = loaded(writes, verify=False)
+    for n, i in slots.values():
+        r = regs_map.CHIP[n]
+        built = n != "LANE_IN" or i < model.VIRT_PINS * model.LANES
+        assert chip.chip_config(n, i) == (r["mask"] if built else 0)
+        assert s.peek(r["addr"] + i) == [0]
+    assert s.peek(regs_map.ID)[0] >> 12 & 7 == model.LANES
 
 
-# 4: 3 lanes: the data window is SRAM window 3, writable while lanes run from other
+# 4: the data window is SRAM window 3, writable while lanes run from other
 #    windows, refused while a running lane fetches from window 3
-def test_04_data_window_3_lanes():
-    chip, s = loaded(3, [lane_prog(0, 0), lane_prog(1, 3)])
+def test_04_data_window():
+    chip, s = loaded([lane_prog(0, 0), lane_prog(1, 3)])
     s.poke(DW + 2, 0xD00D)
     assert s.peek(0x0182) == [0xD00D]
-    s.start(0b001)
+    s.start(0b01)
     s.poke(DW + 5, 0xBEEF)
     assert s.peek(DW + 5) == [0xBEEF] and s.stat()["host_err"] == 0
-    s.poke(regs_map.RUN, 0b011)
+    s.poke(regs_map.RUN, 0b11)
     s.poke(DW + 6, 1)
     assert s.peek(DW + 6) == [chip.sram[0x186]] and s.stat()["host_err"] == 1
 
 
-# 5: 4 lanes: a 16-word store; words above 15 read 0 and ignore writes without an
-#    error; the SRAM is closed to the host while lanes run
-def test_05_data_window_4_lanes():
-    chip, s = loaded(4)
-    assert s.peek(regs_map.ID)[0] >> 12 & 7 == 4
-    s.start(1)
-    s.poke(DW + 15, 0x1515)
-    s.poke(DW + 16, 0x1616)
-    assert s.peek(DW + 15, 2) == [0x1515, 0] and s.stat()["host_err"] == 0
-    assert s.peek(0x0000) == [0] and s.stat()["host_err"] == 1
-
-
-# 6: the fallback store: writable while running lanes use the SRAM, refused while a
+# 5: the fallback store: writable while running lanes use the SRAM, refused while a
 #    running lane fetches from it
-def test_06_fallback_store():
-    chip, s = loaded(3, [lane_prog(0, 0), lane_prog(1, 0, 1)])
-    s.start(0b001)
+def test_05_fallback_store():
+    chip, s = loaded([lane_prog(0, 0), lane_prog(1, 0, 1)])
+    s.start(0b01)
     s.poke(FB + 3, 0x33)
     assert s.peek(FB + 3) == [0x33] and s.stat()["host_err"] == 0
-    s.poke(regs_map.RUN, 0b011)
+    s.poke(regs_map.RUN, 0b11)
     s.poke(FB + 3, 0x44)
     assert s.peek(FB + 3) == [0x33] and s.stat()["host_err"] == 1
 
 
-# 7: the self-test owns the SRAM: host access during it is refused and reads 0;
+# 6: the self-test owns the SRAM: host access during it is refused and reads 0;
 #    BEGIN clears the result; a dead macro reports its first failing element
-def test_07_bist_registers():
+def test_06_bist_registers():
     chip = model.Chip(seed=2, sram_dead=True)
     link = PinLink(chip)
     s = Session(link)
@@ -145,9 +134,9 @@ def test_07_bist_registers():
     assert s.peek(regs_map.BIST) == [0] and not s.stat()["bist_done"]
 
 
-# 8: while a lane runs: its F registers and the chip configuration take writes, its
+# 7: while a lane runs: its F registers and the chip configuration take writes, its
 #    L and P registers are refused
-def test_08_running_lane_writes():
+def test_07_running_lane_writes():
     chip, s = loaded()
     s.start(1)
     tx = 0x1000 + regs_map.LANE["TXCTL"]["addr"]
@@ -159,12 +148,32 @@ def test_08_running_lane_writes():
     assert s.stat()["host_err"] == 1
 
 
-@pytest.mark.parametrize("lanes", [3, 4])
-# 9: the state file round trip keeps the build, the bank and the data store
-def test_09_snapshot(lanes):
-    chip, s = loaded(lanes, [(regs_map.PIN_OPT, [0xA])])
-    chip.dstore[3] = 0x77
+# 8: the state file round trip keeps the bank and loaded
+def test_08_snapshot():
+    chip, s = loaded([(regs_map.PIN_OPT, [0xA])])
     other = model.Chip(seed=99)
     other.restore(chip.snapshot())
-    assert other.lanes == lanes and other.chip_config("PIN_OPT") == 0xA
-    assert other.dstore[3] == 0x77 and other.loaded == 1
+    assert other.lanes == model.LANES and other.chip_config("PIN_OPT") == 0xA
+    assert other.loaded == 1 and other.sram[:3] == [7, 8, 9]
+
+
+# 9: load's readback skips the chip configuration words (they read 0) but still
+#    compares lane configuration: a lane word outside its mask fails the load
+def test_09_verify_skips_chip_config():
+    cfg = [(regs_map.CHIP[n]["addr"], [0x1F]) for n in ("PAD_OUT", "TRIG_CTL", "PIN_OPT")]
+    lane_cfg = 0x1100 + regs_map.LANE["LANE_CFG"]["addr"]
+    chip, s = loaded(cfg + [(lane_cfg, [0x60])])
+    assert chip.chip_config("TRIG_CTL") == 0x1F and chip.lane_config(1, "LANE_CFG") == 0x60
+    with pytest.raises(LoadError, match="0x%04x" % lane_cfg):
+        loaded(cfg + [(lane_cfg, [0xFFFFFFFF])])
+
+
+# 10: readable() drops exactly the chip configuration words and splits the blocks there
+def test_10_readable_blocks():
+    base = regs_map.CHIP["PAD_OUT"]["addr"]
+    blocks = [(0x0000, [1, 2]), (base - 2, list(range(40)))]
+    out = readable(blocks)
+    skip = unreadable()
+    kept = {a + i: w for a, ws in out for i, w in enumerate(ws)}
+    want = {a + i: w for a, ws in blocks for i, w in enumerate(ws) if a + i not in skip}
+    assert kept == want and base not in kept and len(out) > 2

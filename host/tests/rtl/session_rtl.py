@@ -5,10 +5,8 @@ Session is plain blocking code, so it runs in a worker thread and drives the pin
 through ThreadPins, a pin bus whose set_inputs() and tick() are queued to the
 cocotb coroutine and whose uo_out waits for the answer. The coroutine blocks on
 the queue while the worker computes, so simulated time only moves on tick() and
-the timing is exactly PinLink's. Runs at 3 lanes, and the data window and load
-tests again at 4 lanes (LANES in the environment).
+the timing is exactly PinLink's.
 """
-import os
 import queue
 import threading
 
@@ -20,8 +18,6 @@ from tse_host import frames, model, regs_map
 from tse_host.link import PinLink
 from tse_host.session import Session
 
-LANES = int(os.environ.get("LANES", "3"))
-THREE = LANES == 3
 FB = regs_map.REGIONS["fallback"]["base"]
 DW = regs_map.REGIONS["data"]["base"]
 PROG_LO = {k: v[1] for k, v in regs_map.LANE["LANE_PROG"]["fields"].items()}
@@ -138,24 +134,26 @@ def pin0_changes(pins, n):
 
 @cocotb.test()
 async def test_01_load(dut):
-    """Session.load with readback; the words read back over SPI in run mode, and
-    every chip configuration word lands in its {bank, word} slot."""
-    cfg = [(regs_map.CHIP["PAD_OUT"]["addr"] + 1, [0x1FF]),
-           (regs_map.CHIP["LANE_IN"]["addr"] + 2, [0x1FF]),
-           (regs_map.CHIP["TRIG_WIN"]["addr"] + 3, [0xFFFF])]
+    """Session.load with readback; the words read back over SPI in run mode; every
+    chip configuration word lands in its {bank, word} slot, and the host reads it
+    as 0 (the bank has no read port)."""
+    cfg = [("PAD_OUT", 1, 0x1FF), ("LANE_IN", 2, 0x1FF), ("TRIG_WIN", 2, 0xFFFF)]
+    blocks = [(regs_map.CHIP[n]["addr"] + i, [v]) for n, i, v in cfg]
 
     def fn(s, pins):
         pins.fault(0)
-        s.load(MAIN + cfg)
+        s.load(MAIN + blocks)
         s.leave_load()
-        return s.peek(0x0000, 3), [s.peek(a)[0] for a, _ in cfg]
+        return s.peek(0x0000, 3), [s.peek(a)[0] for a, _ in blocks]
 
-    words, cfgs = await run_host(dut, fn)
+    words, reads = await run_host(dut, fn)
+    bank = int(dut.u_top.u_ccfg.q.value)
     assert words == PROG
-    assert cfgs == [0x1FF, 0x1FF, 0xFFFF]
+    assert reads == [0, 0, 0]
+    assert [bank >> 32 * model.bank_slot(n, i) & 0xFFFFFFFF for n, i, _ in cfg] == [v for *_, v in cfg]
 
 
-@cocotb.test(skip=not THREE)
+@cocotb.test()
 async def test_02_boot_bist_pass(dut):
     """boot(): the self-test passes in fewer clocks than the session waits, and the
     SRAM image is loaded; the model's self-test length is within 2 percent."""
@@ -175,7 +173,7 @@ async def test_02_boot_bist_pass(dut):
     assert rep["path"] == "sram" and rep["bist"] == 0
 
 
-@cocotb.test(skip=not THREE)
+@cocotb.test()
 async def test_03_boot_forced_fail(dut):
     """A dead macro (simulation fault hook) fails the self-test with the BIST value the
     model predicts; boot() loads the fallback image instead, and lane 0 runs from the
@@ -195,7 +193,7 @@ async def test_03_boot_forced_fail(dut):
     assert len(edges) >= 8 and len(set(gaps[0::2])) == 1 and len(set(gaps[1::2])) == 1, edges
 
 
-@cocotb.test(skip=not THREE)
+@cocotb.test()
 async def test_04_cell_fault_report(dut):
     """A stuck-at-1 cell (word 77) gives the BIST value the model gives for a failing
     cell at that word."""
@@ -211,31 +209,29 @@ async def test_04_cell_fault_report(dut):
 
 @cocotb.test()
 async def test_05_data_window(dut):
-    """The data window from the host while lane 0 runs: 3 lanes, an alias of SRAM
-    window 3; 4 lanes, 16 words, the words above them read 0 and ignore writes."""
+    """The data window from the host while lane 0 runs: an alias of SRAM window 3,
+    all 128 words."""
     data = [0x22220000 + i for i in range(8)]
 
     def fn(s, pins):
         pins.fault(0)
         s.load(MAIN + [(DW, data)])
-        alias = s.peek(0x0180, 8) if THREE else None
+        alias = s.peek(0x0180, 8)
         s.start(1)
         s.poke(DW + 3, 0xCAFEF00D)
         s.poke(DW + 15, 0x15151515)
-        s.poke(DW + 16, 0x16161616)
-        return alias, s.peek(DW, 4), s.peek(DW + 15, 2), s.peek(regs_map.STATUS)[0]
+        s.poke(DW + 127, 0x7F7F7F7F)
+        return (alias, s.peek(DW, 4), s.peek(DW + 15, 1) + s.peek(DW + 127, 1),
+                s.peek(0x01FF)[0], s.peek(regs_map.STATUS)[0])
 
-    alias, low, high, st = await run_host(dut, fn)
-    if THREE:
-        assert alias == data
-        assert high == [0x15151515, 0x16161616]
-    else:
-        assert high == [0x15151515, 0]
+    alias, low, high, top, st = await run_host(dut, fn)
+    assert alias == data
+    assert high == [0x15151515, 0x7F7F7F7F] and top == 0x7F7F7F7F
     assert low == data[:3] + [0xCAFEF00D]
     assert not st & 0x08 and st >> 8 & 0xF == 1
 
 
-@cocotb.test(skip=not THREE)
+@cocotb.test()
 async def test_06_run_timing(dut):
     """RUN acts at the end of the 16-cycle frame: whatever the phase of the write
     (16 different delays before the same SPI write), lane 0's first pin change, its

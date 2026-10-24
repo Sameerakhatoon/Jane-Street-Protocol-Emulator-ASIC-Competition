@@ -4,7 +4,7 @@ The register is left-aligned: the feedback tap is bit 31 for every width, so
 CRC_POLY, CRC_INIT, CRC_XOR and CRC_CHECK hold their values shifted left by
 32 - width. Bits enter one per cycle (bit input) or a byte at a time, one bit
 per cycle for 8 cycles (byte input, refin picks the bit order). result is
-the register XOR CRC_XOR, right-aligned, or reflected when refout is set.
+the register XOR CRC_XOR, left-aligned, or reflected when refout is set.
 For TX, tx_load folds CRC_XOR into the register and tx_shift sends it MSB
 first on tx_bit. The ISA text does not order clear, tx_load, tx_shift and a
 bit arriving in the same cycle; the model takes clear first, then tx_load,
@@ -49,7 +49,7 @@ class CrcIn:
 
 
 class Crc:
-    def __init__(self, poly=0, init=0, xo=0, check=0, wm1=31, refin=0, refout=0, right_align=True):
+    def __init__(self, poly=0, init=0, xo=0, check=0, wm1=31, refin=0, refout=0, right_align=False):
         self.poly, self.init, self.xo, self.check = poly, init, xo, check
         self.wm1, self.refin, self.refout, self.right_align = wm1, refin, refout, right_align
         self.crc = self.bsr = self.bcnt = 0

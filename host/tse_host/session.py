@@ -3,6 +3,8 @@
 load(): enter load mode (rst_n high, then low: loaded clears), BEGIN, BIST,
 wait, STAT (raise FallbackNeeded if the self-test failed), WRB bursts,
 COMMIT, STAT (raise LoadError if refused), RDB every burst and compare.
+The chip configuration bank (class-L chip registers) has no read port and
+reads 0, so the compare skips those words; the COMMIT CRC covers them.
 boot(): the power-up flow with a fallback image: the same steps, but when
 the self-test fails it loads the fallback image (into the fallback store,
 which needs no SRAM) instead of the SRAM image, and reports which ran.
@@ -14,6 +16,38 @@ Portable: CPython 3 and MicroPython.
 from . import frames, image, regs_map, spi
 
 BIST_WAIT = 13000       # clocks: the self-test runs about 11,500
+
+
+_unreadable = None
+
+
+def unreadable():
+    """Host-bus addresses of the chip configuration words (they read 0)."""
+    global _unreadable
+    if _unreadable is None:
+        _unreadable = set()
+        for r in regs_map.CHIP.values():
+            if r["class"] == "L":
+                for i in range(r.get("count", 1)):
+                    _unreadable.add(r["addr"] + i * r.get("stride", 1))
+    return _unreadable
+
+
+def readable(blocks):
+    """blocks without the chip configuration words, split where they were."""
+    skip = unreadable()
+    out = []
+    for addr, words in blocks:
+        run = None
+        for i, w in enumerate(words):
+            if addr + i in skip:
+                run = None
+            elif run is None:
+                run = (addr + i, [w])
+                out.append(run)
+            else:
+                run[1].append(w)
+    return out
 
 
 class LoadError(Exception):
@@ -58,7 +92,10 @@ class Session:
             self.link.spi(mosi, n)
 
     def readback(self, blocks):
-        """Compare every word of blocks with the chip; returns [(addr, want, got)]."""
+        """Compare every readable word of blocks with the chip; returns [(addr, want, got)]."""
+        blocks = readable(blocks)
+        if not blocks:
+            return []
         stream, where = frames.readback(blocks)
         seen = self.link.exchange(stream)
         want = {}

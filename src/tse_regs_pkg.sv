@@ -7,7 +7,7 @@ package tse_regs_pkg;
   localparam logic [15:0] REGION_SRAM_BASE = 16'h0000, REGION_SRAM_SIZE = 16'h0200;
   localparam logic [15:0] REGION_DATA_BASE = 16'h0400, REGION_DATA_SIZE = 16'h0080;
   localparam logic [15:0] REGION_FALLBACK_BASE = 16'h0800, REGION_FALLBACK_SIZE = 16'h0008;
-  localparam logic [15:0] REGION_LANES_BASE = 16'h1000, REGION_LANES_SIZE = 16'h0400;
+  localparam logic [15:0] REGION_LANES_BASE = 16'h1000, REGION_LANES_SIZE = 16'h0200;
   localparam logic [15:0] REGION_XBAR_BASE = 16'h2000, REGION_XBAR_SIZE = 16'h0040;
   localparam logic [15:0] REGION_EVENT_BASE = 16'h3000, REGION_EVENT_SIZE = 16'h0040;
   localparam logic [15:0] REGION_CHIP_BASE = 16'h4000, REGION_CHIP_SIZE = 16'h0040;
@@ -199,12 +199,13 @@ package tse_regs_pkg;
   localparam int LR_RULE1_CTL_EN_HI = 12, LR_RULE1_CTL_EN_LO = 12;
   localparam int LR_RULE1_CTL_CHAIN_HI = 13, LR_RULE1_CTL_CHAIN_LO = 13;
   localparam logic [7:0] LR_RULE_CLK = 8'h48;
-  localparam logic [31:0] LR_RULE_CLK_MASK = 32'h00000FFF;
+  localparam logic [31:0] LR_RULE_CLK_MASK = 32'h00001FFF;
   localparam logic [4:0] LW_RULE_CLK = 5'd23;
   localparam int LR_RULE_CLK_SRC_HI = 0, LR_RULE_CLK_SRC_LO = 0;
   localparam int LR_RULE_CLK_CLK_PIN_HI = 2, LR_RULE_CLK_CLK_PIN_LO = 1;
   localparam int LR_RULE_CLK_EDGE_HI = 3, LR_RULE_CLK_EDGE_LO = 3;
   localparam int LR_RULE_CLK_TICK_DELAY_HI = 11, LR_RULE_CLK_TICK_DELAY_LO = 4;
+  localparam int LR_RULE_CLK_HOLD_HI = 12, LR_RULE_CLK_HOLD_LO = 12;
 
   localparam int BANK_WORDS = 32;
   localparam int LANE_BANK_WORDS = 24;
@@ -218,7 +219,7 @@ package tse_regs_pkg;
     32'h00000000,
     32'h00000000,
     32'h00000000,
-    32'h00000FFF,
+    32'h00001FFF,
     32'h00003FFF,
     32'h01FFFFFF,
     32'hFFFFFFFF,
@@ -246,16 +247,16 @@ package tse_regs_pkg;
   // chip configuration banks (one shared write port, bank index and 5-bit word)
   localparam int CHIP_BANKS = 2;
   localparam logic [0:0] CBANK_XBAR = 1'd0;
-  localparam int CHIP_XBAR_WORDS = 32;
+  localparam int CHIP_XBAR_WORDS = 24;
   localparam logic [1023:0] CHIP_XBAR_MASK = {
-    32'h000001FF,
-    32'h000001FF,
-    32'h000001FF,
-    32'h000001FF,
-    32'h000001FF,
-    32'h000001FF,
-    32'h000001FF,
-    32'h000001FF,
+    32'h00000000,
+    32'h00000000,
+    32'h00000000,
+    32'h00000000,
+    32'h00000000,
+    32'h00000000,
+    32'h00000000,
+    32'h00000000,
     32'h000001FF,
     32'h000001FF,
     32'h000001FF,
@@ -282,7 +283,7 @@ package tse_regs_pkg;
     32'h000001FF
   };
   localparam logic [0:0] CBANK_EVENT = 1'd1;
-  localparam int CHIP_EVENT_WORDS = 11;
+  localparam int CHIP_EVENT_WORDS = 9;
   localparam logic [1023:0] CHIP_EVENT_MASK = {
     32'h00000000,
     32'h00000000,
@@ -305,16 +306,16 @@ package tse_regs_pkg;
     32'h00000000,
     32'h00000000,
     32'h00000000,
-    32'h0001FFFF,
+    32'h00000000,
+    32'h00000000,
+    32'h00007FFF,
     32'h0000FFFF,
     32'h0000FFFF,
     32'h0000FFFF,
-    32'h0000FFFF,
-    32'hFFFFFFFF,
-    32'hFFFFFFFF,
-    32'hFFFFFFFF,
-    32'hFFFFFFFF,
-    32'h000003FF,
+    32'hFFFFFFF3,
+    32'hFFFFFFF3,
+    32'hFFFFFFF3,
+    32'h000003E7,
     32'h0000000F
   };
 
@@ -372,7 +373,7 @@ package tse_regs_pkg;
   localparam int HR_PAD_OUT_IDLE_HI = 7, HR_PAD_OUT_IDLE_LO = 7;
   localparam int HR_PAD_OUT_IDLE_OE_HI = 8, HR_PAD_OUT_IDLE_OE_LO = 8;
   localparam logic [15:0] HR_LANE_IN = 16'h2020;
-  localparam int HR_LANE_IN_COUNT = 16, HR_LANE_IN_STRIDE = 1;
+  localparam int HR_LANE_IN_COUNT = 8, HR_LANE_IN_STRIDE = 1;
   localparam logic [31:0] HR_LANE_IN_MASK = 32'h000001FF;
   localparam logic [0:0] CB_LANE_IN = CBANK_XBAR;
   localparam logic [4:0] CW_LANE_IN = 5'd16;
@@ -388,11 +389,11 @@ package tse_regs_pkg;
   localparam int HR_PIN_OPT_IRQ_PAD_HI = 2, HR_PIN_OPT_IRQ_PAD_LO = 2;
   localparam int HR_PIN_OPT_LOOPBACK_HI = 3, HR_PIN_OPT_LOOPBACK_LO = 3;
   localparam logic [15:0] HR_EV_CTL = 16'h3000;
-  localparam logic [31:0] HR_EV_CTL_MASK = 32'h000003FF;
+  localparam logic [31:0] HR_EV_CTL_MASK = 32'h000003E7;
   localparam logic [0:0] CB_EV_CTL = CBANK_EVENT;
   localparam logic [4:0] CW_EV_CTL = 5'd1;
   localparam int HR_EV_CTL_LOG_EN_HI = 0, HR_EV_CTL_LOG_EN_LO = 0;
-  localparam int HR_EV_CTL_LANE_MASK_HI = 4, HR_EV_CTL_LANE_MASK_LO = 1;
+  localparam int HR_EV_CTL_LANE_MASK_HI = 2, HR_EV_CTL_LANE_MASK_LO = 1;
   localparam int HR_EV_CTL_TICK_K_HI = 9, HR_EV_CTL_TICK_K_LO = 5;
   localparam logic [15:0] HR_EV_STATUS = 16'h3001;
   localparam logic [31:0] HR_EV_STATUS_MASK = 32'h0000FFFF;
@@ -412,31 +413,31 @@ package tse_regs_pkg;
   localparam int HR_EV_CLEAR_FIFO_HI = 0, HR_EV_CLEAR_FIFO_LO = 0;
   localparam int HR_EV_CLEAR_DROPS_HI = 1, HR_EV_CLEAR_DROPS_LO = 1;
   localparam logic [15:0] HR_TRIG_MATCH = 16'h3008;
-  localparam int HR_TRIG_MATCH_COUNT = 4, HR_TRIG_MATCH_STRIDE = 1;
-  localparam logic [31:0] HR_TRIG_MATCH_MASK = 32'hFFFFFFFF;
+  localparam int HR_TRIG_MATCH_COUNT = 3, HR_TRIG_MATCH_STRIDE = 1;
+  localparam logic [31:0] HR_TRIG_MATCH_MASK = 32'hFFFFFFF3;
   localparam logic [0:0] CB_TRIG_MATCH = CBANK_EVENT;
   localparam logic [4:0] CW_TRIG_MATCH = 5'd2;
-  localparam int HR_TRIG_MATCH_LANES_HI = 3, HR_TRIG_MATCH_LANES_LO = 0;
+  localparam int HR_TRIG_MATCH_LANES_HI = 1, HR_TRIG_MATCH_LANES_LO = 0;
   localparam int HR_TRIG_MATCH_CODE_HI = 9, HR_TRIG_MATCH_CODE_LO = 4;
   localparam int HR_TRIG_MATCH_CODE_MASK_HI = 15, HR_TRIG_MATCH_CODE_MASK_LO = 10;
   localparam int HR_TRIG_MATCH_DATA_HI = 23, HR_TRIG_MATCH_DATA_LO = 16;
   localparam int HR_TRIG_MATCH_DATA_MASK_HI = 31, HR_TRIG_MATCH_DATA_MASK_LO = 24;
   localparam logic [15:0] HR_TRIG_WIN = 16'h300C;
-  localparam int HR_TRIG_WIN_COUNT = 4, HR_TRIG_WIN_STRIDE = 1;
+  localparam int HR_TRIG_WIN_COUNT = 3, HR_TRIG_WIN_STRIDE = 1;
   localparam logic [31:0] HR_TRIG_WIN_MASK = 32'h0000FFFF;
   localparam logic [0:0] CB_TRIG_WIN = CBANK_EVENT;
-  localparam logic [4:0] CW_TRIG_WIN = 5'd6;
+  localparam logic [4:0] CW_TRIG_WIN = 5'd5;
   localparam int HR_TRIG_WIN_WINDOW_HI = 15, HR_TRIG_WIN_WINDOW_LO = 0;
   localparam logic [15:0] HR_TRIG_CTL = 16'h3010;
-  localparam logic [31:0] HR_TRIG_CTL_MASK = 32'h0001FFFF;
+  localparam logic [31:0] HR_TRIG_CTL_MASK = 32'h00007FFF;
   localparam logic [0:0] CB_TRIG_CTL = CBANK_EVENT;
-  localparam logic [4:0] CW_TRIG_CTL = 5'd10;
+  localparam logic [4:0] CW_TRIG_CTL = 5'd8;
   localparam int HR_TRIG_CTL_LAST_HI = 1, HR_TRIG_CTL_LAST_LO = 0;
   localparam int HR_TRIG_CTL_EN_HI = 2, HR_TRIG_CTL_EN_LO = 2;
   localparam int HR_TRIG_CTL_REARM_HI = 3, HR_TRIG_CTL_REARM_LO = 3;
   localparam int HR_TRIG_CTL_WIDTH_M1_HI = 11, HR_TRIG_CTL_WIDTH_M1_LO = 4;
   localparam int HR_TRIG_CTL_POL_HI = 12, HR_TRIG_CTL_POL_LO = 12;
-  localparam int HR_TRIG_CTL_STOP_MASK_HI = 16, HR_TRIG_CTL_STOP_MASK_LO = 13;
+  localparam int HR_TRIG_CTL_STOP_MASK_HI = 14, HR_TRIG_CTL_STOP_MASK_LO = 13;
   localparam logic [15:0] HR_TRIG_ARM = 16'h3011;
   localparam logic [31:0] HR_TRIG_ARM_MASK = 32'h00000001;
   localparam int HR_TRIG_ARM_ARM_HI = 0, HR_TRIG_ARM_ARM_LO = 0;
@@ -448,16 +449,16 @@ package tse_regs_pkg;
   localparam int HR_ID_CFG_LATCH_HI = 15, HR_ID_CFG_LATCH_LO = 15;
   localparam int HR_ID_EVQ_DEPTH_HI = 19, HR_ID_EVQ_DEPTH_LO = 16;
   localparam logic [15:0] HR_RUN = 16'h4001;
-  localparam logic [31:0] HR_RUN_MASK = 32'h0000000F;
-  localparam int HR_RUN_RUN_HI = 3, HR_RUN_RUN_LO = 0;
+  localparam logic [31:0] HR_RUN_MASK = 32'h00000003;
+  localparam int HR_RUN_RUN_HI = 1, HR_RUN_RUN_LO = 0;
   localparam logic [15:0] HR_STATUS = 16'h4002;
-  localparam logic [31:0] HR_STATUS_MASK = 32'h00000FFF;
+  localparam logic [31:0] HR_STATUS_MASK = 32'h0000033F;
   localparam int HR_STATUS_LOADED_HI = 0, HR_STATUS_LOADED_LO = 0;
   localparam int HR_STATUS_BIST_DONE_HI = 1, HR_STATUS_BIST_DONE_LO = 1;
   localparam int HR_STATUS_BIST_PASS_HI = 2, HR_STATUS_BIST_PASS_LO = 2;
   localparam int HR_STATUS_HOST_ERR_HI = 3, HR_STATUS_HOST_ERR_LO = 3;
-  localparam int HR_STATUS_HALTED_HI = 7, HR_STATUS_HALTED_LO = 4;
-  localparam int HR_STATUS_RUNNING_HI = 11, HR_STATUS_RUNNING_LO = 8;
+  localparam int HR_STATUS_HALTED_HI = 5, HR_STATUS_HALTED_LO = 4;
+  localparam int HR_STATUS_RUNNING_HI = 9, HR_STATUS_RUNNING_LO = 8;
   localparam logic [15:0] HR_BIST = 16'h4003;
   localparam logic [31:0] HR_BIST_MASK = 32'h00003FFF;
   localparam int HR_BIST_FAIL_WORD_HI = 8, HR_BIST_FAIL_WORD_LO = 0;
@@ -468,19 +469,19 @@ package tse_regs_pkg;
   localparam logic [31:0] HR_LOAD_CRC_MASK = 32'hFFFFFFFF;
   localparam int HR_LOAD_CRC_CRC_HI = 31, HR_LOAD_CRC_CRC_LO = 0;
   localparam logic [15:0] HR_IRQ = 16'h4006;
-  localparam logic [31:0] HR_IRQ_MASK = 32'h0000FFFF;
-  localparam int HR_IRQ_IRQ_HI = 15, HR_IRQ_IRQ_LO = 0;
+  localparam logic [31:0] HR_IRQ_MASK = 32'h000000FF;
+  localparam int HR_IRQ_IRQ_HI = 7, HR_IRQ_IRQ_LO = 0;
   localparam logic [15:0] HR_MBOX_TX = 16'h4008;
-  localparam int HR_MBOX_TX_COUNT = 4, HR_MBOX_TX_STRIDE = 1;
+  localparam int HR_MBOX_TX_COUNT = 2, HR_MBOX_TX_STRIDE = 1;
   localparam logic [31:0] HR_MBOX_TX_MASK = 32'hFFFFFFFF;
   localparam int HR_MBOX_TX_DATA_HI = 31, HR_MBOX_TX_DATA_LO = 0;
   localparam logic [15:0] HR_MBOX_RX = 16'h400C;
-  localparam int HR_MBOX_RX_COUNT = 4, HR_MBOX_RX_STRIDE = 1;
+  localparam int HR_MBOX_RX_COUNT = 2, HR_MBOX_RX_STRIDE = 1;
   localparam logic [31:0] HR_MBOX_RX_MASK = 32'hFFFFFFFF;
   localparam int HR_MBOX_RX_DATA_HI = 31, HR_MBOX_RX_DATA_LO = 0;
   localparam logic [15:0] HR_MBOX_STATUS = 16'h4010;
-  localparam logic [31:0] HR_MBOX_STATUS_MASK = 32'h000000FF;
-  localparam int HR_MBOX_STATUS_FULL_HI = 7, HR_MBOX_STATUS_FULL_LO = 0;
+  localparam logic [31:0] HR_MBOX_STATUS_MASK = 32'h0000000F;
+  localparam int HR_MBOX_STATUS_FULL_HI = 3, HR_MBOX_STATUS_FULL_LO = 0;
 
   typedef struct packed {
     logic hit;
@@ -495,7 +496,7 @@ package tse_regs_pkg;
     if (a >= HR_PAD_OUT && a <= HR_PAD_OUT + 16'd15) begin
       r.hit = 1'b1; r.bank = CB_PAD_OUT; r.word = CW_PAD_OUT + 5'(a - HR_PAD_OUT);
     end
-    if (a >= HR_LANE_IN && a <= HR_LANE_IN + 16'd15) begin
+    if (a >= HR_LANE_IN && a <= HR_LANE_IN + 16'd7) begin
       r.hit = 1'b1; r.bank = CB_LANE_IN; r.word = CW_LANE_IN + 5'(a - HR_LANE_IN);
     end
     if (a == HR_PIN_OPT) begin
@@ -504,10 +505,10 @@ package tse_regs_pkg;
     if (a == HR_EV_CTL) begin
       r.hit = 1'b1; r.bank = CB_EV_CTL; r.word = CW_EV_CTL;
     end
-    if (a >= HR_TRIG_MATCH && a <= HR_TRIG_MATCH + 16'd3) begin
+    if (a >= HR_TRIG_MATCH && a <= HR_TRIG_MATCH + 16'd2) begin
       r.hit = 1'b1; r.bank = CB_TRIG_MATCH; r.word = CW_TRIG_MATCH + 5'(a - HR_TRIG_MATCH);
     end
-    if (a >= HR_TRIG_WIN && a <= HR_TRIG_WIN + 16'd3) begin
+    if (a >= HR_TRIG_WIN && a <= HR_TRIG_WIN + 16'd2) begin
       r.hit = 1'b1; r.bank = CB_TRIG_WIN; r.word = CW_TRIG_WIN + 5'(a - HR_TRIG_WIN);
     end
     if (a == HR_TRIG_CTL) begin

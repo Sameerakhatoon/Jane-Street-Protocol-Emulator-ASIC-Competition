@@ -13,8 +13,8 @@ import cocotb
 from cocotb.clock import Clock
 from cocotb.triggers import ClockCycles, FallingEdge, ReadOnly, RisingEdge
 
-LANES = int(os.environ.get("LANES", "3"))
-DS_WORDS = 16
+LANES = int(os.environ.get("LANES", "2"))
+NW = 16                                        # data window words the random test uses
 
 
 def clock(dut):
@@ -29,10 +29,6 @@ def dslot(lane, c):
     return s
 
 
-def win_ok(a):
-    return LANES < 4 or a < DS_WORDS
-
-
 class Bench:
     """One coroutine drives every port; ops are queued per lane and for the host."""
 
@@ -41,7 +37,6 @@ class Bench:
         self.rng = random.Random(seed)
         self.cyc = 0
         self.mem = {}                          # SRAM word -> value (window 3 is the 3-lane data window)
-        self.dw = {}                           # 4-lane data store
         self.fb = [0] * 8
         self.lane_ops = [[] for _ in range(LANES)]
         self.host_ops = []
@@ -71,15 +66,10 @@ class Bench:
 
     def dw_read(self, a):
         """Expected word, or None for a word never written (random in silicon)."""
-        if LANES < 4:
-            return self.mem.get(0x180 + a)
-        return self.dw.get(a) if a < DS_WORDS else 0
+        return self.mem.get(0x180 + a)
 
     def dw_write(self, a, v):
-        if LANES < 4:
-            self.mem[0x180 + a] = v
-        elif a < DS_WORDS:
-            self.dw[a] = v
+        self.mem[0x180 + a] = v
 
     async def run(self, cycles):
         d = self.dut
@@ -204,7 +194,7 @@ async def test_01_data_slot_every_phase(dut):
     for lane in range(LANES):
         for ph in range(16):
             c = t + ((ph - t) % 16)
-            a = (lane * 16 + ph) % (DS_WORDS if LANES == 4 else 128)
+            a = (lane * 16 + ph) % 128
             b.lane_ops[lane].append({"at": c, "we": 1, "addr": a, "data": 0x1000 * lane + ph})
             b.lane_ops[lane].append({"at": c + 20, "we": 0, "addr": a})
             t = c + 40
@@ -258,9 +248,8 @@ async def test_02_non_interference(dut):
 
 @cocotb.test()
 async def test_03_host_turn(dut):
-    """Host data window access: 3 lanes, only at cnt == 15 while lanes run and in any
-    cycle when all are stopped; 4 lanes, writes at cnt mod 4 == 1 and reads in any
-    cycle but cnt mod 4 == 3, running or not. Read data matches the shadow."""
+    """Host data window access only at cnt == 15 while lanes run and in any cycle
+    when all are stopped. Read data matches the shadow."""
     clock(dut)
     b = Bench(dut, 3)
     await b.start()
@@ -276,11 +265,9 @@ async def test_03_host_turn(dut):
         ops = [op for cyc, who, op in b.log[n0:]]
         assert len(cnts) == 24
         for c, op in zip(cnts, ops):
-            if LANES == 4:
-                assert (c % 4 == 1) if op["we"] else (c % 4 != 3), "host at cnt %d" % c
-            elif not stopped:
+            if not stopped:
                 assert c == 15, "host at cnt %d while lanes run" % c
-        if LANES < 4 and stopped:
+        if stopped:
             assert any(c != 15 for c in cnts)
     b.check()
 
@@ -327,7 +314,7 @@ async def test_05_random_traffic(dut):
     await b.start()
     rng = random.Random(55)
     b.stopped = 1
-    for a in range(DS_WORDS):
+    for a in range(NW):
         b.host_ops.append({"at": 0, "we": 1, "kind": "dw", "addr": a, "data": rng.getrandbits(32)})
     await b.run(400)
     b.stopped = 0
@@ -336,9 +323,9 @@ async def test_05_random_traffic(dut):
         b.fetch[i] = (i, rng.randrange(128), 0)
         for k in range(50):
             b.lane_ops[i].append({"at": t + k * 6 + rng.randrange(6), "we": rng.randrange(2),
-                                  "addr": rng.randrange(DS_WORDS), "data": rng.getrandbits(32)})
+                                  "addr": rng.randrange(NW), "data": rng.getrandbits(32)})
     for k in range(60):
-        b.host_ops.append({"at": t + k * 5, "we": rng.randrange(2), "kind": "dw", "addr": rng.randrange(DS_WORDS),
+        b.host_ops.append({"at": t + k * 5, "we": rng.randrange(2), "kind": "dw", "addr": rng.randrange(NW),
                            "data": rng.getrandbits(32)})
     await b.run(1200)
     b.check()

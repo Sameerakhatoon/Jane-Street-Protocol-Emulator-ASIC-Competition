@@ -152,3 +152,17 @@ def test_10_boot_image(world, tmp_path):
     assert world.chip.fallback[:2] == fb_blocks[0][1] and rep["status"] >> 8 & 0xF == 1
     with pytest.raises(image.ImageError):
         TseBoard().boot_image(main, main)
+
+
+# 11: reloading on the same board after a load that left the strobe pin high: the new
+#     state machines start the pins low, and the first command byte is still an edge
+def test_11_reload_after_odd_strobes(world, tmp_path):
+    path = write_image(tmp_path)
+    b = TseBoard()
+    b.load_image(path)
+    if not b.link.ent.strobe:
+        b.link.exchange([(0x00, 0)])        # a stray byte: does nothing, flips the level
+    assert b.link.ent.strobe == 1
+    world.chip.sram[0] ^= 1
+    b.load_image(path, run_mask=1)
+    assert world.chip.sram[:48] == BLOCKS[0][1] and world.chip.running() == 1

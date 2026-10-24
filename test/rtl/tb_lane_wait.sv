@@ -46,9 +46,10 @@ module tb_lane_wait;
         emit(JMP(tse_isa_pkg::COND_ALWAYS, pq.size()));
         load_q(); clear_disp(); vin = 4'b0100; start();
         pin_at(30, 2, 0);
-        repeat (20) @(negedge clk); stop();
+        repeat (20) @(negedge clk);
         check(at(pa + 1) >= 0 && at(pa + 3) >= 0 && at(pa + 2) < 0 && dut.u_seq.aflag,
               "alternate pin 2 changed (falling) ends WAIT PIN 0 with AFLAG; JMP TOUT taken");
+        stop();
 
         // 3. TFLAG clears at dispatch: a timed-out WAIT, then a WAIT that waits for pin 0
         pq.delete();
