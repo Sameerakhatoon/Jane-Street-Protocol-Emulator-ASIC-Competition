@@ -14,6 +14,13 @@ whose VCD does not exist is a SKIP, and a skip counts as a failure unless
 the case line carries --allow-skip: a demo that produced no trace must not
 look like a pass. Exit status 0 only when every case passes or is an
 allowed skip; 2 for an unreadable manifest.
+
+Example lines, from demos/stand_in.txt (the OpenOCD and TAP ping demos on
+the stand-in top, recorded by demos/record.sh; make judges-demos judges-run):
+
+    openocd_jtag jtag  jtag.vcd jtag.expect --map tck=ui_in2 --map tms=ui_in3 --map tdi=ui_in4 --map tdo=uo_out3
+    openocd_swd  swd   swd.vcd  swd.expect  --map swclk=ui_in5 --map swdio=swdio --map host_oe=swdio_host --map target_oe=swdio_chip
+    tap_ping_tx  eth10 eth.vcd  -           --map td=uo_out1
 """
 import argparse
 import contextlib

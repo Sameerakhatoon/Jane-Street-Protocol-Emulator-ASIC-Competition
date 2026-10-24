@@ -5,8 +5,9 @@ import subprocess
 import sys
 
 from verif.judges.run_judges import main
-from verif.judges.tests.jwave import (JtagDev, Wave, eth_frame_bits, jtag_reset, jtag_scan, jtag_wave,
-                                      manchester_wave, uart_tx, usb_line, usb_packet_bits, usb_wave)
+from verif.judges.tests.jwave import (JtagDev, Wave, eth_frame_bits, eth_wave, jtag_reset, jtag_scan,
+                                      jtag_wave, manchester_wave, uart_tx, usb_line, usb_packet_bits,
+                                      usb_wave)
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
@@ -37,7 +38,7 @@ def traces(d):
 
     w = Wave()
     w.add("td", 0)
-    manchester_wave(w, "td", 2e-6, eth_frame_bits(b"\xff" * 6, bytes(range(6)), 0x88B5, b"hi"), 10e6)
+    eth_wave(w, "td", 2e-6, eth_frame_bits(b"\xff" * 6, bytes(range(6)), 0x88B5, b"hi"))
     w.write(str(d / "eth.vcd"), tail=2e-6)
 
     (d / "uart.exp").write_text("# one byte\n41\n")

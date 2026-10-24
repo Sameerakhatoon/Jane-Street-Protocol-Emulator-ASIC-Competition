@@ -1,0 +1,5 @@
+# OpenOCD: reset, chain read, reset, IR capture check
+RESET
+IDCODE 15E00001
+RESET
+IR 6 TDI=3F TDO=31

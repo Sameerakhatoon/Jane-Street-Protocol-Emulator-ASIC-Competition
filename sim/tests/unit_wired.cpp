@@ -67,6 +67,24 @@ int main(void){
         last = wired_and_attach(&f);
     check(last == -1, "4 attach fails past the limit");
 
+    // 6: who drives, for the VCD: a probe with a direction, the chip's oe
+    wired_and_init(&w, "swdio", xio2, xio2);
+    m = wired_and_attach(&w);
+    p.uio_oe = 0;
+    p.uio_out = 0;
+    wired_and_drive_dir(&w, m, 1, 1);
+    check(wired_and_resolve(&w, &p) == 1 && w.host_on && !w.chip_on, "6 host drives a 1: high, host owns it");
+    wired_and_drive_dir(&w, m, 1, 0);
+    check(wired_and_resolve(&w, &p) == 0 && w.host_on, "6 host drives a 0");
+    wired_and_drive_dir(&w, m, 0, 0);
+    p.uio_oe = 0x04;
+    p.uio_out = 0x04;
+    check(wired_and_resolve(&w, &p) == 1 && !w.host_on && w.chip_on, "6 host lets go, chip drives a 1");
+    p.uio_oe = 0;
+    check(wired_and_resolve(&w, &p) == 1 && !w.host_on && !w.chip_on, "6 nobody drives: pull-up");
+    wired_and_drive(&w, m, 0);
+    check(wired_and_resolve(&w, &p) == 0 && w.host_on, "6 open-drain pull counts as driving");
+
     // 5: names from the pinout tables
     PinRef r;
     int    od = 0;

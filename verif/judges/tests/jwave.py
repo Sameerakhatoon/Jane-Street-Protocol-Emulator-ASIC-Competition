@@ -332,19 +332,31 @@ def swd_idle(n=2):
 
 
 def swd_wave(w, cycles, t=1e-6, period=200e-9, target_delay=0.0):
-    """Clock low then high per cycle; host data set at the start of the low
-    phase, target data launched on the rising edge plus target_delay periods."""
+    """Clock low then high per cycle; every bit is read at the rising edge
+    that ends its cycle. The host sets its bit at the falling edge that
+    starts the cycle; the target launches its bit at the rising edge before
+    that, plus target_delay periods. So the turnaround after the park bit is
+    one cycle, counted as a probe counts it. If the wave has host_oe and
+    target_oe signals they follow who drives."""
     half = period / 2
+    oe = "host_oe" in w.sigs and "target_oe" in w.sigs
+    prev = "h"
     for n, c in enumerate(cycles):
         t0 = t + n * period
         w.set("swclk", t0, 0)
         w.set("swclk", t0 + half, 1)
+        launch = t0 - half + target_delay * period
         if c[0] == "h":
             w.set("swdio", t0, c[1])
         elif c[0] == "t":
-            w.set("swdio", t0 + half + target_delay * period, c[1])
+            w.set("swdio", launch, c[1])
         else:
-            w.set("swdio", t0 + half, "z")
+            w.set("swdio", launch if prev == "t" else t0, "z")
+        if oe and (c[0] == "h") != (prev == "h"):
+            w.set("host_oe", t0, int(c[0] == "h"))
+        if oe and (c[0] == "t") != (prev == "t"):
+            w.set("target_oe", launch, int(c[0] == "t"))
+        prev = c[0]
     end = t + len(cycles) * period
     w.set("swclk", end, 0)
     return end
@@ -590,6 +602,18 @@ def manchester_wave(w, name, t, bits, bitrate, convention="ieee", idle=0, drop=N
     end = t + len(bits) * T
     w.set(name, end, idle)
     return end
+
+
+def eth_wave(w, name, t, bits, idl=300e-9, drop=None, scale=1.0):
+    """10BASE-T frame then TP_IDL: high for idl after the last low-to-high
+    transition, then idle low. idl=None drops straight to low (no TP_IDL).
+    Returns the time the line is back at idle."""
+    if idl is None:
+        return manchester_wave(w, name, t, bits, 10e6, "ieee", 0, drop, scale)
+    end = manchester_wave(w, name, t, bits, 10e6, "ieee", 1, drop, scale)
+    last_rise = end - scale / 10e6 / 2 if bits[-1] == 1 else end
+    w.set(name, last_rise + idl, 0)
+    return last_rise + idl
 
 
 def eth_frame_bits(dst, src, etype, payload, bad_fcs=False, preamble=7, dribble=0):

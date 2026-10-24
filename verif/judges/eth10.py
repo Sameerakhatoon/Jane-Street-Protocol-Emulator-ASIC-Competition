@@ -6,6 +6,15 @@ bit, 10 Mb/s +/- 0.01 percent), the frame format and FCS of the MAC
 clause. The line is the logic level of TD+ (a digital model of the
 differential pair); link pulses are not judged.
 
+End of frame (TP_IDL, the 10BASE-T clause): after the last transition of
+a frame the transmitter holds TD positive for at least 250 ns, then
+returns to idle, within 45 bit times (4.5 us). On the logic level that is
+a high of 250 ns to 4.5 us measured from the last low-to-high transition:
+the middle transition of a final 1, or the cell boundary rise after a
+final 0. The judge checks that width for every decoded frame; a frame
+whose line drops straight back to low has no TP_IDL and fails. The fall
+that ends a valid TP_IDL is not data and starts no burst.
+
 A frame is one Manchester burst: 7 octets of preamble (10101010 on the
 wire) and the start frame delimiter 10101011, then destination, source,
 length or type, data and the 32-bit FCS, every octet least significant
@@ -18,23 +27,32 @@ Frame keys: "FFFFFFFFFFFF 020000000001 0800 4500...", destination,
 source, type and payload in hex (FCS left out); "ERROR" when the burst
 does not decode.
 """
-from .common import Result
+from array import array
+
+from .common import Result, fmt_time
 from .manchester import bursts
+from .vcd import Signal
 
 ROLES = ("td",)
 REQUIRED = ("td",)
 PULLUP = False
-OPTS = ("rate_tol",)
+OPTS = ("rate_tol", "idl_min", "idl_max")
 
 BITRATE = 10e6
 PREAMBLE_SFD_BITS = 64
 MIN_OCTETS = 64
 MAX_OCTETS = 1518
 MAX_TAGGED = 1522
+IDL_MIN = 250e-9
+IDL_MAX = 4.5e-6
 
 
 def add_args(p):
     p.add_argument("--rate-tol", type=float, default=0.01, help="allowed bit rate error, percent")
+    p.add_argument("--idl-min", type=float, default=IDL_MIN, metavar="SECONDS",
+                   help="shortest TP_IDL high after the last transition (default 250 ns)")
+    p.add_argument("--idl-max", type=float, default=IDL_MAX, metavar="SECONDS",
+                   help="latest return to idle after the last transition (default 4.5 us)")
 
 
 def crc32(octets):
@@ -46,12 +64,51 @@ def crc32(octets):
     return crc ^ 0xFFFFFFFF
 
 
-def decode(trace, rate_tol=0.01):
+def decode(trace, rate_tol=0.01, idl_min=IDL_MIN, idl_max=IDL_MAX):
     res = Result(trace)
     T = trace.units(1.0 / BITRATE)
-    for b in bursts(res, trace["td"], T, "ieee", rate_tol, 3.0, nominal=BITRATE):
+    td = trace["td"]
+    for b in bursts(res, _without_idle_ends(td, T), T, "ieee", rate_tol, 3.0, nominal=BITRATE):
         _frame(res, b)
+        if b.bits and not b.error:
+            _tp_idl(res, trace, td, b, idl_min, idl_max)
     return res.sort()
+
+
+def _without_idle_ends(td, T):
+    """The line with the falling edge that ends each TP_IDL removed.
+
+    That fall follows a high stretch longer than any Manchester cell can
+    hold (1.5 bit times) and is followed by idle (no edge for 3 bit
+    times), so it is never a data edge; left in, it would look like the
+    start of a burst of its own.
+    """
+    times, levels = td.times, td.levels
+    n = len(times)
+    keep = []
+    for k in range(n):
+        if (k >= 2 and levels[k] == 0 and levels[k - 1] == 1 and times[k] - times[k - 1] > 1.5 * T
+                and (k + 1 == n or times[k + 1] - times[k] > 3.0 * T)):
+            continue
+        keep.append(k)
+    s = Signal(td.name)
+    s.times = array("q", (times[k] for k in keep))
+    s.levels = bytearray(levels[k] for k in keep)
+    return s
+
+
+def _tp_idl(res, trace, td, b, idl_min, idl_max):
+    """The positive idle after the frame's last transition."""
+    if td.at(b.t1) != 1:
+        res.violate(b.t1, "TP_IDL", "missing (line low after the last bit)",
+                    ">= %s high" % fmt_time(idl_min))
+        return
+    k = td.first_after(b.t1)
+    if k < len(td.times):
+        res.check_range(b.t1, "TP_IDL", td.times[k] - b.t1, idl_min, idl_max,
+                        text="high after the last transition")
+    elif trace.seconds(trace.end - b.t1) > idl_max * (1 + 1e-9):
+        res.violate(b.t1, "TP_IDL", "high to the end of the trace", "back to idle within %s" % fmt_time(idl_max))
 
 
 def _frame(res, b):

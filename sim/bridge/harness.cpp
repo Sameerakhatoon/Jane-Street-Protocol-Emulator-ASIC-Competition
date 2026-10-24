@@ -96,7 +96,7 @@ int harness_wire(Harness* h, WiredAnd* w){
         return -1;
     }
     h->wire[h->n_wire++] = w;
-    return 0;
+    return vcd_pins_wire(&h->vcd, w);
 }
 
 void harness_step(Harness* h, int tick_adapters){

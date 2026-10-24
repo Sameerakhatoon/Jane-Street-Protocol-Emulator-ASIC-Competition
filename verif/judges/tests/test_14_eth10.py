@@ -7,19 +7,19 @@ import pytest
 from hypothesis import given, strategies as st
 
 from verif.judges import eth10
-from verif.judges.tests.jwave import Wave, eth_frame_bits, manchester_wave
+from verif.judges.tests.jwave import Wave, eth_frame_bits, eth_wave
 from verif.judges.vcd import read_vcd
 
 BCAST = b"\xff" * 6
 SRC = bytes.fromhex("020000000001")
 
 
-def judge(frames, scale=1.0, drop=None, **kw):
+def judge(frames, scale=1.0, drop=None, idl=300e-9, **kw):
     w = Wave()
     w.add("td", 0)
     t = 2e-6
     for k, bits in enumerate(frames):
-        t = manchester_wave(w, "td", t, bits, 10e6, "ieee", 0, drop if k == 0 else None, scale) + 9.6e-6
+        t = eth_wave(w, "td", t, bits, idl, drop if k == 0 else None, scale) + 9.6e-6
     fd, path = tempfile.mkstemp(suffix=".vcd")
     os.close(fd)
     try:

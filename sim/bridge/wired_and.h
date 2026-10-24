@@ -16,6 +16,12 @@
 // The harness resolves every registered bus after all adapter ticks and
 // before the inputs go into the model, so a driver sees its own change
 // one cycle later, like any synchronous receiver.
+//
+// Each resolve also records who drives the line (host_on, chip_on), so
+// the pins-only VCD can show the wire and its owner the way a logic
+// analyser with a direction probe would. An open-drain driver counts as
+// driving while it pulls low; a host with a direction (a debug probe on
+// SWDIO) uses wired_and_drive_dir and counts while its output is on.
 
 #include "adapter.h"
 
@@ -27,7 +33,10 @@ typedef struct WiredAnd {
     PinRef      chip_in;
     int         n;
     uint8_t     low[WIRED_MAX_DRIVERS];
+    uint8_t     on[WIRED_MAX_DRIVERS];
     uint8_t     level;
+    uint8_t     host_on;            // a host driver drove at the last resolve
+    uint8_t     chip_on;            // the chip drove at the last resolve
     uint64_t    falls;              // falling edges seen, for tests and stats
 } WiredAnd;
 
@@ -38,6 +47,14 @@ int  wired_and_resolve(WiredAnd* w, Pins* p);       // new level, also put on ch
 
 static inline void wired_and_drive(WiredAnd* w, int id, int v){
     w->low[id] = v ? 0 : 1;
+    w->on[id] = w->low[id];
+}
+
+// A driver with a direction: on = 0 lets go, on = 1 drives v (a driven 1
+// pulls nothing, the pull-up gives the same level).
+static inline void wired_and_drive_dir(WiredAnd* w, int id, int on, int v){
+    w->low[id] = (uint8_t)(on && !v);
+    w->on[id] = (uint8_t)(on != 0);
 }
 
 static inline int wired_and_level(const WiredAnd* w){

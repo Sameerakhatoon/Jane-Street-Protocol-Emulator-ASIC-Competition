@@ -1,0 +1,7 @@
+# Stand-in top demos, recorded by record.sh into build/demos.
+#   bash verif/judges/demos/record.sh && make judges-run
+# NAME        PROTOCOL  VCD                          EXPECT       OPTIONS
+openocd_jtag  jtag      ../../../build/demos/jtag.vcd  jtag.expect  --map tck=ui_in2 --map tms=ui_in3 --map tdi=ui_in4 --map tdo=uo_out3
+openocd_swd   swd       ../../../build/demos/swd.vcd   swd.expect   --map swclk=ui_in5 --map swdio=swdio --map host_oe=swdio_host --map target_oe=swdio_chip
+tap_ping_tx   eth10     ../../../build/demos/eth.vcd   -            --map td=uo_out1
+tap_ping_rx   eth10     ../../../build/demos/eth.vcd   -            --map td=ui_in1

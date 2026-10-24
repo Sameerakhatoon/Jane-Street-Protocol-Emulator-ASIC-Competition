@@ -13,6 +13,7 @@ int wired_and_attach(WiredAnd* w){
     if(w->n == WIRED_MAX_DRIVERS)
         return -1;
     w->low[w->n] = 0;
+    w->on[w->n] = 0;
     return w->n++;
 }
 
@@ -25,10 +26,20 @@ int wired_and_chip_low(const WiredAnd* w, const Pins* p){
     return 0;
 }
 
+static int chip_drives(const WiredAnd* w, const Pins* p){
+    if(w->chip_out.bus == PIN_UIO)
+        return (p->uio_oe >> w->chip_out.bit) & 1;
+    return wired_and_chip_low(w, p);
+}
+
 int wired_and_resolve(WiredAnd* w, Pins* p){
     int low = wired_and_chip_low(w, p);
-    for(int i = 0; i < w->n && !low; i++)
-        low = w->low[i];
+    w->chip_on = (uint8_t)chip_drives(w, p);
+    w->host_on = 0;
+    for(int i = 0; i < w->n; i++){
+        low |= w->low[i];
+        w->host_on |= w->on[i];
+    }
     if(low && w->level)
         w->falls++;
     w->level = low ? 0 : 1;

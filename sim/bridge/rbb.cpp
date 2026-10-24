@@ -41,7 +41,7 @@ static void reply(Rbb* r, int bit){
 
 static void sw_apply(Rbb* r){
     if(r->c.swdio)
-        wired_and_drive(r->c.swdio, r->sw_id, r->sw_drive ? r->sw_val : 1);
+        wired_and_drive_dir(r->c.swdio, r->sw_id, r->sw_drive, r->sw_val);
 }
 
 static void hangup(Adapter* a, Rbb* r){
@@ -96,6 +96,11 @@ static int rbb_poll(Adapter* a, short revents){
             int one = 1;
             setsockopt(r->cfd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof(one));
             a->fd = r->cfd;
+            // OpenOCD sends the line reset and JTAG-to-SWD bits before its
+            // first O, so a fresh connection starts with the host driving.
+            r->sw_drive = 1;
+            r->sw_val = 1;
+            sw_apply(r);
         }
         return busy;
     }
