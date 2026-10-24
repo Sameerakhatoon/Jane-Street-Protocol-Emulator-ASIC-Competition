@@ -29,6 +29,8 @@
 // same: pre-drive MISO while armed, measure the pads, or assume a larger t_css
 // (t_css >= 113.3 ns at 60 MHz, >= 130 ns at 50 MHz, with full pads).
 // Assumptions (the controller's side): sck_low, sck_high, css, window_loaded.
+// Compiler result: rejected with t_css = 100 ns (first_bit, fix t_css >= 114 ns);
+// accepted with t_css = 114 ns at 60 MHz and 130 ns with 3.5 MHz SCK at 50 MHz.
 protocol spi_target_mode2 {
   param f_sck : freq = 4 MHz;          // fastest SCK the controller will use
   param t_su  : time = 5 ns;           // controller's MISO setup before its sampling edge

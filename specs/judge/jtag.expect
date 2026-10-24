@@ -1,0 +1,4 @@
+# Lane 0 runs jtag_probe; after five TMS-high clocks the host reads the chain's
+# identification register. The target model's IDCODE is 0x4BA00477.
+RESET
+IDCODE 4BA00477

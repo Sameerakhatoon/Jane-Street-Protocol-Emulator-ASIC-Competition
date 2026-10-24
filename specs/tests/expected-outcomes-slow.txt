@@ -1,0 +1,4 @@
+# Build outcomes whose timing analysis takes many minutes; run with SPECS_SLOW=1.
+# Same columns as expected-outcomes.txt.
+# ps2_device: about 113,000 analysis states of 40 us waits; tens of minutes on one core.
+ps2_device.tse|-|0|-|-

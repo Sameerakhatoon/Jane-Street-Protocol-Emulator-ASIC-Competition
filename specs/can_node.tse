@@ -10,8 +10,8 @@
 // reads dominant during arbitration has lost and stops driving; every correct
 // receiver drives dominant in the ACK slot.
 //
-// What this file states, and what it leaves to the host. The language of this
-// version has no CRC or stuffer assists and no frame construct, so:
+// What this file states, and what it leaves to the host. The compiler does not
+// lower frames or assist events yet, so the node works at the bit layer:
 //   - the host builds the transmitted bit stream (stuffing and CRC-15
 //     included) from SOF through intermission and pads it with recessive bits
 //     to 5 words (160 bit times; the longest 2.0A frame with 8 bytes is 135);
@@ -26,6 +26,15 @@
 //   - not stated: the receiver's ACK (it must destuff and finish the CRC-15
 //     within the CRC delimiter bit, which needs the hardware CRC), resync on
 //     recessive-to-dominant edges (the DPLL with SJW), error frames.
+//
+// Why the lost flag is a `set`. Arbitration loss is "we sent recessive and read
+// dominant at the sample point". The other ways to say it are not available
+// yet: a guard on the level of our own txd (the lowering has no input for an
+// output pin), an abort on that condition (an abort takes one pin edge), or an
+// arbitration-loss assist with an event (no such assist kind). Dropping the
+// flag would leave the loser driving dominant bits over the winner's frame, so
+// this file keeps the obligation and waits for `set` on a 1-bit variable.
+// The receiver's ACK is stated in can_rx_ack.tse with the CRC and stuffer assists.
 //
 // Bit timing (500 kbit/s, 20 time quanta per bit, sample point 80 %):
 //

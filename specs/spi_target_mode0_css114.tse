@@ -1,0 +1,69 @@
+// spi_target_mode0_css114.tse: SPI target, mode 0, restated for the CS setup time
+// the lane really needs.
+//
+// spi_target.tse states a controller whose CS falls only t_css = 100 ns before
+// the first SCK rise, which leaves the first MISO bit a window of
+// [0, t_css - t_su] = [0, 95 ns]. The sequencer reacts to the CS fall exactly
+// one cycle after seeing it, on every path, and the pin then changes 66.7 to
+// 108.3 ns after the fall at 60 MHz (80 to 125 ns at 50 MHz), pads 0 to 25 ns
+// included. So that spec is rejected (R311, fix t_css >= 114 ns) and stays
+// rejected until a response rule can drive the first bit (an RTL change: a
+// rule drive that ends on another pin's edge). This file is the same target
+// with the controller requirement stated honestly: CS must fall at least
+// 114 ns before the first SCK rise (130 ns at 50 MHz). Every other obligation
+// is unchanged.
+//
+// Compiler results (one tick = 16.67 ns at 60 MHz, 20 ns at 50 MHz):
+//
+//   obligation          window                   60 MHz, 4 MHz SCK, t_css 114 ns     50 MHz, 3.5 MHz SCK, t_css 130 ns
+//   first_bit  OB-WIN   [0, t_css - t_su]        [0, 109 ns]: 66.7 to 108.3,          [0, 125 ns]: 80 to 125,
+//                                                margin 0.7 ns                        margin 0
+//   mosi       OB-WIN   [0, half - t_mo]         [0, 105 ns]: 16.7 to 91.7,           [0, 122.9 ns]: 20 to 105,
+//                                                margin 13.3 ns                       margin 17.9 ns
+//   miso       OB-WIN   [0, half - t_su]         [0, 120 ns]: 66.7 to 108.3,          [0, 137.9 ns]: 80 to 125,
+//                                                margin 11.7 ns                       margin 12.9 ns
+//   abort on rise(cs_n) stated bound             within 54 cycles (0.9 us)
+//
+// The first_bit margin is the whole story: 0.7 ns at 60 MHz means 114 ns is
+// the real limit, not a rounded guess. At 50 MHz 4 MHz SCK is rejected
+// (MISO and MOSI windows, fix f_sck <= 3.33 MHz from the solver, which is
+// conservative: 3.5 MHz is proven). Controllers that hold CS for a whole SCK
+// period before the first edge (most do: 250 ns at 4 MHz) meet this easily.
+protocol spi_target_mode0_css114 {
+  param f_sck : freq = 4 MHz;          // fastest SCK the controller will use
+  param t_su  : time = 5 ns;           // controller's MISO setup before its sampling edge
+  param t_css : time = 114 ns;         // controller's CS fall to first SCK rise
+  param t_mo  : time = 20 ns;          // controller's MOSI output delay after SCK falls
+  unit  half  = 1 / (2 * f_sck);
+
+  wire cs_n : in;
+  wire sck  : in;
+  wire mosi : in;
+  wire miso : out push_pull idle 0;
+
+  datasheet spi_controller {
+    rule sck_low  : fall(sck)  -> rise(sck) >= half;
+    rule sck_high : rise(sck)  -> fall(sck) >= half;
+    rule css      : fall(cs_n) -> rise(sck) >= t_css;
+  }
+
+  role tgt : target uses cs_n, sck, mosi, miso {
+    var txw : bits[32];                // four bytes from the host, MSB first
+    var rxb : bits[8];
+    assume window_loaded : host.window_loaded;
+    state idle  { on host.pull(txw) -> armed; }
+    state armed {
+      respond first_bit : on fall(cs_n) { shift txw msb 1 -> miso; }
+                          within [0 ns, t_css - t_su] -> bits;
+    }
+    state bits {
+      seq {
+        repeat 8 {
+          shift mosi -> rxb msb 1 within [0 ns, half - t_mo] after rise(sck);
+          shift txw msb 1 -> miso within [0 ns, half - t_su] after fall(sck);
+        }
+        push host rxb;
+      } -> bits abort on rise(cs_n) -> idle;
+    }
+  }
+}

@@ -1,0 +1,6 @@
+# Both roles of uart.tse on the two lanes at 115,200 baud: the host sends o, k
+# on tx, then the testbench sends h, i on rx.
+tx 6F
+tx 6B
+rx 68
+rx 69

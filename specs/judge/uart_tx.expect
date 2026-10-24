@@ -1,0 +1,5 @@
+# Lane 0 runs uart_tx at 115,200 baud; the host sends T, S, E and a newline.
+54
+53
+45
+0A

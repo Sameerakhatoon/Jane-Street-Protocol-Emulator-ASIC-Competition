@@ -1,0 +1,67 @@
+// eth10_rx.tse: 10BASE-T receiver (Manchester decoding, SFD hunt, FCS check), RD level.
+//
+// Source: IEEE Std 802.3, clauses 3, 4, 7 and 14 as in eth10_tx.tse. The
+// receive side adds: a receiver locks on the preamble, so the first bits of
+// the preamble may be lost; the frame starts after the SFD (10101011, the
+// last two bits 1 1); a frame with a bad FCS is discarded; 10BASE-T receive
+// jitter is at most 13.5 ns on a mid-bit transition (clause 14, the
+// receiver's jitter tolerance), with link pulses and TP_IDL between frames.
+//
+// What the lane does and what the host does. The Manchester assist decodes
+// with the DPLL (sample at 75 % of the cell, resynchronised on every
+// transition, both edges sampled), the CRC assist checks the FCS on the fly,
+// and a good frame goes to the host with an event naming it. A bad frame is
+// dropped and counted; the host never sees it.
+//
+// Hand-computed obligations:
+//
+//   obligation                          window               60 MHz                    50 MHz
+//   mid-bit edge accepted               +/- 25 ns of the     13.5 + 4.2 = 17.7 ns with dual-edge     13.5 + 5 = 18.5 ns
+//                                       predicted instant    sampling, margin 7.3 ns   margin 6.5 ns
+//   OB-FEED drain of the 32-bit RX      3.2 us after "RX     192 ticks against        160 ticks against the
+//   word (IN, PUSH)                     full"                1 cycle + 3 of fetch     same 4 cycles
+//   preamble bits lost while locking    up to 56 bits        DPLL locks within 2 transitions
+//
+// The host must drain the frame at 1.25 MB/s; the push does not block, so a
+// host that falls behind loses words, which the report labels.
+protocol eth10_rx {
+  const bitrate : freq = 10 MHz;
+  unit  bit     = 1 / bitrate;
+
+  wire rd : in;                              // RS-485 receiver RO
+
+  assist line : manchester { pins = (rd); convention = ieee; }
+  assist fcs  : crc  { width = 32; poly = 0x04C11DB7; init = 0xFFFFFFFF; refin = true;
+                       refout = true; xorout = 0xFFFFFFFF; check = 0xCBF43926; }
+  assist rclk : dpll { period = 1 bit; sample = 75 %; dual_edge = true; }
+
+  frame eth {
+    preamble : bytes[1] = 0x55;              // the last preamble octet: recv hunts for 0x55 0xD5
+    sfd      : bits[8]  = 0xD5;
+    dst      : bytes[6];
+    src      : bytes[6];
+    etype    : bits[16];
+    payload  : bytes[46..1500];
+    fcs      : bits[32] crc fcs over dst..payload;
+  }
+
+  datasheet tp_line {
+    rule half_bit : edge(rd) -> edge(rd) >= 0.5 bit - 13.5 ns;   // edges no closer than half a bit minus jitter
+  }
+
+  role mac_rx : target uses rd {
+    var fr : eth;
+    state idle  { on edge(rd) -> hunt; }
+    state hunt  { seq { recv eth into fr; } -> check; }
+    state check {
+      on fcs.ok -> deliver;
+      on line.eop -> idle;                   // bad FCS: drop it, a status counter counts it
+    }
+    state deliver {
+      seq {
+        push host fr;
+        emit frame_ok;
+      } -> idle;
+    }
+  }
+}

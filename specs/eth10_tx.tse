@@ -1,0 +1,83 @@
+// eth10_tx.tse: 10BASE-T transmitter (MAC framing and Manchester line coding), TD+ level.
+//
+// Source: IEEE Std 802.3, clause 3 (MAC frame: preamble, SFD, addresses,
+// length/type, data, FCS; every octet least significant bit first), clause 4
+// (minimum frame 64 octets, maximum 1518; interframe gap 96 bit times),
+// clause 7 (Manchester: the bit's complement in the first half of the cell,
+// the bit in the second half, so a 1 is a rising middle transition) and
+// clause 14 (10BASE-T: 10 Mb/s +/- 0.01 %, link test pulses every 16 ms
+// +/- 8 ms, the TP_IDL start of idle held positive 2.5 to 4.5 bit times).
+//   preamble   7 octets 0x55        SFD 0xD5
+//   FCS        CRC-32, generator 0x04C11DB7, reflected, init and xorout 0xFFFFFFFF,
+//              check value 0xCBF43926 over "123456789"
+//
+// What the lane does and what the host does. The host builds the frame from
+// destination to the end of the payload (padded to 46 octets) and streams it
+// into the lane; the Manchester assist codes every bit at exactly 3 ticks per
+// half bit (60 MHz) and the CRC assist appends the FCS. ARP and ICMP replies
+// are the host's. The pins are the RS-485 driver input (td) and its enable (de).
+//
+// Hand-computed obligations:
+//
+//   obligation                          window               60 MHz               50 MHz
+//   half bit                            50 ns                3 ticks, exact       2.5 ticks: NCO 2 and 3,
+//                                                                                 +/- 10 ns, inside +/- 13.5 ns
+//   rate                                +/- 0.01 % (100 ppm) 50 ppm crystal: ok   50 ppm: ok
+//   OB-FEED refill of the 32-bit TX     3.2 us after "TX     192 ticks against    160 ticks against the
+//   shifter (PULL, CSRW TXDATA)         needs data"          1 cycle + 3 of fetch same 4 cycles
+//   TP_IDL hold                         [2.5, 4.5] bit       3 bit +/- 10 %: [2.7, 3.3] bit, margins 0.2 and 1.2 bit
+//   interframe gap                      >= 96 bit = 9.6 us   576 ticks            480 ticks
+//   link pulse spacing                  [8, 24] ms           16 x 1 ms timer      16 x 1 ms timer
+//   link pulse width                    100 ns               1 bit ~ 5 %          1 bit ~ 5 %
+//
+// The binding obligation is OB-FEED, not a response window: the host must
+// stream 1.25 MB/s into the lane for back-to-back frames, stated as
+// `assume host_ready` and labelled in the report.
+protocol eth10_tx {
+  const bitrate : freq = 10 MHz;
+  unit  bit     = 1 / bitrate;               // 100 ns; half bit 3 ticks exactly at 60 MHz
+
+  wire td : out push_pull idle 0;            // RS-485 driver DI
+  wire de : out push_pull idle 0;            // driver enable
+
+  assist line : manchester { pins = (td); convention = ieee; }
+  assist fcs  : crc   { width = 32; poly = 0x04C11DB7; init = 0xFFFFFFFF; refin = true;
+                        refout = true; xorout = 0xFFFFFFFF; check = 0xCBF43926; }
+  assist nlp  : timer { period = 1 ms; }      // the lane timer reaches 1.09 ms; 16 ticks make 16 ms
+
+  frame eth {
+    preamble : bytes[7] = 0x55;
+    sfd      : bits[8]  = 0xD5;
+    dst      : bytes[6];
+    src      : bytes[6];
+    etype    : bits[16];
+    payload  : bytes[46..1500];
+    fcs      : bits[32] crc fcs over dst..payload;
+  }
+
+  role mac_tx : controller uses td, de {
+    var fr : eth;
+    assume host_ready : host.ready;          // payload octets stream from the host in time
+    state idle {
+      on host.pull(fr) -> send;
+      on nlp.tick -> link;
+    }
+    state link {                             // normal link pulse after 16 ms without a frame
+      seq {
+        repeat 15 { await nlp.tick; }
+        drive de = 1;
+        drive td = 1 for 1 bit ~ 5 %;
+        drive td = 0;
+        drive de = 0;
+      } -> idle abort on host.pull(fr) -> send;
+    }
+    state send {
+      seq {
+        drive de = 1;
+        send eth(fr);
+        drive td = 1 for 3 bit ~ 10 %;       // TP_IDL
+        drive de = 0 for 96 bit;             // interframe gap before the next frame
+      } -> idle;
+    }
+  }
+}

@@ -1,0 +1,5 @@
+# Lane 0 runs uart_rx at 115,200 baud; the testbench sends h, i and a newline
+# on rx and the host must receive the same three bytes.
+68
+69
+0A

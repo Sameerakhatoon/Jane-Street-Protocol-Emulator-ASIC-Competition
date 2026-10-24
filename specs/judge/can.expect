@@ -1,0 +1,4 @@
+# Two lanes on one bus at 500 kbit/s: the CAN node sends 123#DEADBEEF and
+# can_rx_ack acknowledges it. With two can_node lanes the second sends 100#0102
+# in the same bit, wins the arbitration, and the loser's host sends again.
+123#DEADBEEF

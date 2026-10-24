@@ -1,0 +1,3 @@
+# Lane 0 runs the SPI target; the testbench controller sends A5 5A in one
+# chip-select frame and the host has loaded 12 34 as the answer.
+mosi=A5,5A miso=12,34

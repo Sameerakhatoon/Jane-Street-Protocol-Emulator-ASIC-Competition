@@ -26,6 +26,9 @@
 // Rate limits from the miso row (worst 4 ticks + 25 ns against half - t_su):
 // half >= 96.7 ns at 60 MHz (5.17 MHz), half >= 110 ns at 50 MHz (4.55 MHz).
 // Assumptions (the controller's side): sck_low, sck_high, css, window_loaded.
+// Compiler result: at 4 MHz the first MISO bit is late (the wait for the first
+// SCK edge can be armed up to 4 cycles after CS falls); accepted at f_sck =
+// 3 MHz (60 MHz) and 2.5 MHz (50 MHz).
 protocol spi_target_mode1 {
   param f_sck : freq = 4 MHz;          // fastest SCK the controller will use
   param t_su  : time = 5 ns;           // controller's MISO setup before its sampling edge

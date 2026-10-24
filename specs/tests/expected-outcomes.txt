@@ -10,28 +10,51 @@ uart_rx.tse|-|0|-|-
 uart_rx.tse|--fclk 50e6|0|-|-
 uart_rx.tse|-D baud=1000000|0|-|-
 uart_rx.tse|-D baud=1000000 --fclk 50e6|0|-|-
+# Clocked controllers: placement between SCK and data needs a pad skew bound.
 spi_controller_mode0.tse|-|2|R310|output placement outside tolerance in role 'ctl': drive cs_n = 0 for t_css ~ 10 %
 spi_controller_mode1.tse|-|2|R310|output placement outside tolerance in role 'ctl': drive cs_n = 0 for t_css ~ 10 %
 spi_controller_mode2.tse|-|2|R310|output placement outside tolerance in role 'ctl': drive cs_n = 0 for t_css ~ 10 %
 spi_controller_mode3.tse|-|2|R310|output placement outside tolerance in role 'ctl': drive cs_n = 0 for t_css ~ 10 %
-spi_target.tse|-|2|R311|response window not met in role 'tgt': shift miso late
-spi_target_mode1.tse|-|2|R311|response window not met in role 'tgt': shift miso late
-spi_target_mode2.tse|-|2|R311|response window not met in role 'tgt': shift miso late
-spi_target_mode3.tse|-|2|R311|response window not met in role 'tgt': shift miso late
-spi_flash_target.tse|-|2|R300|not supported by this version of tsec: a guard on 'wel': on some path into this state it is not the variable last shifted in (a push or another shift reused the register)
-i2c_target.tse|-|2|R314|re-arm too late in role 'tgt': the wait that detects stop (abort) starts 12 cycles after stop may already be visible
-i2c_controller_fm.tse|-|0|-|-
-i2c_controller_sm.tse|-|0|-|-
-can_node.tse|-|2|R300|not supported by this version of tsec: 'set' in a state machine
-swd_probe.tse|-|2|R300|not supported by this version of tsec: shift of 'data': it is not in the transmit shift register (pull it from the host first; a guard reuses the register)
-jtag_probe.tse|-|2|R310|output placement outside tolerance in role 'probe': shift cmd lsb 2 -> (tms, tdi) for half ~ t_jit
-ps2_device.tse|-|2|R300|not supported by this version of tsec: abort on taken(clk)
-ps2_host.tse|-|0|-|-
 spi_controller_mode0.tse|--pad-skew 0|0|-|-
 spi_controller_mode1.tse|--pad-skew 0|0|-|-
 spi_controller_mode2.tse|--pad-skew 0|0|-|-
 spi_controller_mode3.tse|--pad-skew 0|0|-|-
-jtag_probe.tse|--pad-skew 0|0|-|-
+# SPI targets. The strict t_css = 100 ns files stay rejected: the first MISO bit after the CS
+# fall needs t_css >= 114 ns at 60 MHz (130 ns at 50 MHz) until a response rule drives it.
+spi_target.tse|-|2|R311|response window not met in role 'tgt': shift miso late
 spi_target.tse|-D t_css=114e-9|0|-|-
 spi_target.tse|-D t_css=130e-9 -D f_sck=3.5e6 --fclk 50e6|0|-|-
+spi_target_mode0_css114.tse|-|0|-|-
+spi_target_mode0_css114.tse|-D t_css=130e-9 -D f_sck=3.5e6 --fclk 50e6|0|-|-
+spi_target_mode0_css114.tse|--fclk 50e6|2|R311|response window not met in role 'tgt': shift miso late
+spi_target_mode2.tse|-|2|R311|response window not met in role 'tgt': shift miso late
+spi_target_mode2.tse|-D t_css=114e-9|0|-|-
+spi_target_mode2.tse|-D t_css=130e-9 -D f_sck=3.5e6 --fclk 50e6|0|-|-
+# Modes 1 and 3: the first edge's wait can be armed late; a slower SCK gives it room.
+spi_target_mode1.tse|-|2|R311|response window not met in role 'tgt': shift miso late
+spi_target_mode1.tse|-D f_sck=3e6|0|-|-
+spi_target_mode1.tse|-D f_sck=2.5e6 --fclk 50e6|0|-|-
+spi_target_mode3.tse|-|2|R311|response window not met in role 'tgt': shift miso late
+spi_target_mode3.tse|-D f_sck=3e6|0|-|-
+spi_target_mode3.tse|-D f_sck=2.5e6 --fclk 50e6|0|-|-
+# Flash personality: proven at 3 MHz (60 MHz) and 2.5 MHz (50 MHz); 4 MHz misses the MISO window.
+spi_flash_target.tse|-|0|-|-
+spi_flash_target.tse|-D f_sck=2.5e6 --fclk 50e6|0|-|-
+spi_flash_target.tse|-D f_sck=4e6|2|R311|response window not met in role 'flash': shift mosi late
+i2c_target.tse|-|2|R314|re-arm too late in role 'tgt': the wait that detects stop (abort) starts 12 cycles after stop may already be visible
+i2c_controller_fm.tse|-|0|-|-
 i2c_controller_fm.tse|--fclk 50e6|0|-|-
+i2c_controller_sm.tse|-|0|-|-
+# CAN node: the arbitration flag needs 'set' (or a guard on the txd level, or an arbitration assist).
+can_node.tse|-|2|R300|not supported by this version of tsec: 'set' in a state machine
+# SWD probe: past the lowering; the read chains are placed up to 2 ticks late even at zero skew.
+swd_probe.tse|-|2|R310|output placement outside tolerance in role 'probe': shift req lsb 1 -> swdio for half ~ t_jit
+swd_probe.tse|--pad-skew 0|2|R310|output placement outside tolerance in role 'probe': drive swclk = 1 for half ~ t_jit
+jtag_probe.tse|-|2|R310|output placement outside tolerance in role 'probe': shift cmd lsb 2 -> (tms, tdi) for half ~ t_jit
+jtag_probe.tse|--pad-skew 0|0|-|-
+ps2_host.tse|-|0|-|-
+# Frame-level specs with assists: 'recv', 'send' and assist events are not lowered yet.
+can_rx_ack.tse|-|2|R300|not supported by this version of tsec: 'recv' in a state machine
+usb_ls_device.tse|-|2|R300|not supported by this version of tsec: waiting for line.sop
+eth10_tx.tse|-|2|R300|not supported by this version of tsec: waiting for nlp.tick
+eth10_rx.tse|-|2|R300|not supported by this version of tsec: 'recv' in a state machine

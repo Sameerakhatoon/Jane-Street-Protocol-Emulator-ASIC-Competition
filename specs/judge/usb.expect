@@ -1,0 +1,8 @@
+# Lane 0 runs usb_ls_device; the testbench host sends SETUP to address 0,
+# endpoint 0 with GET_DESCRIPTOR (device), which the lane acknowledges, then an
+# IN to endpoint 1 before the host armed it, which gets a NAK.
+SETUP 0.0
+DATA0 8006000100004000
+ACK
+IN 0.1
+NAK

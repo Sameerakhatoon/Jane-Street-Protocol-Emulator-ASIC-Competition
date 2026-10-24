@@ -1,0 +1,119 @@
+// usb_ls_device.tse: USB low-speed device, the packet layer of a HID keyboard endpoint.
+//
+// Source: Universal Serial Bus Specification Revision 2.0, chapter 7
+// (7.1.7 signalling levels, 7.1.8 NRZI, 7.1.9 bit stuffing, 7.1.10 SYNC,
+// 7.1.13 EOP, 7.1.18 bus turnaround and inter-packet delay) and chapter 8
+// (8.3.1 PID, 8.3.5 CRCs, 8.4 packet formats, 8.5 transaction formats).
+//   bit rate              1.5 Mb/s +/- 1.5 %, one bit 666.7 ns
+//   line                  NRZI on D+/D-: a 0 changes J/K, a 1 holds; idle J (D- high)
+//   stuffing              a 0 after six 1s, from SYNC to the last bit before EOP
+//   SYNC                  KJKJKJKK (0x80 sent LSB first)
+//   EOP                   SE0 for 2 bit times, then J; source EOP width 1.25 to 1.50 us
+//   token                 SYNC, PID, address 7, endpoint 4, CRC5 (x^5 + x^2 + 1)
+//   data                  SYNC, PID, 0 to 8 bytes at low speed, CRC16 (x^16 + x^15 + x^2 + 1)
+//   handshake             SYNC, PID (ACK 0xD2, NAK 0x5A, STALL 0x1E): 16 bits
+//   inter-packet delay    at least 2 bit times between the end of one EOP and the next SOP
+//   device turnaround     a device answers within 6.5 bit times of the end of the EOP
+//
+// What the lane does and what the host does. Enumeration (descriptors,
+// SET_ADDRESS, the report contents) stays on the host. The host arms the
+// endpoint by sending one report (a data frame); the lane answers an IN
+// token with that report when armed and with NAK otherwise, so no host
+// timing is ever on the bus path (NAK unless armed). OUT and SETUP data with
+// a good CRC16 are acknowledged and pushed to the host; a bad CRC gets no
+// answer and the host retries. Delivering data drops an unsent report, and
+// the host arms again (it sees every delivery). Data toggling (DATA0/DATA1)
+// is the host's: it chooses the PID of the report.
+//
+// Hand-computed obligations (NCO bit timer; 40 ticks per bit exactly at 60 MHz):
+//
+//   obligation                       window              60 MHz             50 MHz
+//   bit                              666.7 ns            40 ticks, exact    33.33 ticks, dither +/- 6.7 ns
+//   rate                             +/- 1.5 %           0 % (crystal 50 ppm)   0 % (50 ppm)
+//   ack_out, nak_in, data_in OB-WIN  [2, 6.5] bit after  [80, 260] ticks    [66.7, 216.7] ticks
+//                                    the end of EOP
+//   ACK and NAK by response rule     offset 3 bit times  120 ticks, margins 40 and 140 ticks
+//                                                                           100 ticks, margins 33 and 117
+//   DATA by the sequencer            EOP end to SYNC     path bound <= 260  <= 216 ticks
+//   receiver sampling                mid-bit, resync on  drift over 7 bits (longest run with
+//                                    every transition    stuffing) 0.105 bit at 1.5 %: margin 0.395 bit
+//
+// A handshake is 16 bits, which is exactly what one response rule holds, so
+// ACK and NAK come from the two rules and the report comes from the
+// sequencer. CRC5 and CRC16 are both reflected (refout), so the CRC result
+// reads in place.
+//
+// Not stated in this version: suspend, resume and bus reset detection (SE0
+// for 2.5 us or more), which the host model drives in simulation; STALL.
+protocol usb_ls_device {
+  const bitrate : freq = 1.5 MHz;
+  unit  bit     = 1 / bitrate;                     // 40 ticks at 60 MHz
+
+  wire dp : inout push_pull;
+  wire dm : inout push_pull;
+
+  enum pid : bits[8] { OUT = 0xE1, IN = 0x69, SETUP = 0x2D, DATA0 = 0xC3,
+                       DATA1 = 0x4B, ACK = 0xD2, NAK = 0x5A, STALL = 0x1E }
+
+  assist line  : nrzi    { pins = (dp, dm); idle = J; }
+  assist stuff : stuffer { run = 6; value = 1; }
+  assist crc5  : crc     { width = 5;  poly = 0x05;   init = 0x1F;   refin = true;
+                           refout = true; xorout = 0x1F;   check = 0x19; }
+  assist crc16 : crc     { width = 16; poly = 0x8005; init = 0xFFFF; refin = true;
+                           refout = true; xorout = 0xFFFF; check = 0xB4C8; }
+  assist rxclk : dpll    { period = 1 bit; sample = 50 %; dual_edge = true; }
+
+  frame token     { sync : bits[8] = 0x80; pid : pid; addr : bits[7]; endp : bits[4];
+                    crc : bits[5] crc crc5 over addr..endp; }
+  frame data      { sync : bits[8] = 0x80; pid : pid; payload : bytes[0..8];
+                    crc : bits[16] crc crc16 over payload..payload; }
+  frame handshake { sync : bits[8] = 0x80; pid : pid; }
+
+  datasheet usb_ls {
+    rule ipd_min : line.eop_end -> line.sop >= 2 bit;      // inter-packet delay
+  }
+
+  role dev : target uses dp, dm {
+    var my_addr : bits[7] = 0;            // the host rewrites the image after SET_ADDRESS
+    var tok : token;
+    var dat : data;
+    var rep : data;                       // the armed report
+
+    state idle      { on line.sop -> rx_token; on host.pull(rep) -> armed; }
+    state armed     { on line.sop -> rx_token_a; }
+
+    state rx_token  { seq { recv token into tok; } -> dispatch; }
+    state rx_token_a { seq { recv token into tok; } -> dispatch_a; }
+
+    state dispatch {                      // not armed: NAK every IN to us
+      on line.eop_end when tok.addr != my_addr -> idle;
+      respond nak_in : on line.eop_end when tok.pid == IN
+                       { send handshake(NAK); } within [2 bit, 6.5 bit] -> idle;
+      on line.eop_end -> rx_data;         // OUT or SETUP: a DATA packet follows
+    }
+
+    state dispatch_a {                    // armed: answer an IN with the report
+      on line.eop_end when tok.addr != my_addr -> armed;
+      respond data_in : on line.eop_end when tok.pid == IN
+                        { send data(rep); } within [2 bit, 6.5 bit] -> wait_ack;
+      on line.eop_end -> rx_data;
+    }
+
+    state rx_data   { seq { recv data into dat; } -> data_done; }
+
+    state data_done {                     // the CRC16 assist reports at the end of EOP
+      respond ack_out : on crc16.ok
+                        { send handshake(ACK); } within [2 bit, 6.5 bit] -> deliver;
+      on line.eop_end -> idle;            // bad CRC: stay silent, the host retries
+    }
+
+    state deliver   { seq { push host dat; } -> idle; }
+
+    state wait_ack  { seq { recv handshake into tok; } -> got_hs; }
+    state got_hs {
+      after tok.pid == ACK -> sent;       // the report arrived
+      after tok.pid != ACK -> armed;      // lost or corrupted: send it again on the next IN
+    }
+    state sent      { seq { emit report_sent; } -> idle; }
+  }
+}

@@ -1,0 +1,31 @@
+# Judge cases for the specs: one case per spec, named after it.
+# NAME PROTOCOL VCD EXPECT OPTIONS, read by verif/judges/run_judges.py.
+# The demo of a spec writes a pins-only trace to build/demos/NAME.vcd with each pin
+# under the spec's wire name; the .expect file says what the demo must send.
+# A case may name a two-lane scenario: both specs' cases then judge the same bus.
+# --allow-skip stays on a case until its demo runs on the chip model.
+uart                    uart  ../../build/demos/uart.vcd uart.expect --map tx=tx --map rx=rx --baud 115200 --allow-skip
+uart_tx                 uart  ../../build/demos/uart_tx.vcd uart_tx.expect --map rx=tx --baud 115200 --allow-skip
+uart_rx                 uart  ../../build/demos/uart_rx.vcd uart_rx.expect --map rx=rx --baud 115200 --allow-skip
+spi_controller_mode0    spi   ../../build/demos/spi_controller_mode0.vcd spi_jedec.expect --map clk=sck --map mosi=mosi --map miso=miso --map cs=cs_n --mode 0 --allow-skip
+spi_controller_mode1    spi   ../../build/demos/spi_controller_mode1.vcd spi_jedec.expect --map clk=sck --map mosi=mosi --map miso=miso --map cs=cs_n --mode 1 --allow-skip
+spi_controller_mode2    spi   ../../build/demos/spi_controller_mode2.vcd spi_jedec.expect --map clk=sck --map mosi=mosi --map miso=miso --map cs=cs_n --mode 2 --allow-skip
+spi_controller_mode3    spi   ../../build/demos/spi_controller_mode3.vcd spi_jedec.expect --map clk=sck --map mosi=mosi --map miso=miso --map cs=cs_n --mode 3 --allow-skip
+spi_flash_target        spi   ../../build/demos/spi_flash_target.vcd spi_jedec.expect --map clk=sck --map mosi=mosi --map miso=miso --map cs=cs_n --mode 0 --allow-skip
+spi_target              spi   ../../build/demos/spi_target.vcd spi_target.expect --map clk=sck --map mosi=mosi --map miso=miso --map cs=cs_n --mode 0 --allow-skip
+spi_target_mode0_css114 spi   ../../build/demos/spi_target_mode0_css114.vcd spi_target.expect --map clk=sck --map mosi=mosi --map miso=miso --map cs=cs_n --mode 0 --allow-skip
+spi_target_mode1        spi   ../../build/demos/spi_target_mode1.vcd spi_target.expect --map clk=sck --map mosi=mosi --map miso=miso --map cs=cs_n --mode 1 --allow-skip
+spi_target_mode2        spi   ../../build/demos/spi_target_mode2.vcd spi_target.expect --map clk=sck --map mosi=mosi --map miso=miso --map cs=cs_n --mode 2 --allow-skip
+spi_target_mode3        spi   ../../build/demos/spi_target_mode3.vcd spi_target.expect --map clk=sck --map mosi=mosi --map miso=miso --map cs=cs_n --mode 3 --allow-skip
+i2c_target              i2c   ../../build/demos/i2c_target.vcd i2c_target.expect --map scl=scl --map sda=sda --speed fm --require-ack --allow-skip
+i2c_controller_fm       i2c   ../../build/demos/i2c_controller_fm.vcd i2c_controller.expect --map scl=scl --map sda=sda --speed fm --require-ack --allow-skip
+i2c_controller_sm       i2c   ../../build/demos/i2c_controller_sm.vcd i2c_controller.expect --map scl=scl --map sda=sda --speed sm --require-ack --allow-skip
+can_node                can   ../../build/demos/can_node.vcd can_arb.expect --map rx=rxd --bitrate 500000 --sample-point 0.8 --allow-skip
+can_rx_ack              can   ../../build/demos/can_rx_ack.vcd can.expect --map rx=rxd --bitrate 500000 --sample-point 0.8 --allow-skip
+swd_probe               swd   ../../build/demos/swd_probe.vcd swd.expect --map swclk=swclk --map swdio=swdio --allow-skip
+jtag_probe              jtag  ../../build/demos/jtag_probe.vcd jtag.expect --map tck=tck --map tms=tms --map tdi=tdi --map tdo=tdo --tdo-z --allow-skip
+ps2_device              ps2   ../../build/demos/ps2_device.vcd ps2.expect --map clk=clk --map data=data --allow-skip
+ps2_host                ps2   ../../build/demos/ps2_host.vcd ps2.expect --map clk=clk --map data=data --allow-skip
+usb_ls_device           usb   ../../build/demos/usb_ls_device.vcd usb.expect --map dp=dp --map dm=dm --allow-skip
+eth10_tx                eth10 ../../build/demos/eth10_tx.vcd eth10.expect --map td=td --allow-skip
+eth10_rx                eth10 ../../build/demos/eth10_rx.vcd eth10.expect --map td=rd --allow-skip

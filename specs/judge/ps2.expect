@@ -1,0 +1,4 @@
+# Two lanes: ps2_device and ps2_host on one CLK/DATA pair. The device sends the
+# scan code 1C, then the host sends ED (set LEDs) and the device acknowledges.
+dev 1C
+host ED

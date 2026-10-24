@@ -1,0 +1,3 @@
+# Lane 0 runs the I2C controller; the testbench target at 0x50 answers 7F. The
+# host writes register 00 and reads it back with a repeated START.
+S 50W A 00 A Sr 50R A 7F N P

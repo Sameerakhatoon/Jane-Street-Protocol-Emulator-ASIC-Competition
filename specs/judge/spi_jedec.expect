@@ -1,0 +1,7 @@
+# Mode 0 is a two-lane scenario: lane 0 the SPI controller (built with
+# -D f_sck=3e6), lane 1 spi_flash_target. Modes 1 to 3 use the testbench flash
+# model in that mode. The controller's host sends the JEDEC ID command 0x9F and
+# three dummy bytes, then read status 0x05 and one dummy byte. The flash's host
+# answers with ID EF 40 15 and status 00. MISO idles low during the opcode.
+mosi=9F,00,00,00 miso=00,EF,40,15
+mosi=05,00 miso=00,00

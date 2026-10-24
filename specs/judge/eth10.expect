@@ -1,0 +1,3 @@
+# One ARP request from 02:00:00:00:00:01 (10.0.0.1) for 10.0.0.2, padded to the
+# minimum frame; eth10_tx sends it on td, and for eth10_rx the testbench sends it on rd.
+FFFFFFFFFFFF 020000000001 0806 00010800060400010200000000010A0000010000000000000A000002000000000000000000000000000000000000

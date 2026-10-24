@@ -18,41 +18,74 @@
 // Frames: start (0), 8 data bits least significant first, odd parity, stop
 // (1). Parity is computed by the host (the language keeps data simple).
 //
-// Hand-computed obligations at f_clk = 12.5 kHz (half = 40 us), tolerance 10 %:
+// How a host inhibit is detected. The device samples CLK t_chk after every
+// release of CLK (and twice before the first bit). A sample that reads 0
+// means the host holds CLK low: the sequence leaves through the failing
+// sample to the initial state, which lets go of DATA, tells the host to
+// resend the byte and waits for the host to release CLK. An inhibit lasts at
+// least 100 us, so any inhibit is still there at the next sample as long as
+// samples are less than 100 us apart; the largest gap below is 94 us.
 //
-//   quantity                       value     60 MHz ticks   50 MHz ticks   against the figure
-//   half period (high, low)        40 us     2,400          2,000          30 to 50 us: 36 to 44 us with tol
-//   data change after rising clock 20 us     1,200          1,000          >= 5 us: margin 13 us with tol
-//   data change before falling     20 us     1,200          1,000          5 to 25 us: 18 to 22 us with tol
-//   clock high before sending      50 us     3,000          2,500          >= 50 us (wait, then abort if taken)
-//   release data after inhibit     <= 100 us 6,000          5,000          inside the shortest inhibit
-//   first clock after request      [40 us, 15 ms]  [2,400, 900,000]  [2,000, 750,000]   <= 15 ms
-//   read point in the high phase   10 us after rise  600    500            host data stable while high
+// Hand-computed obligations at f_clk = 12.5 kHz (half = 40 us). Every edge is
+// placed within t_tol = 2 us of its ideal instant, so an interval between two
+// edges is within 2 t_tol = 4 us of its ideal length:
+//
+//   quantity                        ideal      60 MHz   50 MHz   against the figure
+//   half period (high, low)         40 us      2,400    2,000    30 to 50 us: 36 to 44 us, margin 6 us
+//   data change after rising clock  20 us      1,200    1,000    >= 5 us: 16 us at worst, margin 11 us
+//   data change before falling      20 us      1,200    1,000    5 to 25 us: 16 to 24 us, margin 1 us
+//   clock high before the start bit 90 us      5,400    4,500    >= 50 us, two samples 50 us apart
+//   CLK sample after our release    10 us      600      500      the line must rise within 8 us
+//   largest gap between CLK samples 90 us      5,400    4,500    94 us with tolerance < 100 us inhibit
+//   DATA released after an inhibit  <= 94 us   5,640    4,700    before the host's 100 us end
+//   first clock after a request     40 us      2,400    2,000    <= 15 ms
+//   read point in the high phase    10 us      600      500      host data stable while high
+//
+// The 8 us rise budget is the one physical assumption: with the level shifter
+// and 10 kohm pull-ups of the Pmod the line rises in well under that, but a
+// heavily loaded cable should be checked. The datasheet block below states
+// only the separations the guards need (1 us is far below every real PS/2
+// interval and keeps the timing analysis small).
 //
 // Every number is thousands of ticks against a 16.7 ns tick, so PS/2 is a
 // flexibility example, not a timing one: its lowering needs the long-delay
-// idiom (40 us is more than one DLY holds) and the WAIT alternate for the
-// abort on a host inhibit, seen in one tick during any wait of the send loop.
+// idiom (40 us is more than one DLY holds) and a host-or-pin wait in the
+// held state. The full analysis takes tens of minutes, so its build row runs
+// with the slow outcomes only.
 protocol ps2_device {
   param f_clk : freq = 12.5 kHz;          // inside 10 to 16.7 kHz
-  param tol   : ratio = 10 %;
+  param t_tol : time = 2 us;              // placement tolerance of every edge
   unit  half  = 1 / (2 * f_clk);          // 40 us
   const t_ch   : time = 20 us;            // rising clock to data change, and data change to falling clock
+  const t_chk  : time = 10 us;            // CLK sampled this long after we release it
   const t_idle : time = 50 us;            // clock high before the device may send
-  const t_inh  : time = 100 us;           // the host's inhibit time
-  const t_rts  : time = 15 ms;            // first device clock after a request to send
   const t_rd   : time = 10 us;            // device reads host data this long after the rising clock
 
   wire clk  : inout open_drain pull_up;
   wire data : inout open_drain pull_up;
 
   datasheet ps2_host {
-    rule inhibit : taken(clk) -> rise(clk) >= t_inh;      // an inhibit lasts at least 100 us
+    rule clk_low  : fall(clk) -> rise(clk) >= 1 us;
+    rule clk_high : rise(clk) -> fall(clk) >= 1 us;
+    rule rts_hold : rise(clk) -> edge(data) >= 1 us;  // the host holds DATA after releasing CLK
   }
 
   role kbd : target uses clk, data {
     var sc : bits[11];                    // start, 8 data, odd parity, stop; built by the host
     var rb : bits[10];                    // 8 data, parity, stop from the host
+
+    initial state quiet {                 // reset, or an inhibit seen while sending
+      seq {
+        release data;
+        emit resend;                      // a byte in flight must be sent again
+      } -> held;
+    }
+
+    state held {
+      on host.pull(sc) when clk == 1 -> send;
+      on rise(clk) when data == 0 -> receive;          // request to send
+      on rise(clk) -> idle;
+    }
 
     state idle {
       on host.pull(sc) when clk == 1 -> send;
@@ -61,42 +94,33 @@ protocol ps2_device {
 
     state send {
       seq {
-        wait t_idle;                      // clock high for 50 us, else the abort below fires
+        sample clk expect 1 for t_idle ~ t_tol;        // clock high now and 50 us later
+        sample clk expect 1 for t_ch ~ t_tol;
         repeat 11 {
-          shift sc lsb 1 -> data for t_ch ~ tol;       // data changes while the clock is high
-          drive clk = 0 for half ~ tol;                // the host reads data on this fall
-          release clk for half - t_ch ~ tol;
+          shift sc lsb 1 -> data for t_ch ~ t_tol;     // data changes while the clock is high
+          drive clk = 0 for half ~ t_tol;              // the host reads data on this fall
+          release clk for t_chk ~ t_tol;
+          sample clk expect 1 for half - t_ch - t_chk ~ t_tol;   // 0: the host inhibits
         }
         release data;
-      } -> idle abort on taken(clk) -> inhibited;
-    }
-
-    state inhibited {                     // let go of DATA, tell the host the byte must be resent
-      seq {
-        release data within [0 us, t_inh] after taken(clk);
-        emit resend;
-      } -> held;
-    }
-
-    state held {
-      on rise(clk) when data == 0 -> receive;          // request to send
-      on rise(clk) -> idle;
+      } -> idle;
     }
 
     state receive {
       seq {
-        drive clk = 0 within [half, t_rts] after rise(clk) for half ~ tol;
+        release clk for half ~ t_tol;                  // first clock high phase
+        drive clk = 0 for half ~ t_tol;
         repeat 9 {                                     // 8 data bits and parity
-          release clk for t_rd ~ tol;
-          shift data -> rb lsb 1 for half - t_rd ~ tol;
-          drive clk = 0 for half ~ tol;                // the host changes data while low
+          release clk for t_rd ~ t_tol;
+          shift data -> rb lsb 1 for half - t_rd ~ t_tol;
+          drive clk = 0 for half ~ t_tol;              // the host changes data while low
         }
-        release clk for t_rd ~ tol;                    // stop bit
-        shift data -> rb lsb 1 for t_rd ~ tol;
-        drive data = 0 for half - 2 * t_rd ~ tol;      // ACK: data low while the clock is high
-        drive clk = 0 for half ~ tol;
-        release clk for t_rd ~ tol;
-        release data for half - t_rd ~ tol;
+        release clk for t_rd ~ t_tol;                  // stop bit
+        shift data -> rb lsb 1 for t_rd ~ t_tol;
+        drive data = 0 for half - 2 * t_rd ~ t_tol;    // ACK: data low while the clock is high
+        drive clk = 0 for half ~ t_tol;
+        release clk for t_rd ~ t_tol;
+        release data for half - t_rd ~ t_tol;
         push host rb;
       } -> idle;
     }

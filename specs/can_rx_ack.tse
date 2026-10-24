@@ -1,0 +1,76 @@
+// can_rx_ack.tse: classical CAN 2.0A receiver that acknowledges, 500 kbit/s, frame level.
+//
+// Source: Bosch CAN Specification 2.0, part A: section 3 (data frame:
+// SOF, 11-bit identifier, RTR, IDE, r0, DLC, 0 to 8 data bytes, CRC-15,
+// CRC delimiter, ACK slot, ACK delimiter, 7-bit EOF), section 5 (frame
+// coding: an opposite bit after 5 equal bits from SOF to the end of the CRC
+// sequence; delimiters, ACK and EOF are not stuffed), section 8 (bit timing:
+// synchronisation, propagation, phase segments, sample point, hard sync on
+// the SOF edge, resynchronisation by up to SJW on recessive-to-dominant
+// edges) and the ACK rule: every receiver that got a correct CRC sends a
+// dominant bit in the ACK slot. CRC-15 generator 0x4599, init 0, check value
+// 0x059E over "123456789".
+//
+// This file states what can_node.tse cannot: the receiver's ACK, which needs
+// the destuffed bit stream and the CRC-15 result inside the CRC delimiter bit,
+// so the stuffer, the CRC and the DPLL assists do the work. It has no
+// transmit side; can_node.tse is the bit-layer node that transmits and
+// arbitrates. On the two lanes of the chip the CAN demo is one of each, or
+// two can_node lanes once can_node lowers.
+//
+// Bit timing at 500 kbit/s, 20 time quanta per bit, sample point 80 %:
+//
+//   quantity          60 MHz            50 MHz
+//   bit               120 ticks         100 ticks
+//   time quantum tq   6 ticks           5 ticks
+//   sample point      96 ticks          80 ticks
+//   SJW 4 tq          24 ticks          20 ticks
+//
+// Hand-computed obligations:
+//
+//   obligation          window                         60 MHz                   50 MHz
+//   ack  OB-WIN         dominant within the first tq   [0, 6] ticks; rule 0 at  [0, 5] ticks; 2 ticks,
+//                       of the ACK slot, as our bit    2 ticks after the bit    margin 3
+//                       timer sees it                  start, margin 4
+//   ack length          1 bit                          120 ticks, NCO exact     100 ticks
+//   oscillator          with resync by SJW 4 tq every  0.78 % (CAN 2.0 bound min(SJW / 20 NBT,
+//                       recessive-to-dominant edge     PS2 / 2 (13 NBT - PS2)), far above 50 ppm
+//
+// The CRC is not reflected (refout false), so the host reads the CRC-15
+// result left-aligned in the CRC result register.
+protocol can_rx_ack {
+  param bitrate : freq = 500 kHz;
+  unit  bit     = 1 / bitrate;
+  unit  tq      = bit / 20;
+
+  wire txd : out push_pull idle 1;     // to the transceiver; 0 is dominant
+  wire rxd : in;
+
+  assist crc15 : crc     { width = 15; poly = 0x4599; init = 0; refin = false;
+                           refout = false; xorout = 0; check = 0x059E; }
+  assist stuff : stuffer { run = 5; value = either; }
+  assist bt    : dpll    { period = 1 bit; sample = 80 %; sjw = 4 tq; dual_edge = true; edges = fall; }
+
+  frame can_std {
+    sof : bit = 0;  id : bits[11];  rtr : bit;  ide : bit = 0;  r0 : bit = 0;
+    dlc : uint[4];  data : bytes[0..8];
+    crc : bits[15] crc crc15 over sof..data;
+    crc_del : bit = 1 nostuff;  ack : bit = 1 nostuff from node;
+    ack_del : bit = 1 nostuff;  eof : bits[7] = 0x7F nostuff;
+  }
+
+  datasheet can_bus {
+    rule min_bit : fall(rxd) -> rise(rxd) >= 1 bit;
+  }
+
+  role node : target uses txd, rxd {
+    var f : can_std;
+    state idle    { on fall(rxd) -> receive; }                  // hard sync on SOF
+    state receive { seq { recv can_std into f; } -> ack_slot; }
+    state ack_slot {
+      respond ack : on crc15.ok { drive txd = 0 for 1 bit; } within [0 ns, 1 tq] -> deliver;
+      on crc15.bad -> idle;                                      // bad CRC: no ACK (no error frames)
+    }
+    state deliver { seq { push host f; } -> idle; }
+  }
+}

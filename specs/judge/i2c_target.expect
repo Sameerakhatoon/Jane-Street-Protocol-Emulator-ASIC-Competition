@@ -1,0 +1,4 @@
+# Lane 0 runs i2c_target at address 0x50 in Fast-mode; the testbench controller
+# writes 10 7F, then reads one byte, which the host answers with 7F.
+S 50W A 10 A 7F A P
+S 50R A 7F N P

@@ -1,0 +1,6 @@
+# Lane 0 runs swd_probe against the target model: line reset, JTAG to SWD,
+# line reset, then a DPIDR read; the model's DPIDR is 0x2BA01477.
+LINE_RESET
+JTAG_TO_SWD
+LINE_RESET
+DP R 0x0 OK 2BA01477
