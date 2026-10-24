@@ -13,7 +13,7 @@ The baud rate is fixed in hardware relative to the clock: 115200 baud at 60 MHz,
 
 ### TSE (in development)
 
-TSE (Timed Spec Engine) is a protocol engine in development for this tile; the UART above is its test design. A protocol is written once as a timed specification. A compiler turns it into programs for three cycle-exact lanes and proves that every response lands inside its timing window, or rejects the program. The lanes share one SRAM through fixed time slots, so no lane can disturb another's timing. Hardware assists (CRC, bit stuffing, line codecs, clock recovery and response rules) do the bit-level work. The full chip has three modes: Speak (act as one side of a protocol), Check (watch a bus and report timing violations) and Trigger (fire an output on a sequence of events). None of this is in the UART test design.
+TSE (Timed Spec Engine) is a protocol engine in development for this tile; the UART above is its test design. A protocol is written once as a timed specification. A compiler turns it into programs for two cycle-exact lanes and proves that every response lands inside its timing window, or rejects the program. The lanes share one SRAM through fixed time slots, so no lane can disturb another's timing. Hardware assists (CRC, bit stuffing, line codecs, clock recovery and response rules) do the bit-level work. The full chip has three modes: Speak (act as one side of a protocol), Check (watch a bus and report timing violations) and Trigger (fire an output on a sequence of events). None of this is in the UART test design.
 
 ## How to test
 
