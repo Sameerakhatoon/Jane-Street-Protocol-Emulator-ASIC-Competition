@@ -1,4 +1,4 @@
-tools/tsec/tests/neg/E014-unknown-item.tse:2:3: error: expected param, const, unit, enum, frame, wire, event, assist, datasheet, role or trigger, found 'widget' [E014]
+tools/tsec/tests/neg/E014-unknown-item.tse:2:3: error: expected param, const, unit, enum, frame, wire, event, assist, datasheet, role, trigger or if, found 'widget' [E014]
  2 |   widget w;
    |   ^~~~~~
 1 error(s); nothing compiled

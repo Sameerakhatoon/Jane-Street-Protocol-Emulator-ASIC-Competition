@@ -21,7 +21,7 @@ RELOPS = ("==", "!=", "<", "<=", ">", ">=")
 WIRE_FLAGS = ("push_pull", "open_drain", "pull_up")
 WIRE_VALUES = ("idle", "sample_delay", "filter")
 PIN_EVENTS = ("rise", "fall", "edge", "taken")
-ASSIST_KINDS = ("crc", "stuffer", "nrzi", "manchester", "dpll", "timer", "rule")
+ASSIST_KINDS = ("crc", "stuffer", "nrzi", "manchester", "dpll", "timer", "rule", "arbitration")
 
 
 class Parser:
@@ -121,11 +121,25 @@ class Parser:
         handlers = {"param": self.param, "const": self.param, "unit": self.unitdef,
                     "enum": self.enumdef, "frame": self.frame, "wire": self.wire,
                     "event": self.eventdef, "assist": self.assist, "datasheet": self.datasheet,
-                    "role": self.role, "trigger": self.trigger}
+                    "role": self.role, "trigger": self.trigger, "if": self.item_if}
         if tok.kind == "name" and tok.text in handlers:
             return handlers[tok.text]()
         raise TseError("E014", f"expected param, const, unit, enum, frame, wire, event, assist, "
-                       f"datasheet, role or trigger, found {tok}", tok.span)
+                       f"datasheet, role, trigger or if, found {tok}", tok.span)
+
+    def item_if(self):
+        span = self.take().span
+        cond = self.expr()
+        node = A.ItemIf(cond, self.items_block(), span=span)
+        if self.accept("else"):
+            node.orelse = self.items_block()
+        return node
+
+    def items_block(self):
+        self.expect("{")
+        out = self.many(self.item, [])
+        self.expect("}")
+        return out
 
     def param(self):
         const = self.take().text == "const"
@@ -336,8 +350,21 @@ class Parser:
             while self.accept(","):
                 role.clocks.append(self.ident("a clock name"))
             self.expect(";")
+        elif tok.text == "if":
+            span = self.take().span
+            node = A.RoleIf(self.expr(), self.role_block(role), span=span)
+            if self.accept("else"):
+                node.orelse = self.role_block(role)
+            role.conds.append(node)
         else:
-            raise TseError("E017", f"expected var, clock, assume or state, found {tok}", tok.span)
+            raise TseError("E017", f"expected var, clock, assume, state or if, found {tok}", tok.span)
+
+    def role_block(self, role):
+        part = A.Role(role.name, role.kind, [], span=role.span)
+        self.expect("{")
+        self.many(lambda: self.role_item(part), [])
+        self.expect("}")
+        return part
 
     def var(self):
         self.take()
@@ -573,6 +600,25 @@ class Parser:
         while self.accept(","):
             names.append(self.ident())
         return A.Reset(names, span=span)
+
+    def stmt_load(self, span):
+        var = self.ident("a variable name")
+        self.expect("from")
+        array, index = self.element()
+        return A.Load(var, array, index, span=span)
+
+    def stmt_store(self, span):
+        var = self.ident("a variable name")
+        self.expect("to")
+        array, index = self.element()
+        return A.Store(var, array, index, span=span)
+
+    def element(self):
+        array = self.ident("a data window array")
+        self.expect("[")
+        index = self.expr()
+        self.expect("]")
+        return array, index
 
     def stmt_set(self, span):
         name = self.ident()

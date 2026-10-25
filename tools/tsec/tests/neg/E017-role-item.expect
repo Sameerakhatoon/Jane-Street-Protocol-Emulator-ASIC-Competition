@@ -1,4 +1,4 @@
-tools/tsec/tests/neg/E017-role-item.tse:4:5: error: expected var, clock, assume or state, found 'banana' [E017]
+tools/tsec/tests/neg/E017-role-item.tse:4:5: error: expected var, clock, assume, state or if, found 'banana' [E017]
  4 |     banana;
    |     ^~~~~~
 1 error(s); nothing compiled

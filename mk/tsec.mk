@@ -22,7 +22,11 @@ tsec-test:
 tsec-fuzz:
 	TSEC_FUZZ_EXAMPLES=2500 $(PY) -m pytest -q -p no:cacheprovider tools/tsec/tests/unit/test_10_fuzz.py
 
-# The window checker's own regression: ok PASS, tight FAIL, bug FAIL, cov PASS.
+# The window checker's own regression (ok PASS, tight FAIL, bug FAIL, cov PASS), then the
+# generated harnesses on the real lane RTL. The SPI target (a state machine) is proved with
+# abc pdr and covered, about 15 minutes. The UART receiver (a paced frame, 921,600 baud) is
+# generated and elaborated; its bounded run takes hours, so it runs with TSEC_PROOF_UART=1.
+TSEC_PROOF_RUNS := spi/proof/tgt $(if $(TSEC_PROOF_UART),uart/proof/rx_side)
 tsec-proof:
 	rm -rf $(TSEC_PROOF)
 	mkdir -p $(TSEC_PROOF)
@@ -34,6 +38,21 @@ tsec-proof:
 		echo "window $${t%%:*}: $$got (want $${t#*:})"; \
 		[ "$$got" = "$${t#*:}" ] || exit 1; \
 	done
+	$(PY) -m tools.tsec build specs/uart.tse -D baud=921600 --emit proof -o $(TSEC_PROOF)/uart > /dev/null
+	$(PY) -m tools.tsec build specs/spi_target.tse -D t_css=114e-9 --emit proof \
+		-o $(TSEC_PROOF)/spi > /dev/null
+	cd $(TSEC_PROOF)/uart/proof && yosys -q -p "read_verilog -formal -sv \
+		$(addprefix $(CURDIR)/src/,tse_isa_pkg.sv tse_regs_pkg.sv tse_seq.sv tse_dpll.sv tse_crc.sv \
+		tse_resp_rule.sv tse_stuffer.sv tse_codec.sv tse_nco.sv tse_timer.sv tse_lane.sv) \
+		tse_window_check.sv top_rx_side.sv; prep -top top" > elab.log 2>&1
+	@echo "uart/proof/rx_side: elaborated on tse_lane"
+	@for t in $(TSEC_PROOF_RUNS); do (cd $(TSEC_PROOF)/$$(dirname $$t) && sby -f $$(basename $$t).sby \
+		> sby.log 2>&1 || true); done
+	@for t in $(TSEC_PROOF_RUNS); do for k in prove cover; do \
+		got=$$(cat $(TSEC_PROOF)/$${t}_$$k/status 2>/dev/null | cut -d' ' -f1); \
+		echo "$$t $$k: $$got (want PASS)"; \
+		[ "$$got" = PASS ] || exit 1; \
+	done; done
 
 lint: tsec-lint
 test: tsec-test

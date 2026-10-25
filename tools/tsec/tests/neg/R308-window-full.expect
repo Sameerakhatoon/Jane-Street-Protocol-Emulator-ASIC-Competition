@@ -1,0 +1,4 @@
+tools/tsec/tests/neg/R308-window-full.tse:3:8: error: data window full: role 'r' needs word 128 for variable b, the window has 128 (words 0 up are this role's) [R308]
+ 3 |   role r : target uses rx {
+   |        ^
+1 obligation(s) or limit(s) not met; no image written (rule R1)

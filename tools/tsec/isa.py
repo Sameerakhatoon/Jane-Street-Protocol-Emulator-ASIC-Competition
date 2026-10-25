@@ -41,6 +41,9 @@ FETCH_ENTRIES = TABLE["fetch_entries"]                  # fetch buffer words per
 FETCH_LATENCY = TABLE["fetch_latency"]
 DATA_SLOT_PERIOD = TABLE["data_frame"]                  # lane k's data slot: s mod 16 == 4k + 3
 VPINS = 4                                               # virtual pins per lane
+EDGE_TO_PORT = TABLE["latency"]["edge_to_port"]         # pin-edge rule: seen in e, port at e + td + this
+RULE_HOLD = "hold" in regs.LANE["RULE_CLK"]["fields"]   # a rule drive kept until the program writes txpin
+RULE_RESP_POS = regs.LANE["RULE0_RESP_POS"]["addr"]
 _target = INSTRUCTIONS["JMP"][2]["target"]
 MAX_INSTRUCTIONS = 1 << (_target[0] - _target[1] + 1)
 _d = INSTRUCTIONS["DLY"][2]["d"]

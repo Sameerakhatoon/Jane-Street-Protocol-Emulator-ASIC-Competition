@@ -7,6 +7,7 @@
   E240 frame layout: fields, widths, values, crc ranges, `from` roles
   E241 an enum value does not fit its type
   E250 a trigger names an event that no role emits
+  E251 a trigger block has more than 3 stages (the event unit has 3)
 
 They run after check.py has found every name and dimension sound, so
 constant evaluation here cannot fail on an unknown name.
@@ -110,7 +111,8 @@ def seq_duration(sym, body):
             inner = seq_duration(sym, s.body)
             if inner is None:
                 return None
-            total += inner * const(sym, s.count).v
+            n = const(sym, s.count)
+            total += inner * (n.v if n is not None else 0)      # a count from data may be 0
         elif isinstance(s, A.Wait):
             total += const(sym, s.time).v
         elif isinstance(s, A.TIMED):
@@ -312,11 +314,17 @@ def enums(sym, errs):
                                      f"{printer.type_ref(en.type)}", m.value.span))
 
 
+TRIGGER_STAGES = 3             # match stages of the event unit
+
+
 # ---------------------------------------------------------------- E250
 def triggers(sym, errs):
     emitted = {(role, e.text) for role, names in sym.emits.items() for e in names}
     names = {e for _, e in emitted}
     for tr in sym.triggers:
+        if len(tr.events) > TRIGGER_STAGES:
+            errs.append(TseError("E251", f"trigger block has more than {TRIGGER_STAGES} stages "
+                                 f"('{tr.name.text}' has {len(tr.events)})", tr.name.span))
         for te in tr.events:
             ev = te.event
             if ev.kind != "named":

@@ -1,0 +1,8 @@
+protocol p {
+  wire rx : in;
+  role r : target uses rx {
+    var mem : words[8];
+    var b : bits[8];
+    state idle { on fall(rx) do { load b from mem[8]; load mem from b[0]; } -> idle; }
+  }
+}

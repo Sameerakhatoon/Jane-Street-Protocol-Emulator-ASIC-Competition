@@ -14,9 +14,12 @@ from fractions import Fraction as Fr
 
 from . import fix, isa, pace, printer
 from .diag import TseError
-from .fsm import STRATEGIES, Fsm, layout
+from .fsm import STRATEGIES, Fsm, NeedHome, layout
+from . import ast as A
 from .fsmtime import Analysis, stability_warnings
+from .lower import unsupported
 from .units import drift_budget
+from .window import DATA_WORDS, WindowPlan
 
 
 @dataclass
@@ -44,8 +47,9 @@ def ticks_ns(t, fclk):
 
 
 class Scheduler:
-    def __init__(self, sym, role, lane, fclk, fm, pads, ppm=50):
+    def __init__(self, sym, role, lane, fclk, fm, pads, ppm=50, window=(0, DATA_WORDS)):
         self.sym, self.role, self.lane, self.f, self.fm, self.ppm = sym, role, lane, fclk, fm, ppm
+        self.wbase, self.wlimit = window
         self.pads = (Fr(pads[0]) * fclk / 10**9, Fr(pads[1]) * fclk / 10**9)   # ns to ticks
         self.skew = Fr(pads[2] if len(pads) > 2 else pads[1] - pads[0]) * fclk / 10**9
         self.pads_ns = pads
@@ -190,6 +194,15 @@ class Scheduler:
             res = self.analyse(att)
         return res
 
+    def rule_window(self, ob):
+        """(tick_delay, lo, hi): the rule's pin change after the edge, [e + td + E] with e two
+        cycles after the pin edge, so (2 + td + E - 1, 2 + td + E] ticks, plus the pads; td is the
+        least delay that keeps the window's lower bound."""
+        pmin, pmax = self.pads
+        base = 1 + isa.EDGE_TO_PORT
+        td = max(0, math.ceil(ob.lo - pmin - base))
+        return td, base + td + pmin, base + td + 1 + pmax
+
     def window_fails(self, res, ins):
         st = res.obs.get(id(ins))
         if st is None or st.dmin is None:
@@ -199,10 +212,29 @@ class Scheduler:
 
     # ------------------------------------------------------------ one role
     def compile(self):
+        att, tried = self.attempts(None)
+        if att is None and self.rule_candidate() is not None:
+            att, more = self.attempts(self.rule_candidate())
+            tried += more
+        return att, tried
+
+    def rule_candidate(self):
+        """A respond on a pin edge whose body shifts one bit out: response rule 0 in pin-edge mode
+        with hold drives that bit (needs RULE_CLK.hold in the register table)."""
+        if not isa.RULE_HOLD:
+            return None
+        for st in self.role.states:
+            for e in st.edges:
+                if isinstance(e, A.RespondEdge) and e.guard is None and e.event.kind in ("rise", "fall") \
+                        and len(e.body) == 1 and isinstance(e.body[0], A.Shift) and e.body[0].out \
+                        and len(e.body[0].wires) == 1 and int(self.sym.eval(e.body[0].count).v) == 1:
+                    return RuleFirst(e, e.body[0].var.text, e.body[0].wires[0].text, e.event)
+        return None
+
+    def attempts(self, rule):
         tried = []
         for mode in STRATEGIES:
-            fsm = Fsm(self.sym, self.role, self.f, mode)
-            ir = fsm.lower()
+            fsm, ir = self.lower(mode, rule)
             att = FsmAttempt(mode, fsm, [], {})
             att.ir = ir
             self.lay(att)
@@ -224,6 +256,20 @@ class Scheduler:
                 break
         return None, tried
 
+    def lower(self, mode, rule=None):
+        """Lower the role; each NeedHome adds the variable to the ones kept in the data window."""
+        persist = []
+        while True:
+            fsm = Fsm(self.sym, self.role, self.f, mode, persist,
+                      WindowPlan(self.role, self.wbase, self.wlimit), rule)
+            try:
+                return fsm, fsm.lower()
+            except NeedHome as e:
+                if e.var in persist:
+                    raise unsupported(f"'{e.var}' is read where no copy of it is current",
+                                      self.role.name.span) from None
+                persist.append(e.var)
+
     # ------------------------------------------------------------ diagnostics
     def diagnostics(self, att):
         out, res = [], att.res
@@ -243,6 +289,24 @@ class Scheduler:
                     out.append(self.unproven(ins, "its reference is not on every path"))
                 elif self.sep_fails(ins, got):
                     out.append(self.sep_error(ins, got, need))
+        for ins in att.prog:
+            rob = getattr(ins, "rule_ob", None)
+            if rob is not None:
+                td, lo, hi = self.rule_window(rob)
+                att.fsm.rule.td, att.fsm.rule.lo, att.fsm.rule.hi = td, lo, hi
+                if lo < rob.lo or hi > rob.hi or td > 255:
+                    out.append(TseError("R311", f"response window not met in role '{self.role.name.text}': "
+                                        f"{rob.name} by response rule late", rob.span, fields=[
+                                            ("window", f"[{ticks_ns(rob.lo, self.f)}, "
+                                                       f"{ticks_ns(rob.hi, self.f)}]"),
+                                            ("achieved", f"{ticks_ns(lo, self.f)} .. {ticks_ns(hi, self.f)} "
+                                                         f"with tick_delay {td}"),
+                                            ("late by", ticks_ns(hi - rob.hi, self.f))]))
+        for ins in att.prog:                    # a wait that bounds nothing would be unproven
+            if ins.tune and ins.serves is None:
+                out.append(TseError("R313", f"obligation unproven in role '{self.role.name.text}': "
+                                    f"{ins.note}: no later action carries its distance",
+                                    self.role.name.span))
         for m in res.misses.values():
             out.append(self.miss_error(m))
         for ins, why in res.pace_bad.values():
@@ -416,6 +480,14 @@ class Scheduler:
     def wait_span(self, ins):
         return ins.wait.event.span if ins.wait is not None and ins.wait.event is not None \
             else self.role.name.span
+
+
+class RuleFirst:
+    """Response rule 0 answers a respond: clocked by the respond's pin edge, any position, its
+    one bit from the word the program loads, kept (hold) until the program writes the pin."""
+
+    def __init__(self, edge, var, wire, event):
+        self.edge, self.var, self.wire, self.event = edge, var, wire, event
 
 
 def _opposite(e):

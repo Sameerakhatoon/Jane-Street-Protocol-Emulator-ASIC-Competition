@@ -8,8 +8,8 @@ for f in uart.img uart.lst uart.report.txt uart_tx_side.xml uart_rx_side.xml \
 done
 assert_eq "@000" "$(sed -n 3p "$TMP/uart/uart.img")" "lane 0 address"
 assert_contains "$(cat "$TMP/uart/uart.img")" "@100" "lane 1 at instruction 256"
-assert_eq 30 "$(grep -c '^[0-9a-f]\{4\}$' "$TMP/uart/uart.img")" "image words"
+assert_eq 32 "$(grep -c '^[0-9a-f]\{4\}$' "$TMP/uart/uart.img")" "image words"
 "$PY" -c "import sys, xml.etree.ElementTree as E; [E.parse(p) for p in sys.argv[1:]]" \
     "$TMP"/uart/*.xml || fail "UPPAAL XML is not well formed"
-assert_contains "$(cat "$TMP/uart/proof/top_rx_side.sv")" ".LO(210), .HI(312)" "window bounds"
+assert_contains "$(cat "$TMP/uart/proof/top_rx_side.sv")" ".LO(210), .HI(311)" "window bounds"
 pass

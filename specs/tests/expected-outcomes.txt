@@ -19,15 +19,17 @@ spi_controller_mode0.tse|--pad-skew 0|0|-|-
 spi_controller_mode1.tse|--pad-skew 0|0|-|-
 spi_controller_mode2.tse|--pad-skew 0|0|-|-
 spi_controller_mode3.tse|--pad-skew 0|0|-|-
-# SPI targets. The strict t_css = 100 ns files stay rejected: the first MISO bit after the CS
-# fall needs t_css >= 114 ns at 60 MHz (130 ns at 50 MHz) until a response rule drives it.
-spi_target.tse|-|2|R311|response window not met in role 'tgt': shift miso late
+# SPI targets. The strict t_css = 100 ns files (modes 0 and 2) build: the sequencer alone needs
+# t_css >= 114 ns for the first MISO bit after the CS fall, so response rule 0 drives that bit
+# (pin-edge mode with hold), 33.3 to 75.0 ns against 95 ns. At 50 MHz the css114 file now stops
+# at the first MOSI sample (late by a few ns) instead of the first bit.
+spi_target.tse|-|0|-|-
 spi_target.tse|-D t_css=114e-9|0|-|-
 spi_target.tse|-D t_css=130e-9 -D f_sck=3.5e6 --fclk 50e6|0|-|-
 spi_target_mode0_css114.tse|-|0|-|-
 spi_target_mode0_css114.tse|-D t_css=130e-9 -D f_sck=3.5e6 --fclk 50e6|0|-|-
-spi_target_mode0_css114.tse|--fclk 50e6|2|R311|response window not met in role 'tgt': shift miso late
-spi_target_mode2.tse|-|2|R311|response window not met in role 'tgt': shift miso late
+spi_target_mode0_css114.tse|--fclk 50e6|2|R311|response window not met in role 'tgt': shift mosi late
+spi_target_mode2.tse|-|0|-|-
 spi_target_mode2.tse|-D t_css=114e-9|0|-|-
 spi_target_mode2.tse|-D t_css=130e-9 -D f_sck=3.5e6 --fclk 50e6|0|-|-
 # Modes 1 and 3: the first edge's wait can be armed late; a slower SCK gives it room.
@@ -45,8 +47,9 @@ i2c_target.tse|-|2|R314|re-arm too late in role 'tgt': the wait that detects sto
 i2c_controller_fm.tse|-|0|-|-
 i2c_controller_fm.tse|--fclk 50e6|0|-|-
 i2c_controller_sm.tse|-|0|-|-
-# CAN node: the arbitration flag needs 'set' (or a guard on the txd level, or an arbitration assist).
-can_node.tse|-|2|R300|not supported by this version of tsec: 'set' in a state machine
+# CAN node: 'set' lowers now; the guard 'txd == 1' reads back our own output, which shares
+# virtual pin 0 with the shifted-in rxd (test the bit that was sent instead, or use arb.lost).
+can_node.tse|-|2|R307|pin plan impossible: 'rxd' (shifted in) and 'txd' (shifted out) share virtual pin 0, so neither can also be used the other way
 # SWD probe: past the lowering; the read chains are placed up to 2 ticks late even at zero skew.
 swd_probe.tse|-|2|R310|output placement outside tolerance in role 'probe': shift req lsb 1 -> swdio for half ~ t_jit
 swd_probe.tse|--pad-skew 0|2|R310|output placement outside tolerance in role 'probe': drive swclk = 1 for half ~ t_jit

@@ -26,8 +26,10 @@ from .parser import parse
 from .resolve import resolve
 from .schedule import compile_role
 from .timing import FetchModel
+from .window import DATA_WORDS
 
-LANES = 3                       # lanes in the 6x4 build
+LANES = 2                       # lanes in the build
+
 TITLES = {"R310": "output placement outside tolerance", "R311": "response window not met",
           "R312": "sample placement outside tolerance", "R313": "hold too short",
           "R314": "re-arm too late", "R317": "bit-timer pacing overrun"}
@@ -140,13 +142,16 @@ def build(args, src, path):
     pads = (args.pad_min, args.pad_max, skew)
     text = report.header(sym, fclk, fm, args.ppm)
     rejected, accepted, warned = [], [], []
+    wbase = 0
     for lane, role in enumerate(sym.roles):
         if lane >= LANES:
             rejected.append(TseError("R306", f"more roles than lanes: role '{role.name.text}' "
                                      f"would need lane {lane}, the chip has {LANES}", role.name.span))
             continue
         try:
-            res = compile_role(sym, role, lane, fclk, fm, args.ppm, pads)
+            res = compile_role(sym, role, lane, fclk, fm, args.ppm, pads, (wbase, DATA_WORDS))
+            if res.kind == "fsm" and res.chosen is not None:
+                wbase = res.chosen.fsm.window.end
             rows = assemble(res.chosen) if res.chosen else None
             cfg = config.lane_config(sym, res, fclk) if rows is not None else None
         except TseError as e:
@@ -176,7 +181,7 @@ def build(args, src, path):
                 os.remove(stale)
         return EXIT_REJECTED
     if args.out:
-        write_outputs(args.out, stem, sym, accepted, text, emit, fclk)
+        write_outputs(args.out, stem, sym, accepted, text, emit, fclk, fm, pads)
     return EXIT_OK
 
 
@@ -189,7 +194,13 @@ def dedup(errs):
     return out
 
 
-def write_outputs(out, stem, sym, accepted, text, emit, fclk):
+def window_rows(accepted):
+    """(lane, role, Word) for every data window word an accepted role uses."""
+    return [(lane, res.role.name.text, w) for lane, res, _, _ in accepted if res.kind == "fsm"
+            for w in res.chosen.fsm.window.rows()]
+
+
+def write_outputs(out, stem, sym, accepted, text, emit, fclk, fm=None, pads=(0, 25)):
     os.makedirs(out, exist_ok=True)
 
     def put(name, body):
@@ -208,7 +219,7 @@ def write_outputs(out, stem, sym, accepted, text, emit, fclk):
         put(f"{stem}.report.txt", "\n".join(text) + "\n")
     if "json" in emit:
         lanes = [(lane, res.role, *cfg) for lane, res, _, cfg in accepted]
-        put(f"{stem}.json", config.image_json(sym, lanes, fclk))
+        put(f"{stem}.json", config.image_json(sym, lanes, fclk, window_rows(accepted)))
     if "lir" in emit:
         body = []
         for lane, res, _, _ in accepted:
@@ -220,11 +231,19 @@ def write_outputs(out, stem, sym, accepted, text, emit, fclk):
                 continue
             put(f"{stem}_{res.role.name.text}.xml", uppaal.export(res.role, res.chosen.low))
     if "proof" in emit:
-        for lane, res, rows, _ in accepted:
+        ticks = tuple(Fr(p) * fclk / 10**9 for p in pads[:2])
+        for lane, res, rows, cfg in accepted:
             if res.kind == "fsm":
+                obs = proofgen.fsm_obs(sym, res.role, lane, res.chosen, fm, fclk)
+                window = [(w.addr + k, w.init if k == 0 and w.init is not None else 0)
+                          for w in res.chosen.fsm.window.rows() for k in range(w.size)]
+            else:
+                obs = proofgen.frame_obs(sym, res.role, lane, res.chosen.low, res.chosen.labels, fm)
+                window = []
+            if not obs:                 # nothing a response window could check
                 continue
-            proofgen.write(os.path.join(out, "proof"), res.role, lane, res.chosen.low,
-                           [w for _, w, _, _, _ in rows])
+            proofgen.write(os.path.join(out, "proof"), res.role, lane, obs, cfg[0],
+                           [w for _, w, _, _, _ in rows], window, ticks, res.kind != "fsm")
 
 
 def run(argv):

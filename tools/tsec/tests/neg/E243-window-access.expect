@@ -1,0 +1,10 @@
+tools/tsec/tests/neg/E243-window-access.tse:6:51: error: index must be a whole number below 8 or a variable [E243]
+ 6 |     state idle { on fall(rx) do { load b from mem[8]; load mem from b[0]; } -> idle; }
+   |                                                   ^
+tools/tsec/tests/neg/E243-window-access.tse:6:60: error: 'mem' is a data window array, not a value [E243]
+ 6 |     state idle { on fall(rx) do { load b from mem[8]; load mem from b[0]; } -> idle; }
+   |                                                            ^~~
+tools/tsec/tests/neg/E243-window-access.tse:6:69: error: 'b' is not a data window array (words[N]) [E243]
+ 6 |     state idle { on fall(rx) do { load b from mem[8]; load mem from b[0]; } -> idle; }
+   |                                                                     ^
+3 error(s); nothing compiled

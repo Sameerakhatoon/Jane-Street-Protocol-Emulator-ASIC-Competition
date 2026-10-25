@@ -1,0 +1,10 @@
+tools/tsec/tests/neg/E244-set-value.tse:6:43: error: value does not fit 'b' (4 bits) [E244]
+ 6 |     state idle { on fall(rx) do { set b = 16; set w = b; set w = parity(b); } -> idle; }
+   |                                           ^~
+tools/tsec/tests/neg/E244-set-value.tse:6:55: error: set w = b: widths 8 and 4 differ [E244]
+ 6 |     state idle { on fall(rx) do { set b = 16; set w = b; set w = parity(b); } -> idle; }
+   |                                                       ^
+tools/tsec/tests/neg/E244-set-value.tse:6:66: error: parity is one bit, 'w' has 8 [E244]
+ 6 |     state idle { on fall(rx) do { set b = 16; set w = b; set w = parity(b); } -> idle; }
+   |                                                                  ^~~~~~
+3 error(s); nothing compiled

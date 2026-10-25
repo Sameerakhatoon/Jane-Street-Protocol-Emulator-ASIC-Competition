@@ -89,7 +89,7 @@ def hint(att, fm):
     return HINTS["timer"]
 
 
-def compile_role(sym, role, lane, fclk, fm, ppm, pads=(0, 25)):
+def compile_role(sym, role, lane, fclk, fm, ppm, pads=(0, 25), window=(0, 128)):
     """Try each pacing strategy in order; the first that proves every obligation wins.
     A role outside the paced-frame shape goes to the state-machine lowering instead.
     Raises TseError for shapes and resources the lowering cannot handle (R300, R301, R307)."""
@@ -100,7 +100,7 @@ def compile_role(sym, role, lane, fclk, fm, ppm, pads=(0, 25)):
         if e.code != "R300":
             raise
         res.kind = "fsm"
-        res.chosen, res.tried = Scheduler(sym, role, lane, fclk, fm, pads, ppm).compile()
+        res.chosen, res.tried = Scheduler(sym, role, lane, fclk, fm, pads, ppm, window).compile()
         return res
     for mode in STRATEGIES:
         low = Lowering(sym, role, fclk, mode)

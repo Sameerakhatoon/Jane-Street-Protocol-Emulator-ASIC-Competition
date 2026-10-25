@@ -29,6 +29,7 @@ PARAMS = {    # kind: {name: default}; REQUIRED marks the ones without a default
     "rule": {"clock": "bits", "tick_delay": 0, "pattern": None, "mask": 0xFFFF, "pos": "none",
              "any": "false", "resp": 0, "len": 1, "offset": 0, "cond": "none",
              "drive": "true", "abort": "false"},
+    "arbitration": {},
 }
 WORDS = {"true", "false", "none", "either", "ieee", "thomas", "rise", "fall", "both", "bits",
          "crc_good", "crc_bad", "tx_idle", "J", "K"}
@@ -36,7 +37,7 @@ CATALOGUE = {(16, 0x8005, 0xFFFF, 1, 1, 0xFFFF): "CRC-16/USB", (5, 0x05, 0x1F, 1
              (15, 0x4599, 0, 0, 0, 0): "CRC-15/CAN",
              (32, 0x04C11DB7, 0xFFFFFFFF, 1, 1, 0xFFFFFFFF): "CRC-32"}
 SINGLE = {"crc": "a CRC", "stuffer": "a stuffer", "nrzi": "a line codec", "manchester": "a line codec",
-          "dpll": "a DPLL", "timer": "a lane timer"}
+          "dpll": "a DPLL", "timer": "a lane timer", "arbitration": "an arbitration check"}
 
 
 def reflect(v, w):
@@ -197,6 +198,8 @@ def crc_regs(p):
     res = residue(w, poly, init, refin, refout, xorout)
     checks["residue"] = f"0x{(reflect(res, w) if refout else res):0{(w + 3) // 4}X}"
     shift = 32 - w
+    checks["result"] = (f"CRC_RESULT bits {w - 1} to 0 (reflected out)" if refout else
+                        f"CRC_RESULT bits 31 to {shift} (left-aligned)")
     return {"CRC_POLY": pack(a, "CRC_POLY", poly=poly << shift),
             "CRC_INIT": pack(a, "CRC_INIT", init=init << shift),
             "CRC_XOR": pack(a, "CRC_XOR", xorout=(reflect(xorout, w) if refout else xorout) << shift),
@@ -311,8 +314,15 @@ def rule_regs(p, index, vpin):
     return out, pack(a, "RULE_CLK", **clk), info
 
 
+def arbitration_regs(p):
+    """Arbitration loss: the lane's TX shift register sends recessive (the idle level) and the
+    DPLL's sample point reads dominant; the lane then stops sending and raises its abort event
+    (`NAME.lost`). Only LANE_CFG.arb_en, set by the lane configuration."""
+    return {}, {"arb_en": 1}
+
+
 KINDS = {"crc": crc_regs, "stuffer": stuffer_regs, "nrzi": nrzi_regs, "manchester": manchester_regs,
-         "dpll": dpll_regs, "timer": timer_regs}
+         "dpll": dpll_regs, "timer": timer_regs, "arbitration": arbitration_regs}
 
 
 def check(sym, errs, fclk=Fr(60_000_000)):
@@ -380,6 +390,10 @@ def lane_config(sym, role, fclk, vpin):
                            a.name.span)
         seen[unit] = a.name.text
         values, info = KINDS[a.kind](p)
+        if a.kind == "arbitration" and "a DPLL" not in seen and not any(
+                b.kind == "dpll" for b in for_role(sym, role)):
+            raise TseError("R304", f"assist '{a.name.text}': arbitration needs a dpll assist on the "
+                           "same lane (its sample point decides a lost bit)", a.name.span)
         out.update(values)
         checks.update({f"{a.name.text}.{k}": v for k, v in info.items()})
     if len(rules) > 2:

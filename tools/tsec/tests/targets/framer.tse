@@ -1,0 +1,33 @@
+// framer.tse: a clocked serial sender, for set, copies, parity and loop counts from data.
+// The host sends a preamble length n, then a 32-bit data word; the role clocks n preamble
+// cycles, the data word lsb first, its parity bit and a fixed 24-bit tag (a constant wider
+// than an immediate, so a data window word).
+protocol framer {
+  param f_clk : freq = 1 MHz;
+  param tag   : bits[24] = 0xA5C33C;
+  unit  half  = 1 / (2 * f_clk);
+
+  wire clk : out push_pull idle 0;
+  wire dat : out push_pull idle 0;
+
+  role tx : controller uses clk, dat {
+    var n    : bits[8];
+    var data : bits[32];
+    var par  : bit;
+    var id   : bits[24];
+
+    state idle { on host.pull(n) -> load; }
+    state load { on host.pull(data) -> send; }
+    state send {
+      seq {
+        set par = parity(data);
+        repeat n { drive clk = 1; wait half; drive clk = 0; wait half; }
+        repeat 32 { shift data lsb 1 -> dat; wait half; drive clk = 1; wait half; drive clk = 0; }
+        shift par lsb 1 -> dat;
+        wait half;
+        set id = tag;
+        repeat 24 { shift id lsb 1 -> dat; wait half; drive clk = 1; wait half; drive clk = 0; }
+      } -> idle;
+    }
+  }
+}

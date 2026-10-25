@@ -1,0 +1,4 @@
+tools/tsec/tests/neg/E242-array-size.tse:4:15: error: words[12]: a data window array has a power of two from 1 to 128 words [E242]
+ 4 |     var mem : words[12];
+   |               ^~~~~
+1 error(s); nothing compiled

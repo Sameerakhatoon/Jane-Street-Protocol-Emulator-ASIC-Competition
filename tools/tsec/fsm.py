@@ -23,6 +23,22 @@ How each construct becomes lane code:
                       during which g holds; JMP TOUT after each, then a pin
                       check tells E from the other changes
   wait T              a tunable DLY with a minimum-distance obligation
+  load / store        LDW / STW on the data window: a constant index is the
+                      address, a variable index is joined to the array base in
+                      X (SET X, base >> k; MOV ISR, X; IN OSR, k; MOV X, ISR)
+  set v = c           SET X (and XH), MOV OSR, X; wider constants are data
+                      window words loaded with LDW
+  repeat v            the count into X, then JMP to the loop test JMP XDEC
+
+Variables live in the shift registers: a variable shifted in is in ISR, one
+pulled from the host, set or loaded is in OSR. A variable whose value must
+outlive its register (a later guard, push or shift finds the register reused)
+gets a home word in the data window: it is stored with STW before the
+register is overwritten (from OSR through IN OSR, 32), and loaded with LDW
+when it is needed again. Which variables need a home is found by lowering:
+a use that finds its variable gone raises NeedHome, and the role is lowered
+again with that variable kept. A value still only in a register at a state
+change is stored when the next state can be entered with another value there.
 
 Shift pins: OUT and IN use virtual pin 0, so the wire shifted in is pin 0's
 input and the wire shifted out is pin 0's output (the crossbar routes them to
@@ -38,26 +54,44 @@ from .diag import TseError
 from .lir import Abort, Ins, Pace, Sep, Wait, WinOb
 from .lower import unsupported
 from .semantics import base_event
+from .window import DATA_WORDS, WindowPlan
 
 STRATEGIES = ("rolled", "unrolled")
 
 
+class NeedHome(Exception):
+    """A use found its variable no longer in a register: lower again with a home for it."""
+
+    def __init__(self, var):
+        super().__init__(var)
+        self.var = var
+
+
 @dataclass
 class Facts:
-    """What the code knows at a point: last level seen per wire, and which var is in ISR/OSR."""
+    """What the code knows at a point: last level seen per wire, which var is in ISR, OSR and X,
+    which kept vars have a stale home (dirty), and which may be stale after an abort."""
     levels: dict = field(default_factory=dict)
     isr: str = None
     osr: str = None
+    dirty: set = field(default_factory=set)
+    stale: set = field(default_factory=set)
+    x: str = None
 
     def copy(self):
-        return Facts(dict(self.levels), self.isr, self.osr)
+        return Facts(dict(self.levels), self.isr, self.osr, set(self.dirty), set(self.stale), self.x)
 
     def meet(self, o):
         return Facts({w: v for w, v in self.levels.items() if o.levels.get(w) == v},
-                     self.isr if self.isr == o.isr else None, meet_osr(self.osr, o.osr))
+                     self.isr if self.isr == o.isr else None, meet_osr(self.osr, o.osr),
+                     self.dirty | o.dirty, self.stale | o.stale, self.x if self.x == o.x else None)
 
     def key(self):
-        return (tuple(sorted(self.levels.items())), self.isr, self.osr)
+        return (tuple(sorted(self.levels.items())), self.isr, self.osr, tuple(sorted(self.dirty)),
+                tuple(sorted(self.stale)), self.x)
+
+    def holds(self, v):
+        return v in (self.isr, self.osr, self.x)
 
 
 @dataclass
@@ -71,8 +105,16 @@ class Ctx:
 
 
 class Fsm:
-    def __init__(self, sym, role, fclk, strategy="rolled"):
+    def __init__(self, sym, role, fclk, strategy="rolled", persist=(), window=None, rule=None):
         self.sym, self.role, self.f, self.strategy = sym, role, fclk, strategy
+        self.rule = rule                      # RuleFirst: a respond whose first bit a rule drives
+        self.persist = set(persist)
+        self.window = window or WindowPlan(role, 0, DATA_WORDS)
+        for v in sorted(self.arrays(), key=lambda v: -self.var_width(v)):
+            self.window.array(v, self.var_width(v))
+        self.flush = set()                    # kept vars stored at every state change
+        self.lost = set()                     # kept vars found dirty in no register this pass
+        self.seq_dirty = None                 # kept vars written inside an abortable seq
         self.states = {s.name.text: s for s in role.states}
         self.init = next((s for s in role.states if s.initial), role.states[0])
         self.prog, self.nlabel = [], 0
@@ -81,6 +123,7 @@ class Fsm:
         self.host_notes, self.emit_codes = {}, {}
         self.exits = []
         self.last_effect, self.pending_sep, self.last_drive = None, None, {}
+        self.released = set()                 # open-drain wires released and not waited on since
         self.wires = {w.text: sym.wires[w.text] for w in role.uses}
         self.side = pace.side_wires(role)     # side-set wires, ss bit 0 first
         self.chains, self.chain_list, self.pending_side, self.pending_paces = {}, [], {}, []
@@ -103,6 +146,8 @@ class Fsm:
             elif isinstance(x, (A.Drive, A.Release)):
                 driven.add(x.wire.text)
             elif isinstance(x, A.Event) and x.kind != "named":
+                read.add(x.name.text)
+            elif isinstance(x, A.Ref) and x.name.text in self.wires:     # a guard reads the wire
                 read.add(x.name.text)
             if isinstance(x, list):
                 for y in x:
@@ -170,6 +215,9 @@ class Fsm:
         return out
 
     def vin(self, w):
+        if w not in self.pin_in or self.wires[w].dir == "out":
+            raise unsupported(f"reading '{w}': it is an output the lane drives and cannot read back "
+                              "(declare it inout, or test the value it was driven with)", self.role.name.span)
         return self.pin_in[w]
 
     def vout(self, w):
@@ -193,11 +241,43 @@ class Fsm:
         return self.emit("JMP", cond=cond, target=target)
 
     def goto(self, state, facts, why="edge"):
+        for v in sorted(facts.dirty & self.flush):
+            self.store_home(v, facts)
+        facts.x = None
         self.exits.append((state, facts.copy()))
-        self.jump(state).note = f"-> {state}"
+        j = self.jump(state)
+        j.note = f"-> {state}"
+        if self.pending_sep is not None:        # a wait at the end of a seq holds the next state off
+            j.keep = True
+            self.action(j, None)
 
     # ------------------------------------------------------------ whole role
     def lower(self):
+        for _ in range(2 * len(self.persist) + 2):
+            seen = set(self.flush)
+            entry = self.entry_facts()
+            self.lost = set()
+            for target, facts in self.exits:       # a dirty value the entry does not keep is lost
+                e = entry[target]
+                self.flush |= {v for v in facts.dirty
+                               if not (e is not None and ((e.isr == v and facts.isr == v)
+                                                          or (e.osr == v and facts.osr == v)))}
+            self.reset()
+            for st in self.role.states:
+                self.state(st, (entry[st.name.text] or Facts()).copy())
+            if self.flush == seen and not self.lost:
+                break
+        else:
+            raise unsupported("the stores of kept variables at state changes do not settle",
+                              self.role.name.span)
+        body = self.prog
+        self.prog = []
+        self.prologue()
+        self.prog += body
+        return self.prog
+
+    def entry_facts(self):
+        """Facts at each state's entry: the meet over every way in (a fixed point)."""
         entry = {s.name.text: None for s in self.role.states}
         entry[self.init.name.text] = Facts()
         for _ in range(12):
@@ -212,14 +292,7 @@ class Fsm:
             if all(same_facts(new[k], entry[k]) for k in entry):
                 break
             entry = new
-        self.reset()
-        for st in self.role.states:
-            self.state(st, (entry[st.name.text] or Facts()).copy())
-        body = self.prog
-        self.prog = []
-        self.prologue()
-        self.prog += body
-        return self.prog
+        return entry
 
     def reset(self):
         self.prog, self.exits, self.nlabel = [], [], 0
@@ -246,6 +319,7 @@ class Fsm:
         self.jump(self.init.name.text)
 
     def state(self, st, facts):
+        self.released = set()
         self.place(st.name.text)
         self.last_effect = None         # a wait measures from our last output on this path only
         edges = st.edges
@@ -271,6 +345,7 @@ class Fsm:
         if ev.kind == "named" and ev.name.text == "host":
             if ev.attr.text != "pull":
                 raise unsupported(f"waiting for host.{ev.attr.text}", ev.span)
+            self.save_osr(facts)
             again = self.label()
             self.place(again)
             w = self.emit("PULL", blk=1)
@@ -278,6 +353,9 @@ class Fsm:
             facts.levels.clear()
             if ev.args and isinstance(ev.args[0], A.Ref):
                 self.bind_osr(ev.args[0].name.text, facts)
+                self.mark_written(ev.args[0].name.text, facts)
+                if self.rule is not None and self.rule.var == ev.args[0].name.text:
+                    self.arm_rule(facts)
             return again
         if base.kind == "named" or base.kind == "taken":
             raise unsupported(f"waiting for {printer.event(ev)}", ev.span)
@@ -289,11 +367,15 @@ class Fsm:
             facts.levels.pop(wire, None)
         else:
             lvl = 1 if base.kind == "rise" else 0
-            if force_pre or guard is not None or facts.levels.get(wire) != 1 - lvl:
+            own = lvl == 1 and guard is None and not force_pre and wire in self.released
+            if not own and (force_pre or guard is not None or facts.levels.get(wire) != 1 - lvl):
                 self.wait_ins(1 - lvl, self.vin(wire), Wait("pre", A.Event(
                     "fall" if lvl else "rise", base.name), wire, 1 - lvl), ctx)
-            self.wait_ins(lvl, self.vin(wire), Wait("edge", ev, wire, lvl), ctx)
+            wait = Wait("edge", ev, wire, lvl)
+            wait.own = own              # the rise follows our own release: no low level to see
+            self.wait_ins(lvl, self.vin(wire), wait, ctx)
             facts.levels[wire] = lvl
+            self.released.discard(wire)
         if guard is not None:
             self.test(guard, again, facts, after=ev)
         return again
@@ -318,6 +400,287 @@ class Fsm:
             return True
         return wait.wire == ab.guard_wire and wait.level == 1 - ab.guard_level
 
+    # ------------------------------------------------------------ storage
+    def arrays(self):
+        return [v.name.text for v in self.role.vars if v.type.name.text == "words"]
+
+    def var_init(self, name):
+        v = next(v for v in self.role.vars if v.name.text == name)
+        return int(self.sym.eval(v.init).v) if v.init is not None else 0
+
+    def rev(self, name):
+        """OSR and the home word hold the variable bit-reversed (it is shifted out msb first)."""
+        return self.msb_out(name)
+
+    def home(self, name):
+        val = self.var_init(name)
+        if self.rev(name):
+            val = reverse(val, self.var_width(name))
+        return self.window.home(name, val)
+
+    def mark_written(self, name, facts):
+        facts.stale.discard(name)
+        if name in self.persist:
+            facts.dirty.add(name)
+            if self.seq_dirty is not None:
+                self.seq_dirty.add(name)
+
+    def live(self, name, facts, span):
+        if name in facts.stale and not (facts.isr == name or facts.osr == name or facts.x == name):
+            raise unsupported(f"'{name}' is read on a path where an abort may have left its stored "
+                              "value behind (write it again after the abort)", span)
+
+    def store_home(self, name, facts):
+        """Make the home word of a kept var current (it is dirty, so a register holds it)."""
+        if name not in facts.dirty:
+            return
+        if facts.isr == name:
+            if self.rev(name):
+                raise unsupported(f"'{name}' would be stored bit-reversed (it is shifted in and "
+                                  "shifted out msb first)", self.role.name.span)
+            self.emit("STW", addr=self.home(name)).note = f"store {name}"
+        elif facts.osr == name:
+            self.save_isr(facts)
+            self.emit("IN", src="OSR", n=32).note = f"copy {name} to ISR to store it"
+            self.emit("STW", addr=self.home(name)).note = f"store {name}"
+        elif facts.x == name:
+            self.save_isr(facts)
+            self.emit("MOV", dst="ISR", src="X").note = f"copy {name} to ISR to store it"
+            self.emit("STW", addr=self.home(name)).note = f"store {name}"
+        else:                           # lost at a merge earlier: store it at the state changes
+            self.flush.add(name)
+            self.lost.add(name)
+        facts.dirty.discard(name)
+
+    def save_isr(self, facts):
+        """ISR is about to be overwritten: store the kept var in it if its home is stale."""
+        if facts.isr is not None and facts.isr in facts.dirty:
+            self.store_home(facts.isr, facts)
+        facts.isr = None
+
+    def save_osr(self, facts, keep=False):
+        """OSR is about to be overwritten (or shifted): store the kept var in it first."""
+        v = facts.osr
+        if v is not None and not v.endswith("~") and v in facts.dirty:
+            self.store_home(v, facts)
+        if not keep:
+            facts.osr = None
+
+    def to_osr(self, name, facts, span):
+        """Make OSR hold the whole var (bit-reversed if it is shifted out msb first)."""
+        if facts.osr == name:
+            return
+        self.live(name, facts, span)
+        if facts.x == name and self.var_width(name) <= 16:
+            self.save_osr(facts)
+            self.emit("MOV", dst="OSR", src="X").note = f"{name} into OSR"
+        elif name in self.persist:
+            if name in facts.dirty and not facts.holds(name):
+                self.flush.add(name)        # lost at a state change: store it there, lower again
+                self.lost.add(name)
+                facts.dirty.discard(name)
+            self.store_home(name, facts)
+            self.save_osr(facts)
+            self.emit("LDW", addr=self.home(name)).note = f"load {name}"
+        elif facts.isr == name and self.var_width(name) <= 16 and not self.rev(name):
+            self.save_osr(facts)
+            self.emit("MOV", dst="OSR", src="ISR").note = f"{name} into OSR"
+        else:
+            raise NeedHome(name)
+        facts.osr = name
+
+    def field_to_osr(self, ref, facts, span):
+        """The bits ref names, at bit 0 of OSR; OSR is spent afterwards. Returns their count."""
+        name = ref.name.text
+        width = self.var_width(name)
+        hi, lo = self.field(ref, width)
+        self.live(name, facts, span)
+        if facts.isr == name:
+            self.save_osr(facts)
+            if hi < 16:
+                self.emit("MOV", dst="OSR", src="ISR").note = f"{printer.expr(ref)} from ISR"
+            else:               # MOV copies 16 bits: go through the scratch word
+                self.emit("STW", addr=self.window.scratch()).note = f"{name} to scratch"
+                self.emit("LDW", addr=self.window.scratch()).note = f"{printer.expr(ref)} into OSR"
+            pos = lo
+        else:
+            if facts.osr != name:
+                self.to_osr(name, facts, span)
+            self.store_home(name, facts)
+            pos = lo
+            if self.rev(name):
+                if hi != lo:
+                    raise unsupported(f"a field of '{name}' read as a number while OSR holds it "
+                                      "bit-reversed", span)
+                pos = width - 1 - hi
+        if pos:
+            self.emit("OUT", dst="NULL", n=pos)
+        facts.osr = None
+        return hi - lo + 1
+
+    def field(self, ref, width):
+        hi = width - 1 if ref.index is None else int(self.sym.eval(ref.index).v)
+        lo = hi if ref.index is not None and ref.index_lo is None else \
+            (0 if ref.index is None else int(self.sym.eval(ref.index_lo).v))
+        if not 0 <= lo <= hi < min(width, 32):
+            raise unsupported(f"bits {hi} to {lo} of '{ref.name.text}'", ref.span)
+        return hi, lo
+
+    def free_reg(self, span):
+        reg = next((r for r in ("X", "Y") if r not in self.counters), None)
+        if reg is None:
+            raise unsupported("a value needs X or Y, and both are loop counters here", span)
+        return reg
+
+    def index_x(self, s, facts):
+        """X = the data window word of s.array[s.index] (a constant index gives None)."""
+        base, size = self.window.array(s.array.text, None), self.var_width(s.array.text)
+        k = size.bit_length() - 1
+        if not isinstance(s.index, A.Ref) or s.index.name.text not in self.var_names():
+            return base + int(self.sym.eval(s.index).v)
+        if "X" in self.counters:
+            raise unsupported("a variable index inside a loop counted on X", s.span)
+        n = self.field_to_osr(s.index, facts, s.span)
+        if n < k:
+            raise unsupported(f"index {printer.expr(s.index)} has {n} bits, {s.array.text} needs {k}",
+                              s.index.span)
+        facts.x = None
+        if base == 0:
+            self.emit("OUT", dst="X", n=k).note = f"X = {s.array.text}[{printer.expr(s.index)}]"
+            return None
+        self.save_isr(facts)
+        self.emit("SET", dst="X", imm=base >> k).note = f"{s.array.text} at word {base}"
+        self.emit("MOV", dst="ISR", src="X")
+        self.emit("IN", src="OSR", n=k).note = "join the index to the base"
+        self.emit("MOV", dst="X", src="ISR").note = f"X = {s.array.text}[{printer.expr(s.index)}]"
+        return None
+
+    def var_names(self):
+        return {v.name.text for v in self.role.vars}
+
+    def load(self, s, facts):
+        v = s.var.text
+        self.save_osr(facts)
+        addr = self.index_x(s, facts)
+        self.save_osr(facts)
+        if addr is None:
+            self.emit("LDW", ind=1).note = f"load {v} from {s.array.text}"
+        else:
+            k = addr - self.window.array(s.array.text, None)
+            self.emit("LDW", addr=addr).note = f"load {v} from {s.array.text}[{k}]"
+        facts.osr = v
+        self.mark_written(v, facts)
+
+    def store(self, s, facts):
+        v = s.var.text
+        self.live(v, facts, s.span)
+        const = not isinstance(s.index, A.Ref) or s.index.name.text not in self.var_names()
+        base = self.window.array(s.array.text, None)
+        if facts.isr == v and (const or base == 0):     # the index does not need ISR
+            addr = self.index_x(s, facts)
+            ins = self.emit("STW", addr=addr) if addr is not None else self.emit("STW", ind=1)
+            ins.note = f"store {v} to {s.array.text}"
+            return
+        if not const:               # the index computation spends OSR and ISR: keep v in memory
+            if facts.isr == v or facts.osr == v or facts.x == v:
+                if v in self.persist:
+                    self.store_home(v, facts)
+                else:
+                    raise NeedHome(v)
+            elif v not in self.persist:
+                raise NeedHome(v)
+        addr = self.index_x(s, facts)
+        self.to_osr(v, facts, s.span)
+        self.save_isr(facts)
+        self.emit("IN", src="OSR", n=32).note = f"{v} into ISR"
+        if addr is None:
+            self.emit("STW", ind=1).note = f"store {v} to {s.array.text}"
+        else:
+            self.emit("STW", addr=addr).note = f"store {v} to {s.array.text}"
+
+    def set_value(self, s, facts):
+        v, e = s.name.text, s.value
+        width = self.var_width(v)
+        if isinstance(e, A.Call):
+            self.parity(v, e.args[0].name.text, facts, s.span)
+            return
+        if isinstance(e, A.Ref) and e.name.text in self.var_names():
+            src = e.name.text
+            if self.rev(src) != self.rev(v):
+                raise unsupported(f"set {v} = {src}: one is shifted out msb first and the other is "
+                                  "not, so the copy would need its bits reversed", s.span)
+            self.to_osr(src, facts, s.span)
+            self.store_home(src, facts)
+            facts.osr = v
+            self.mark_written(v, facts)
+            return
+        c = int(self.sym.eval(e).v)
+        if self.rev(v):
+            c = reverse(c, width)
+        self.save_osr(facts)
+        text = f"set {v} = {printer.expr(e)}"
+        if c < 256:
+            reg = self.free_reg(s.span)
+            self.emit("SET", dst=reg, imm=c).note = text
+            self.emit("MOV", dst="OSR", src=reg)
+        elif c < 1 << 16 and "X" not in self.counters:
+            self.emit("SET", dst="X", imm=c & 0xFF).note = text
+            self.emit("SET", dst="XH", imm=c >> 8)
+            self.emit("MOV", dst="OSR", src="X")
+        else:
+            self.emit("LDW", addr=self.window.const(c)).note = text + " (a data window word)"
+        if c < 1 << 16:
+            facts.x = None
+        facts.osr = v
+        self.mark_written(v, facts)
+
+    def parity(self, v, src, facts, span):
+        """v = the parity of src (1 when it has an odd number of ones), into X, with src kept in
+        OSR: the bits are shifted out of a copy one by one, and two copies of the loop body (even
+        and odd so far) hold the running parity in the program counter."""
+        if self.counters:
+            raise unsupported("parity inside a counted loop (it needs X and Y)", span)
+        width = self.var_width(src)
+        self.to_osr(src, facts, span)
+        if src in self.persist:
+            self.store_home(src, facts)
+            keep = self.home(src)
+        else:
+            keep = self.window.scratch()
+            self.save_isr(facts)
+            self.emit("IN", src="OSR", n=32).note = f"copy {src} to keep it"
+            self.emit("STW", addr=keep)
+        even, odd, e0, o0, done_e, done_o, end = (self.label(t) for t in
+                                                  ("even", "odd", "even0", "odd0", "par0", "par1", "pend"))
+        self.emit("SET", dst="Y", imm=width - 1).note = f"parity of {src}"
+        self.place(even)
+        self.emit("OUT", dst="X", n=1)
+        self.jump(e0, "XZ")
+        self.jump(odd, "YDEC")
+        self.jump(done_o)
+        self.place(e0)
+        self.jump(even, "YDEC")
+        self.jump(done_e)
+        self.place(odd)
+        self.emit("OUT", dst="X", n=1)
+        self.jump(o0, "XZ")
+        self.jump(even, "YDEC")
+        self.jump(done_e)
+        self.place(o0)
+        self.jump(odd, "YDEC")
+        self.jump(done_o)
+        self.place(done_e)
+        self.emit("SET", dst="X", imm=0)
+        self.jump(end)
+        self.place(done_o)
+        self.emit("SET", dst="X", imm=1)
+        self.place(end)
+        self.emit("LDW", addr=keep).note = f"{src} back into OSR"
+        facts.osr, facts.x = src, v
+        self.mark_written(v, facts)
+        if v in self.persist:           # X is a scratch register: never leave a kept value only there
+            self.store_home(v, facts)
+
     # ------------------------------------------------------------ guards
     def test(self, g, fail, facts, after=None):
         """Code that falls through when guard g holds and jumps to fail otherwise."""
@@ -337,6 +700,7 @@ class Fsm:
 
     def pin_test(self, wire, v, eq, fail, after):
         want = v if eq else 1 - v
+        self.vin(wire)
         if self.jmp_pin is None:
             self.jmp_pin = wire
         if wire == self.jmp_pin:
@@ -361,24 +725,24 @@ class Fsm:
         if "X" in self.counters or "Y" in self.counters:
             raise unsupported("a guard on a variable inside a counted loop (X and Y are taken)", span)
         width = self.var_width(name)
-        if facts.osr == name and facts.isr != name and width <= 16:
+        if facts.x == name and ref.index is None:
+            self.emit("SET", dst="Y", imm=c).note = f"guard {name} == {c} ({name} is in X)"
+        elif facts.osr == name and facts.isr != name and width <= 16:
             self.osr_test(ref, c, eq, fail, facts, span, width)
             return
-        if facts.isr != name:
-            raise unsupported(f"a guard on '{name}': on some path into this state it is not the "
-                              "variable last shifted in (a push or another shift reused the "
-                              "register)", span)
-        hi = width - 1 if ref.index is None else int(self.sym.eval(ref.index).v)
-        lo = hi if ref.index is not None and ref.index_lo is None else \
-            (0 if ref.index is None else int(self.sym.eval(ref.index_lo).v))
-        if not 0 <= lo <= hi < 32 or c >= 256 or c >= 1 << (hi - lo + 1):
-            raise unsupported(f"guard constant {c} on {printer.expr(ref)}", span)
-        self.emit("MOV", dst="OSR", src="ISR").note = f"guard {printer.expr(ref)} == {c}"
-        facts.osr = None
-        if lo:
-            self.emit("OUT", dst="NULL", n=lo)
-        self.emit("OUT", dst="X", n=hi - lo + 1)
-        self.emit("SET", dst="Y", imm=c)
+        else:
+            hi, lo = self.field(ref, width)
+            if c >= 256 or c >= 1 << (hi - lo + 1):
+                raise unsupported(f"guard constant {c} on {printer.expr(ref)}", span)
+            if facts.isr != name and self.rev(name):
+                c = int(f"{c:0{hi - lo + 1}b}"[::-1], 2)
+            mark = len(self.prog)
+            n = self.field_to_osr(ref, facts, span)
+            out = self.emit("OUT", dst="X", n=n)
+            (self.prog[mark] if len(self.prog) > mark + 1 else out).note = \
+                f"guard {printer.expr(ref)} == {c}"
+            facts.x = None
+            self.emit("SET", dst="Y", imm=c)
         if eq:
             self.jump(fail, "XNEY")
         else:
@@ -386,6 +750,16 @@ class Fsm:
             self.jump(ok, "XNEY")
             self.jump(fail)
             self.place(ok)
+
+    def arm_rule(self, facts):
+        """The word the rule answers with: its first bit (bit 0 of OSR) into RULE0_RESP_POS with
+        `any` set (Y = 0x100), so the rule drives it on the next counted edge whatever the count."""
+        self.emit("SET", dst="X", imm=0).note = f"respond {self.rule.edge.name.text}: rule word"
+        self.emit("SET", dst="XH", imm=1)
+        self.emit("MOV", dst="Y", src="X")
+        self.emit("MOV", dst="X", src="OSR").note = f"first bit of {self.rule.var}"
+        self.emit("CSRW", addr=isa.RULE_RESP_POS).note = "RULE0_RESP_POS: first bit, any position"
+        facts.x = None
 
     def osr_test(self, ref, c, eq, fail, facts, span, width):
         """A guard on the variable the host just sent, still whole in OSR: bits lo to hi are
@@ -406,9 +780,7 @@ class Fsm:
         if pos == 0 and n == width:
             self.emit("MOV", dst="X", src="OSR").note = text + " (OSR kept)"
         else:
-            if facts.isr is not None:
-                raise unsupported(f"a guard on part of '{name}' while '{facts.isr}' is in the receive "
-                                  "shift register (the extraction saves OSR there)", span)
+            self.save_isr(facts)
             self.emit("MOV", dst="ISR", src="OSR").note = text + " (save OSR)"
             if pos:
                 self.emit("OUT", dst="NULL", n=pos)
@@ -416,6 +788,7 @@ class Fsm:
             self.emit("MOV", dst="OSR", src="ISR").note = "restore OSR"
         self.host_notes[f"pull host {name}"] = self.host_notes.get(
             f"pull host {name}", f"bits {width - 1} to 0 hold the value, higher bits must be 0")
+        facts.x = None
         self.emit("SET", dst="Y", imm=want)
         ok = None if eq else self.label("ok")
         self.jump(fail if eq else ok, "XNEY")
@@ -467,6 +840,7 @@ class Fsm:
         mark = len(self.prog)
         self.wait_for(ev, facts, None)
         cur = facts.copy()
+        cur.x = None                    # the entry jump beside a reaction sets X
         for e in edges:
             fail = self.label("next") if e.guard is not None else None
             if e.guard is not None:
@@ -494,7 +868,8 @@ class Fsm:
             return
         pre, edge, react = (self.prog[k] for k in code[:3])
         if not (pre.wait is not None and pre.wait.kind == "pre" and edge.wait is not None
-                and edge.wait.kind == "edge" and react.ob is not None and not react.tune
+                and edge.wait.kind == "edge" and not react.tune
+                and (react.ob is not None or getattr(react, "rule_ob", None) is not None)
                 and code[1] == code[0] + 1 and code[2] == code[1] + 1
                 and self.prog[code[0] - 1].op == "LABEL"):
             return
@@ -575,7 +950,14 @@ class Fsm:
     def seq(self, st, e, facts):
         self.deferred = []
         ab = self.abort_of(e) if e.abort_on is not None else None
+        if ab is not None:              # an abort forgets the registers: store kept values first
+            for v in sorted(facts.dirty):
+                self.store_home(v, facts)
+        self.seq_dirty = set() if ab is not None else None
         ctx = Ctx(abort=ab, fail=e.abort_to.text if e.abort_to is not None else self.init.name.text)
+        came = self.entry_event(st.name.text)
+        if came is not None:            # a window on the event that brought us here uses that occurrence
+            ctx.anchor, ctx.fresh = came, True
         body = e.body
         self.chains = pace.timeline(self.sym, body, self.f)
         for c in self.chains.values():
@@ -595,15 +977,16 @@ class Fsm:
             if ab is not None and ab.mode == "level" and has_wait(self, s) and \
                     (k + 1 == len(body) or not starts_with_wait(self, body[k + 1])):
                 self.jump(ab.target, "TOUT").note = f"abort on {printer.event(ab.event)}"
-                self.exits.append((ab.target, Facts()))
+                self.exits.append((ab.target, self.abort_facts()))
         self.chains = {}
         self.goto(e.target.text, facts)
         self.flush_deferred()
+        self.seq_dirty = None
 
     def pure(self, s):
         """A timed statement of a paced chain, or a counted loop of only such statements."""
         if isinstance(s, A.Repeat):
-            return all(self.pure(x) for x in s.body)
+            return not pace.data_count(self.sym, s) and all(self.pure(x) for x in s.body)
         return isinstance(s, A.TIMED) and s.timing.window is None and id(s) in self.chains
 
     def sorted_run(self, run, facts, ctx):
@@ -669,6 +1052,26 @@ class Fsm:
         self.alt = alt + (ab.event,)
         return ab
 
+    def entry_event(self, name):
+        """The pin event every way into state name comes from (an edge on it, or an abort on
+        it), or None."""
+        evs = []
+        for st in self.role.states:
+            for e in st.edges:
+                if e.target.text == name:
+                    evs.append(e.event if isinstance(e, (A.OnEdge, A.RespondEdge)) else None)
+                if isinstance(e, A.SeqEdge) and e.abort_to is not None and e.abort_to.text == name:
+                    evs.append(e.abort_on)
+        if name == self.init.name.text or not evs or any(v is None for v in evs):
+            return None
+        texts = {printer.event(v) for v in evs}
+        return evs[0] if len(texts) == 1 and evs[0].kind != "named" else None
+
+    def abort_facts(self):
+        """Facts after an abort: nothing is known about registers, and a kept var written in the
+        seq may not have reached its home."""
+        return Facts(stale=set(self.seq_dirty or ()))
+
     def flush_deferred(self):
         """Out-of-line abort checks: the alternate fired; abort if it was the event, else wait again."""
         for chk, ab, ins in self.deferred:
@@ -684,7 +1087,7 @@ class Fsm:
                 again.rewait = True
                 self.prog.append(again)
                 self.jump(self.label_after(ins))
-            self.exits.append((ab.target, Facts()))
+            self.exits.append((ab.target, self.abort_facts()))
         self.deferred = []
 
     def label_after(self, ins):
@@ -715,19 +1118,43 @@ class Fsm:
         elif isinstance(s, A.Repeat):
             self.repeat(s, facts, ctx)
         elif isinstance(s, A.If):
+            fixed = const_truth(self.sym, s.guard)
+            if fixed is not None:           # a condition on params: one branch is the program
+                self.block(s.then if fixed else (s.orelse or []), facts, ctx)
+                return
             other, end = self.label("else"), self.label("endif")
             self.test(s.guard, other, facts)
+            t1 = self.trial(s.then, facts, ctx)
+            t2 = self.trial(s.orelse or [], facts, ctx)
+            m = t1.meet(t2)
+            keep = {v for v in m.dirty if not m.holds(v)}     # dirty in a register one side loses
             f1 = facts.copy()
             self.block(s.then, f1, ctx)
+            for v in sorted(keep & f1.dirty):
+                self.store_home(v, f1)
             self.jump(end)
             self.place(other)
             f2 = facts.copy()
             self.block(s.orelse or [], f2, ctx)
+            for v in sorted(keep & f2.dirty):
+                self.store_home(v, f2)
             self.place(end)
             m = f1.meet(f2)
-            facts.levels, facts.isr, facts.osr = m.levels, m.isr, m.osr
+            facts.levels, facts.isr, facts.osr, facts.x = m.levels, m.isr, m.osr, m.x
+            facts.dirty, facts.stale = m.dirty, m.stale
+        elif isinstance(s, A.Set):
+            self.set_value(s, facts)
+        elif isinstance(s, A.Load):
+            self.load(s, facts)
+        elif isinstance(s, A.Store):
+            self.store(s, facts)
         elif isinstance(s, A.Wait):
             ticks = self.sym.eval(s.time).v * self.f
+            if self.pending_sep is not None:    # wait a; wait b is wait a + b from the same point
+                ref, t0, span, d, text = self.pending_sep
+                d.note += f" + {printer.expr(s.time)}"
+                self.pending_sep = (ref, t0 + ticks, span, d, text + " " + printer.stmt(s, 0))
+                return
             d = self.emit("DLY", d=0)
             d.tune, d.note = True, f"wait {printer.expr(s.time)}"
             ref = self.last_effect if self.last_effect is not None else (d, None)
@@ -738,9 +1165,13 @@ class Fsm:
                               facts, ctx)
                 ctx.anchor = None
             else:
-                if facts.isr != s.var.text:
-                    raise unsupported(f"push host {s.var.text}: it is not the variable in the receive "
-                                      "shift register", s.span)
+                v = s.var.text
+                if facts.isr != v:
+                    self.to_osr(v, facts, s.span)
+                    self.save_isr(facts)
+                    self.emit("IN", src="OSR", n=32).note = f"{v} into ISR"
+                elif v in facts.dirty:
+                    self.store_home(v, facts)          # the push clears ISR
                 self.action(self.emit("PUSH", blk=0), None)
                 self.host_notes[f"push host {s.var.text}"] = (
                     f"mailbox bits {self.var_width(s.var.text) - 1} to 0, first bit received highest; "
@@ -797,6 +1228,11 @@ class Fsm:
             self.emit("DLY", d=0).note = "phase lock: the next word is fetched in this lane's slot"
         ins = self.action_for(s, facts, ctx)
         ins.ob = ob
+        if ob is not None and self.rule is not None and ctx.respond is self.rule.edge:
+            ins.ob, ins.rule_ob = None, ob      # the rule changes the pin; this OUT only ends its hold
+            if self.pending_tune is not None:
+                self.prog.remove(self.pending_tune)
+                self.pending_tune = None
         if lock:
             ins.align_even = ins.lock = True
         if self.pending_tune is not None:
@@ -882,6 +1318,8 @@ class Fsm:
             lvl = self.drive_level(s)
             m = 1 << self.vout(w)
             text = printer.stmt(s, 0).rstrip(";")
+            if d.open_drain and w in self.pin_in:      # a rise right after our release is ours
+                (self.released.add if isinstance(s, A.Release) else self.released.discard)(w)
             if w in self.side:                  # side-set: any instruction carries the level
                 ins = self.emit("DLY", d=0)
                 ins.side, ins.pace_self, ins.note = {w: lvl}, True, text + " (side-set)"
@@ -905,19 +1343,20 @@ class Fsm:
             v = s.var.text
             if s.out:
                 if facts.osr not in (v, v + "~"):
-                    raise unsupported(f"shift of '{v}': it is not in the transmit shift register "
-                                      "(pull it from the host first; a guard reuses the register)", s.span)
+                    self.to_osr(v, facts, s.span)
+                if facts.osr == v:
+                    self.save_osr(facts, keep=True)
                 facts.osr = v + "~"             # partly shifted out: no longer whole for a guard
                 ins = self.emit("OUT", dst="PINS", n=n)
                 if s.order == "msb":
                     self.host_notes[f"pull host {v}"] = ("send the word bit-reversed: OUT shifts bit 0 "
                                                          "first, and the spec sends the msb first")
                 return self.action(ins, s.wires[0].text)
-            ins = self.emit("IN", src="PINS", n=1)
             if facts.isr not in (None, v):
-                raise unsupported(f"shift into '{v}' while '{facts.isr}' is still in the receive "
-                                  "shift register", s.span)
+                self.save_isr(facts)
+            ins = self.emit("IN", src="PINS", n=1)
             facts.isr = v
+            self.mark_written(v, facts)
             if s.order == "lsb":
                 self.host_notes[f"shift into {v}"] = "bits arrive msb first in the register; reverse them"
             return self.action(ins, None)
@@ -945,9 +1384,15 @@ class Fsm:
         if wire is not None:
             self.last_effect = (ins, wire)
             self.last_drive[wire] = ins
+        elif ins.op == "IN":            # a wait after a sample counts from the sample
+            self.last_effect = (ins, None)
         return ins
 
     def repeat(self, s, facts, ctx):
+        self.prepare_loop(s.body, facts, s.span)
+        if pace.data_count(self.sym, s):
+            self.data_repeat(s, facts, ctx)
+            return
         n = int(self.sym.eval(s.count).v)
         if self.strategy == "unrolled" or n == 1:
             for _ in range(n):
@@ -956,6 +1401,8 @@ class Fsm:
         reg = next((r for r in ("Y", "X") if r not in self.counters), None)
         if reg is None or n - 1 > 255:
             raise unsupported("a counted loop needs X or Y and at most 256 iterations", s.span)
+        if reg == "X":
+            facts.x = None
         def body_ctx():         # every iteration starts without a fresh occurrence
             return Ctx(None, False, False, ctx.respond, ctx.abort, ctx.fail)
 
@@ -979,21 +1426,91 @@ class Fsm:
         self.block(s.body, inner, body_ctx())
         self.counters.pop()
         self.jump(top, f"{reg}DEC")
-        facts.levels, facts.isr, facts.osr = inner.levels, inner.isr, inner.osr
+        facts.levels, facts.isr, facts.osr, facts.x = inner.levels, inner.isr, inner.osr, inner.x
+        facts.dirty, facts.stale = inner.dirty, inner.stale
 
-    def trial(self, body, facts, ctx, reg):
+    def data_repeat(self, s, facts, ctx):
+        """repeat v: the count into X, a jump to the test at the bottom, JMP XDEC back to the body
+        while X is not 0 (so a count of 0 runs the body no times)."""
+        if "X" in self.counters:
+            raise unsupported("a loop counted from data inside a loop counted on X", s.span)
+        if self.rev(s.count.name.text):
+            raise unsupported(f"a loop count from '{s.count.name.text}', which OSR holds bit-reversed",
+                              s.span)
+        n = self.field_to_osr(s.count, facts, s.span)
+        self.emit("OUT", dst="X", n=min(n, 16)).note = f"repeat {printer.expr(s.count)}"
+        facts.x = None
+        top, test = self.label("loop"), self.label("ltest")
+        self.jump(test)
+
+        def body_ctx():
+            return Ctx(None, False, False, ctx.respond, ctx.abort, ctx.fail)
+        head = facts.copy()
+        for _ in range(4):
+            new = head.meet(self.trial(s.body, head, body_ctx(), "X"))
+            if new.key() == head.key():
+                break
+            head = new
+        self.place(top)
+        self.prog[-1].align = True
+        inner = head.copy()
+        self.counters.append("X")
+        self.block(s.body, inner, body_ctx())
+        self.counters.pop()
+        self.place(test)
+        self.jump(top, "XDEC")
+        m = inner.meet(head)
+        facts.levels, facts.isr, facts.osr, facts.x = m.levels, m.isr, m.osr, None
+        facts.dirty, facts.stale = m.dirty, m.stale
+
+    def prepare_loop(self, body, facts, span):
+        """Before a loop: store kept vars from the registers the body overwrites (inside the loop
+        the store would come too late or every pass), and bring a var the body shifts out into
+        OSR (so the body does not load it on every pass)."""
+        ins_, outs, other = set(), set(), False
+
+        def walk(xs):
+            nonlocal other
+            for x in xs:
+                if isinstance(x, A.Shift):
+                    (outs if x.out else ins_).add(x.var.text)
+                elif isinstance(x, (A.Repeat,)):
+                    walk(x.body)
+                elif isinstance(x, A.If):
+                    other = True
+                    walk(x.then)
+                    walk(x.orelse or [])
+                elif isinstance(x, (A.Set, A.Load, A.Store, A.HostIO)):
+                    other = True
+        walk(body)
+        if facts.isr is not None and (other or (ins_ and facts.isr not in ins_)):
+            self.save_isr(facts)
+        base = facts.osr.rstrip("~") if facts.osr else None
+        if base is not None and (other or (outs and base not in outs)):
+            self.save_osr(facts, keep=True)
+        if len(outs) == 1 and not other:
+            v = next(iter(outs))
+            if facts.osr not in (v, v + "~"):
+                self.to_osr(v, facts, span)
+            if facts.osr == v:
+                self.save_osr(facts, keep=True)
+
+    def trial(self, body, facts, ctx, reg=None):
         """Facts at the end of one pass of body, without keeping its code."""
         mark = len(self.prog)
         saved = (self.nlabel, list(self.exits), self.last_effect, list(self.deferred),
                  self.pending_sep, dict(self.last_drive), dict(self.pending_side),
-                 list(self.pending_paces), self.next_stmt)
+                 list(self.pending_paces), self.next_stmt,
+                 None if self.seq_dirty is None else set(self.seq_dirty))
         out = facts.copy()
-        self.counters.append(reg)
+        if reg is not None:
+            self.counters.append(reg)
         self.block(body, out, ctx)
-        self.counters.pop()
+        if reg is not None:
+            self.counters.pop()
         del self.prog[mark:]
         (self.nlabel, self.exits, self.last_effect, self.deferred, self.pending_sep, self.last_drive,
-         self.pending_side, self.pending_paces, self.next_stmt) = saved
+         self.pending_side, self.pending_paces, self.next_stmt, self.seq_dirty) = saved
         return out
 
 
@@ -1029,6 +1546,11 @@ def first_edge(fsm, body, wire):
     return None
 
 
+def reverse(v, width):
+    """v with its low width bits in the opposite order."""
+    return int(f"{v:0{width}b}"[::-1], 2)
+
+
 def meet_osr(a, b):
     """OSR holds v whole, or v~ once some of it has been shifted out; whole meets shifted as
     shifted, anything else as unknown."""
@@ -1042,6 +1564,14 @@ def meet_osr(a, b):
 def is_host_pull(ev):
     return ev.kind == "named" and ev.name.text == "host" and ev.attr is not None and \
         ev.attr.text == "pull"
+
+
+def const_truth(sym, g):
+    """True or False for a guard on params and constants only, None for anything else."""
+    try:
+        return sym.truth(g)
+    except TseError:
+        return None
 
 
 def same_facts(a, b):
@@ -1112,7 +1642,7 @@ def drop_fallthrough(prog):
     """A JMP ALWAYS to the label right after it costs a cycle and a fetch for nothing."""
     out = []
     for k, ins in enumerate(prog):
-        if ins.op == "JMP" and ins.a["cond"] == "ALWAYS":
+        if ins.op == "JMP" and ins.a["cond"] == "ALWAYS" and not getattr(ins, "keep", False):
             j, names = k + 1, set()
             while j < len(prog) and prog[j].op == "LABEL":
                 names.add(prog[j].label)
@@ -1128,5 +1658,6 @@ def reacts(prog, k):
     for ins in prog[k + 1:]:
         if ins.op == "LABEL":
             continue
-        return ins.ob is not None or (ins.tune and ins.serves is not None)
+        return ins.ob is not None or getattr(ins, "rule_ob", None) is not None or \
+            (ins.tune and ins.serves is not None)
     return False

@@ -32,6 +32,7 @@ from . import cycles, isa, printer
 from .diag import TseError
 from .semantics import min_separation, opposite, stable_after
 
+DATA = "data"                  # a register value that depends on data (a count from a variable)
 MAX_STATES = 1_500_000         # beyond this the analysis gives up (R325) instead of exhausting memory
 DATA_FRAME = isa.DATA_SLOT_PERIOD   # the slot phase is kept modulo the data frame (LDW, STW)
 
@@ -281,9 +282,13 @@ class Analysis:
                 v = x if c == "XDEC" else y
                 if v is None:
                     raise ValueError(f"loop counter unknown at {pc}")
-                nv = (v - 1) & 0xFFFF
-                kw = {"x": nv} if c == "XDEC" else {"y": nv}
-                go(tgt if v != 0 else pc + 1, **kw)
+                if v == DATA:           # a count from data: any number of passes
+                    go(tgt)
+                    go(pc + 1)
+                else:
+                    nv = (v - 1) & 0xFFFF
+                    kw = {"x": nv} if c == "XDEC" else {"y": nv}
+                    go(tgt if v != 0 else pc + 1, **kw)
             elif c == "TOUT":
                 if tf in (1, None):
                     go(tgt)
@@ -297,7 +302,11 @@ class Analysis:
             if ins.op == "SET" and ins.a["dst"] in ("X", "Y"):
                 nx, ny = (ins.a["imm"], y) if ins.a["dst"] == "X" else (x, ins.a["imm"])
             elif ins.op in ("OUT", "MOV") and ins.a.get("dst") in ("X", "Y"):
-                nx, ny = (None, y) if ins.a["dst"] == "X" else (x, None)
+                nx, ny = (DATA, y) if ins.a["dst"] == "X" else (x, DATA)
+            elif ins.op == "SET" and ins.a["dst"] == "XH":
+                nx = DATA
+            elif ins.op == "CSRR":
+                nx, ny = DATA, DATA
             go(pc + 1, x=nx, y=ny)
         return out
 
@@ -315,11 +324,10 @@ class Analysis:
         if pre is not None and pre[0] == w.wire:
             e = pre[1] + 1 if e is None else max(e, pre[1] + 1)
         if w.kind == "edge":
+            own = getattr(w, "own", False)
             if e is None or e <= t:
-                vis_lo = e if e is not None else t - self.clamp
-                if e is None and w.event.kind == "edge":
-                    pass
-                if abort is None:
+                vis_lo = e if e is not None else (t if own else t - self.clamp)
+                if abort is None and not own:   # only we pull the wire low again after our release
                     self.check_miss(ins, w, E, t, e, last, where)
                 go(npc, t, tf=0, last=(E, e) if e is not None else None,
                    anchor=(E, vis_lo, t), pre=None)
@@ -348,7 +356,8 @@ class Analysis:
             for j in range(S):          # ended on the alternate: its own level was absent at end
                 end = t + j
                 go(npc, end, tf=1, abort=None if host else end,
-                   pre=(w.wire, end) if w.kind == "edge" else pre)
+                   pre=(w.wire, end) if w.kind == "edge" else pre,
+                   anchor=anchor if host else (A_, end, end))
 
     def rewait_check(self, ins, t, change, where):
         """After a change that was not the abort event (a start where a stop aborts), the wait

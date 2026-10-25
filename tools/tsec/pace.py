@@ -109,6 +109,10 @@ class Timeline:
                 self.prev_gap = g
             self.cur.paced |= paced_stmt(s)
             self.chain_of[id(s)] = self.cur
+        elif isinstance(s, A.Repeat) and data_count(self.sym, s):
+            self.end()                  # a count from data: each pass is a chain of its own
+            self.walk(s.body)
+            self.end()
         elif isinstance(s, A.Repeat):
             for _ in range(int(self.sym.eval(s.count).v)):
                 self.walk(s.body)
@@ -163,6 +167,13 @@ def timeline(sym, body, fclk):
                 e.tol = c.entries[k - 1].tol
     keep = {id(c) for c in t.chains if c.paced}
     return {k: c for k, c in t.chain_of.items() if id(c) in keep}
+
+
+def data_count(sym, s):
+    """A repeat whose count is a variable rather than a constant."""
+    c = s.count
+    return isinstance(c, A.Ref) and c.index is None and c.name.text not in sym.params \
+        and c.name.text not in sym.units
 
 
 def merged_drive(s, nxt, side):

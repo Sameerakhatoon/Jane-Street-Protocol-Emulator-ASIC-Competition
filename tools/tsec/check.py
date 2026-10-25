@@ -13,6 +13,9 @@ so one run reports them together, sorted by position.
   E208 `drive 1` on an open-drain wire E218 `release` needs an open-drain wire
   E209 unknown variable                E219 a wire level is 0 or 1
   E210 shift count larger than the variable
+  E242 a data window array (words[N]) needs N a power of two from 1 to 128
+  E243 load and store name a words array and a constant or variable index
+  E244 set: a constant that fits, a variable of the same width, or parity(v)
 
 The spec-level checks (overlapping edges, timelock, datasheet contradictions,
 frames, enums, triggers) are in speccheck.py, the assist checks in assists.py.
@@ -86,6 +89,9 @@ class RoleChecker:
         if isinstance(e, A.Ref):
             name = e.name.text
             if name in self.clocks and e.index is None:
+                return
+            if self.is_array(self.vars.get(name)):
+                self.err("E243", f"'{name}' is a data window array: load a word from it first", e.span)
                 return
             if name in self.vars or name in self.sym.wires:
                 if name in self.sym.wires:
@@ -168,7 +174,7 @@ class RoleChecker:
                 if w is not None and not s.out and w.dir == "out":
                     self.err("E207", f"cannot sample '{ident.text}': it is declared 'out'",
                              ident.span)
-            v = self.var(s.var)
+            v = self.data_var(s.var)
             n = self.need_count(s.count, "a shift count")
             width = self.width(v)
             if n is not None and width is not None and n.v > width:
@@ -190,7 +196,13 @@ class RoleChecker:
             if s.timeout is not None:
                 self.need_time(s.timeout, "timeout", s.span)
         elif isinstance(s, A.Repeat):
-            self.need_count(s.count, "a repeat count")
+            if isinstance(s.count, A.Ref) and s.count.name.text in self.vars:
+                w = self.width(self.data_var(s.count.name))
+                if w is not None and w > 16:
+                    self.err("E216", f"a repeat count from '{s.count.name.text}' needs at most 16 "
+                             "bits (the loop counter is 16 bits)", s.count.span)
+            else:
+                self.need_count(s.count, "a repeat count")
             self.block(s.body)
         elif isinstance(s, A.If):
             self.guard(s.guard)
@@ -200,10 +212,16 @@ class RoleChecker:
         elif isinstance(s, A.Wait):
             self.need_time(s.time, "wait", s.span)
         elif isinstance(s, A.HostIO):
-            self.var(s.var)
+            self.data_var(s.var)
         elif isinstance(s, A.Set):
-            self.var(s.name)
-            self.q(s.value)
+            self.set_stmt(s)
+        elif isinstance(s, (A.Load, A.Store)):
+            self.data_var(s.var)
+            arr = self.var(s.array)
+            if arr is not None and not self.is_array(arr):
+                self.err("E243", f"'{s.array.text}' is not a data window array (words[N])", s.array.span)
+            elif arr is not None:
+                self.index(s.index, self.width(arr))
         elif isinstance(s, A.Reset):
             for n in s.names:
                 if n.text not in self.clocks:
@@ -223,6 +241,51 @@ class RoleChecker:
                 self.err("E101", f"unknown frame '{s.name.text}'", s.name.span)
             if s.into is not None:
                 self.var(s.into)
+
+    def is_array(self, v):
+        return v is not None and v.type.name.text == "words"
+
+    def data_var(self, ident):
+        v = self.var(ident)
+        if self.is_array(v):
+            self.err("E243", f"'{ident.text}' is a data window array, not a value", ident.span)
+            return None
+        return v
+
+    def index(self, e, size):
+        if isinstance(e, A.Ref) and e.name.text in self.vars:
+            self.data_var(e.name)
+            for sub in (e.index, e.index_lo):
+                if sub is not None:
+                    self.q(sub)
+            return
+        q = self.q(e)
+        if q is not None and size is not None and (q.dim != 0 or q.v.denominator != 1
+                                                   or not 0 <= q.v < size):
+            self.err("E243", f"index must be a whole number below {size} or a variable", e.span)
+
+    def set_stmt(self, s):
+        v = self.data_var(s.name)
+        w = self.width(v)
+        e = s.value
+        if isinstance(e, A.Call) and e.name.text == "parity":
+            if len(e.args) != 1 or not isinstance(e.args[0], A.Ref) or e.args[0].name.text not in self.vars:
+                self.err("E244", "parity takes one variable", e.span)
+            else:
+                self.data_var(e.args[0].name)
+                if w is not None and w != 1:
+                    self.err("E244", f"parity is one bit, '{s.name.text}' has {w}", e.span)
+            return
+        if isinstance(e, A.Ref) and e.name.text in self.vars and e.index is None:
+            src = self.data_var(e.name)
+            ws = self.width(src)
+            if w is not None and ws is not None and ws != w:
+                self.err("E244", f"set {s.name.text} = {e.name.text}: widths {w} and {ws} differ", e.span)
+            return
+        q = self.q(e)
+        if q is not None and (q.dim != 0 or q.v.denominator != 1 or q.v < 0
+                              or (w is not None and q.v >= 1 << w)):
+            self.err("E244", f"value does not fit '{s.name.text}' ({w} bits)", e.span)
 
     def width(self, v):
         if v is None or v.type.width is None:
@@ -251,7 +314,13 @@ class RoleChecker:
                          f"{self.vars[v.name.text].span.line}", v.name.span)
             self.vars[v.name.text] = v
             if v.type.width is not None:
-                self.need_count(v.type.width, "a width")
+                n = self.need_count(v.type.width, "a width")
+                if self.is_array(v) and n is not None and (n.v > 128 or int(n.v) & (int(n.v) - 1)):
+                    self.err("E242", f"words[{n.v}]: a data window array has a power of two from "
+                             "1 to 128 words", v.type.span)
+            if self.is_array(v) and v.init is not None:
+                self.err("E242", "a data window array has no initial value; the host loads it",
+                         v.name.span)
         for a in role.assumes:
             self.event(a.a)
             if a.b is not None:

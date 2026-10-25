@@ -77,8 +77,8 @@ def test_spi_lowering_shape():
 def test_spi_first_bit_numbers_and_fix():
     sym = front(SPI)
     att, tried = Scheduler(sym, sym.roles[0], 0, FCLK, FetchModel(), (0, 25)).compile()
-    assert att is None
-    first = next(v for v in tried[-1].violations if v.span.line == 50)
+    assert att is not None and att.fsm.rule is not None    # the first bit comes from rule 0 (hold)
+    first = next(v for v in tried[1].violations if v.span.line == 50)   # the sequencer alone
     fields = dict(first.fields)
     assert fields["late by"] == "13.3 ns"          # the reaction is buffered on every path
     assert fields["fix"] == "t_css >= 114 ns,\nor pads characterised at or below 11.7 ns"

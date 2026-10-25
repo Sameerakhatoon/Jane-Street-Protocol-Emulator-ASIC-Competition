@@ -198,6 +198,22 @@ class Set:
 
 
 @dataclass
+class Load:
+    var: Ident                  # load v from mem[i]: a data window word into v
+    array: Ident
+    index: object
+    span: Span = _span()
+
+
+@dataclass
+class Store:
+    var: Ident                  # store v to mem[i]
+    array: Ident
+    index: object
+    span: Span = _span()
+
+
+@dataclass
 class Send:
     name: Ident                 # a frame
     args: list = field(default_factory=list)
@@ -418,6 +434,25 @@ class Role:
     assumes: list = field(default_factory=list)
     states: list = field(default_factory=list)
     clocks: list = field(default_factory=list)
+    conds: list = field(default_factory=list)       # RoleIf, chosen when the spec is resolved
+    span: Span = _span()
+
+
+@dataclass
+class ItemIf:
+    """`if mode == 1 { items } else { items }` at item level: chosen on params when resolved."""
+    cond: object
+    then: list
+    orelse: list = None
+    span: Span = _span()
+
+
+@dataclass
+class RoleIf:
+    """The same inside a role: each branch holds vars, assumes, clocks and states."""
+    cond: object
+    then: Role
+    orelse: Role = None
     span: Span = _span()
 
 

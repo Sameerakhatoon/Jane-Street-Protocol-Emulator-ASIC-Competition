@@ -1,0 +1,53 @@
+// regfile.tse: a register file target on a clocked serial bus, for the data window lowering.
+// A command byte arrives msb first (bit 7: write, bits 2..0: register); a write brings a 32-bit
+// value that is stored in the data window array, a read sends the stored value back lsb first.
+// The mode param picks the clock edges at item level (mode 0 captures on the rising edge).
+protocol regfile {
+  param f_clk : freq = 100 kHz;
+  param mode  : bits[1] = 0;
+  unit  half  = 1 / (2 * f_clk);
+
+  wire clk  : in;
+  wire din  : in;
+  wire dout : out push_pull idle 0;
+
+  datasheet bus {
+    rule lo : fall(clk) -> rise(clk) >= half;
+    rule hi : rise(clk) -> fall(clk) >= half;
+  }
+
+  if mode == 0 {
+    event cap    = rise(clk);
+    event launch = fall(clk);
+  } else {
+    event cap    = fall(clk);
+    event launch = rise(clk);
+  }
+
+  role mem : target uses clk, din, dout {
+    var regs : words[8];
+    var cmd  : bits[8];
+    var val  : bits[32];
+
+    state idle {
+      seq { repeat 8 { shift din -> cmd msb 1 within [0 ns, half] after cap; } } -> decode;
+    }
+    state decode {
+      after cmd[7] == 1 -> write;
+      after cmd[7] == 0 -> read;
+    }
+    state write {
+      seq {
+        repeat 32 { shift din -> val msb 1 within [0 ns, half] after cap; }
+        store val to regs[cmd];
+        push host cmd;
+      } -> idle;
+    }
+    state read {
+      seq {
+        load val from regs[cmd];
+        repeat 32 { shift val lsb 1 -> dout within [0 ns, half] after launch; }
+      } -> idle;
+    }
+  }
+}

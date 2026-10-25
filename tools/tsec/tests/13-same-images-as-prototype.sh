@@ -1,12 +1,24 @@
 #!/usr/bin/env bash
-# The images are word for word the ones the first prototype compiler produced for the same runs.
+# The images are word for word the ones the first prototype compiler produced for the same runs,
+# after the transmitter's two-word output prologue (idle level, pad on) the prototype lacked:
+# drop it and move the jump targets (opcode 0, target in the low byte) back by two.
 . "$(dirname "$0")/lib.sh"
+unprologue() {
+    local first="$(echo "$1" | cut -d' ' -f1-2)"
+    assert_eq "4011 4111" "$first" "tx output prologue"
+    for w in $(echo "$1" | cut -d' ' -f3-); do
+        case "$w" in
+            0*) printf "%04x " $(( 0x$w - 2 )) ;;
+            *) printf "%s " "$w" ;;
+        esac
+    done | sed 's/ $//'
+}
 check() {
     local want_tx="$1" want_rx="$2"
     shift 2
     out="$(tsec build specs/uart.tse "$@")"
     imgs="$(echo "$out" | sed -n 's/^ACCEPTED: [0-9]* instructions, image //p')"
-    assert_eq "$want_tx" "$(echo "$imgs" | sed -n 1p)" "tx image $*"
+    assert_eq "$want_tx" "$(unprologue "$(echo "$imgs" | sed -n 1p)")" "tx image $*"
     assert_eq "$want_rx" "$(echo "$imgs" | sed -n 2p)" "rx image $*"
 }
 check "c300 4207 4010 e1ff e006 e003 8000 e1ff e005 0206 4011 e1ff e005 0000" \

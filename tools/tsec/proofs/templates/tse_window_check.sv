@@ -2,7 +2,8 @@
 // Latency is counted in clock cycles from the first cycle in which the trigger
 // input shows its new value to the first cycle in which the response output does.
 // The two assumptions are the environment side of the contract: the trigger is
-// preceded by QUIET stable cycles and held until the response.
+// preceded by QUIET stable cycles and held until the response. A trigger counts
+// only while en holds (the program is at the wait the obligation belongs to).
 module tse_window_check #(
   parameter int LO    = 0,
   parameter int HI    = 8,
@@ -11,6 +12,7 @@ module tse_window_check #(
 ) (
   input logic clk,
   input logic rst,
+  input logic en,
   input logic trig_in,
   input logic trig_val,
   input logic resp_out,
@@ -29,7 +31,7 @@ module tse_window_check #(
     if (rst) begin
       armed <= 1'b0;
       age   <= '0;
-    end else if (trig && !armed) begin
+    end else if (trig && en && !armed) begin
       armed <= 1'b1;
       age   <= W'(1);
     end else if (armed && resp) begin
@@ -41,7 +43,7 @@ module tse_window_check #(
 
   always_comb begin
     if (!rst) begin
-      if (trig) assume (quiet >= W'(QUIET));
+      if (trig && en && !armed) assume (quiet >= W'(QUIET));
       if (armed) assume (trig_in == trig_val);
       if (armed && resp) assert (age >= W'(LO) && age <= W'(HI));
       if (armed) assert (age <= W'(HI));     // the deadline cannot pass silently

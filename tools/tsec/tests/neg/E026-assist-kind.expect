@@ -1,4 +1,4 @@
-tools/tsec/tests/neg/E026-assist-kind.tse:2:14: error: expected an assist kind (crc, stuffer, nrzi, manchester, dpll, timer, rule) but found 'blender' [E026]
+tools/tsec/tests/neg/E026-assist-kind.tse:2:14: error: expected an assist kind (crc, stuffer, nrzi, manchester, dpll, timer, rule, arbitration) but found 'blender' [E026]
  2 |   assist a : blender { speed = 3; }
    |              ^~~~~~~
 1 error(s); nothing compiled

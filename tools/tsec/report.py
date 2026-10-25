@@ -81,6 +81,14 @@ def fsm_obligations(att, fclk, pads):
             out.append(f"  line {ob.span.line:2d} {ob.name:<14} after {printer.event(ob.event):<12} "
                        f"{ns(lo)} to {ns(hi)} ns, window [{ns(ob.lo)}, {ns(ob.hi)}], margins "
                        f"{ns(lo - ob.lo)} and {ns(ob.hi - hi)} ns  ok")
+        rob = getattr(ins, "rule_ob", None)
+        if rob is not None:
+            r = att.fsm.rule
+            td, lo, hi = r.td, r.lo, r.hi
+            out.append(f"  line {rob.span.line:2d} {rob.name:<14} after {printer.event(rob.event):<12} "
+                       f"{ns(lo)} to {ns(hi)} ns by response rule 0 (hold, tick_delay {td}), window "
+                       f"[{ns(rob.lo)}, {ns(rob.hi)}], margins {ns(lo - rob.lo)} and "
+                       f"{ns(rob.hi - hi)} ns  ok")
         if ins.sep is not None:
             got = att.res.seps[id(ins)]
             span = f"{got[1]} to {got[3]}" if ins.sep.hi is not None else f"{got[1]}"
@@ -96,6 +104,10 @@ def fsm_obligations(att, fclk, pads):
                    "alternate condition being seen (stated bound)")
     for k, v in sorted(att.fsm.host_notes.items()):
         out.append(f"  host contract, {k}: {v}")
+    for w in att.fsm.window.rows():
+        words = f"{w.addr}" if w.size == 1 else f"{w.addr} to {w.addr + w.size - 1}"
+        out.append(f"  data window word {words}: {w.name}"
+                   + (f", the host loads 0x{w.init:X} before RUN" if w.init is not None else ""))
     return out
 
 

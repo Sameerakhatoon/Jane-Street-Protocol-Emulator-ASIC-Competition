@@ -1,4 +1,4 @@
-tools/tsec/tests/neg/R301-too-large.tse:4:8: error: program too large: 263 instructions, a lane holds 256 (8-bit jump targets) [R301]
+tools/tsec/tests/neg/R301-too-large.tse:4:8: error: program too large: 265 instructions, a lane holds 256 (8-bit jump targets) [R301]
  4 |   role r : controller uses tx {
    |        ^
 1 obligation(s) or limit(s) not met; no image written (rule R1)

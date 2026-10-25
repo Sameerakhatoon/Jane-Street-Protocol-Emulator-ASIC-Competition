@@ -1,0 +1,4 @@
+tools/tsec/tests/neg/E251-trigger-stages.tse:6:11: error: trigger block has more than 3 stages ('t' has 4) [E251]
+ 6 |   trigger t { match mon.a then mon.a then mon.a then mon.a action emit hit; }
+   |           ^
+1 error(s); nothing compiled

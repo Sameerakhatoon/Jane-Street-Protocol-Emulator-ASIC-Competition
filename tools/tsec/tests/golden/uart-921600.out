@@ -5,16 +5,18 @@ tsec: protocol 'uart', clock 60 MHz, S = 4, fetch buffer 2 word(s), fetch_latenc
 == role tx_side (controller) on lane 0
 strategy: DLY pacing
 addr  word   instruction                    note
-  0  c300   idle:  PULL  block                    anchor
-  1  4207          SET   X, 7                     loop count, also the phase lock
-  2  4010          SET   PINS, 0, mask=0b0001     drive tx
-  3  e040          DLY   64                       
-  4  8000   L4:    OUT   PINS, 1                  shift tx
-  5  e03e          DLY   62                       
-  6  0204          JMP   XDEC, L4                 
-  7  4011          SET   PINS, 1, mask=0b0001     drive tx
-  8  e03e          DLY   62                       
-  9  0000          JMP   ALWAYS, idle             
+  0  4011          SET   PINS, 1, mask=0b0001     idle levels before driving
+  1  4111          SET   PINDIRS, 1, mask=0b0001  outputs on
+  2  c300   idle:  PULL  block                    anchor
+  3  4207          SET   X, 7                     loop count, also the phase lock
+  4  4010          SET   PINS, 0, mask=0b0001     drive tx
+  5  e040          DLY   64                       
+  6  8000   L6:    OUT   PINS, 1                  shift tx
+  7  e03e          DLY   62                       
+  8  0206          JMP   XDEC, L6                 
+  9  4011          SET   PINS, 1, mask=0b0001     drive tx
+ 10  e03e          DLY   62                       
+ 11  0002          JMP   ALWAYS, idle             
 obligations (cycles; worst case over all slot phases and buffer states):
   line 30 drive tx     #0: at     0, ideal     0.00, error  0.00 <=  1.30  ok
   line 31 shift tx     #0: at    66, ideal    65.10, error  0.90 <=  1.30  ok
@@ -27,7 +29,7 @@ obligations (cycles; worst case over all slot phases and buffer states):
   line 31 shift tx     #7: at   521, ideal   520.83, error  0.17 <=  1.28  ok
   line 32 drive tx     #0: at   586, ideal   585.94, error  0.06 <=  1.27  ok
   hold after last edge >= 67 cycles (needs 63.8)  ok
-ACCEPTED: 10 instructions, image c300 4207 4010 e040 8000 e03e 0204 4011 e03e 0000
+ACCEPTED: 12 instructions, image 4011 4111 c300 4207 4010 e040 8000 e03e 0206 4011 e03e 0002
 
 == role rx_side (target) on lane 1
 strategy: DLY pacing

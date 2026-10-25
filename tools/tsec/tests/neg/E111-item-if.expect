@@ -1,0 +1,4 @@
+tools/tsec/tests/neg/E111-item-if.tse:3:8: error: an item-level 'if' needs a comparison of params and constants [E111]
+ 3 |   if 2 + 1 { param q : time = 1 us; }
+   |        ^
+1 error(s); nothing compiled

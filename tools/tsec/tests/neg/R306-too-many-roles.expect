@@ -1,4 +1,7 @@
-tools/tsec/tests/neg/R306-too-many-roles.tse:16:8: error: more roles than lanes: role 'd' would need lane 3, the chip has 3 [R306]
+tools/tsec/tests/neg/R306-too-many-roles.tse:12:8: error: more roles than lanes: role 'c' would need lane 2, the chip has 2 [R306]
+ 12 |   role c : target uses rx {
+    |        ^
+tools/tsec/tests/neg/R306-too-many-roles.tse:16:8: error: more roles than lanes: role 'd' would need lane 3, the chip has 2 [R306]
  16 |   role d : target uses rx {
     |        ^
-1 obligation(s) or limit(s) not met; no image written (rule R1)
+2 obligation(s) or limit(s) not met; no image written (rule R1)

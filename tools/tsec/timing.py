@@ -54,11 +54,12 @@ def simulate(low, labels, lane, fm, t0, buf0, nco_phase=Fr(0)):
     dispatches again. Returns ([(obligation, visit, issue)], presentation cycle, buffer)."""
     prog = low.prog
     visits = {}
-    pc, t, x, first, buf = 0, t0, 0, True, list(buf0)
+    a0 = labels["idle"]           # the anchor, after the output prologue
+    pc, t, x, first, buf = a0, t0, 0, True, list(buf0)
     nco_c, tick, out = None, 0, []
     for _ in range(100000):
         ins = prog[pc]
-        if pc == 0 and not first:
+        if pc == a0 and not first:
             return out, t, buf
         t_ret, npc = t, pc + 1
         if ins.op == "WAIT" and ins.a["src"] == "EV":
@@ -91,7 +92,7 @@ def simulate(low, labels, lane, fm, t0, buf0, nco_phase=Fr(0)):
 
 def runs_for_phase(low, labels, lane, fm, p, nco_phase):
     """Cold buffer (only the anchor's word, as after RUN) and the steady-state warm buffer."""
-    tr, present, buf = simulate(low, labels, lane, fm, p, [0], nco_phase)
+    tr, present, buf = simulate(low, labels, lane, fm, p, [labels["idle"] // 2], nco_phase)
     out = [("cold", tr, present)]
     for _ in range(4):
         tr2, present2, buf2 = simulate(low, labels, lane, fm, p, buf, nco_phase)

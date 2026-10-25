@@ -117,6 +117,7 @@ class Lowering:
             self.emit("SET", dst="X", imm=xload).note = "loop count, also the phase lock"
 
     def lower(self):
+        self.prologue()
         ev = self.frame.anchor
         if ev.kind == "named":
             a = self.emit("PULL", blk=1)
@@ -127,6 +128,20 @@ class Lowering:
         self.lower_actions()
         self.emit("JMP", cond="ALWAYS", target="idle")
         return self.prog
+
+    def prologue(self):
+        """Output wires at their idle level, then their pads turned on: once, before the anchor."""
+        mask = val = 0
+        for k, u in enumerate(self.role.uses):
+            w = self.sym.wires[u.text]
+            if w.dir == "in":
+                continue
+            idle = w.attr("idle")
+            lvl = 1 if w.open_drain else (int(self.sym.eval(idle.value).v) if idle else 0)
+            mask, val = mask | 1 << k, val | lvl << k
+        if mask:
+            self.emit("SET", dst="PINS", imm=mask << 4 | val).note = "idle levels before driving"
+            self.emit("SET", dst="PINDIRS", imm=mask << 4 | mask).note = "outputs on"
 
     def lower_actions(self):
         acts = self.frame.actions

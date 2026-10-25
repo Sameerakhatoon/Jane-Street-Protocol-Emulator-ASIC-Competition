@@ -5,21 +5,23 @@ tsec: protocol 'uart', clock 60 MHz, S = 4, fetch buffer 2 word(s), fetch_latenc
 == role tx_side (controller) on lane 0
 strategy: bit-timer pacing (DLY pacing rejected: shift tx (line 31, visit 0): error 2.45 cycles exceeds budget 0.65 (worst at phase 3, warm buffer))
 addr  word   instruction                    note
-  0  c300   idle:  PULL  block                    anchor
-  1  e000          DLY   0                        pad: start the next pair on an SRAM word
-  2  4710          SET   CMD, 0x10                start bit timer in phase
-  3  4010          SET   PINS, 0, mask=0b0001     drive tx
-  4  4207          SET   X, 7                     
-  5  e000          DLY   0                        pad: start the next pair on an SRAM word
-  6  25a0   L6:    WAIT  1, EV, 5                 bit timer tick
-  7  8000          OUT   PINS, 1                  shift tx
-  8  0206          JMP   XDEC, L6                 
-  9  e000          DLY   0                        pad: start the next pair on an SRAM word
- 10  25a0          WAIT  1, EV, 5                 bit timer tick
- 11  4011          SET   PINS, 1, mask=0b0001     drive tx
- 12  25a0          WAIT  1, EV, 5                 hold for the last gap
- 13  4720          SET   CMD, 0x20                
- 14  0000          JMP   ALWAYS, idle             
+  0  4011          SET   PINS, 1, mask=0b0001     idle levels before driving
+  1  4111          SET   PINDIRS, 1, mask=0b0001  outputs on
+  2  c300   idle:  PULL  block                    anchor
+  3  e000          DLY   0                        pad: start the next pair on an SRAM word
+  4  4710          SET   CMD, 0x10                start bit timer in phase
+  5  4010          SET   PINS, 0, mask=0b0001     drive tx
+  6  4207          SET   X, 7                     
+  7  e000          DLY   0                        pad: start the next pair on an SRAM word
+  8  25a0   L8:    WAIT  1, EV, 5                 bit timer tick
+  9  8000          OUT   PINS, 1                  shift tx
+ 10  0208          JMP   XDEC, L8                 
+ 11  e000          DLY   0                        pad: start the next pair on an SRAM word
+ 12  25a0          WAIT  1, EV, 5                 bit timer tick
+ 13  4011          SET   PINS, 1, mask=0b0001     drive tx
+ 14  25a0          WAIT  1, EV, 5                 hold for the last gap
+ 15  4720          SET   CMD, 0x20                
+ 16  0002          JMP   ALWAYS, idle             
 assist config: DPLL_PERIOD = 521 (bit timer 521/16 = 32.5625 cycles), resync off, phase +0.50 cycles
 obligations (cycles; worst case over all slot phases and buffer states):
   line 30 drive tx     #0: at     0, ideal     0.00, error  0.00 <=  0.65  ok
@@ -33,7 +35,7 @@ obligations (cycles; worst case over all slot phases and buffer states):
   line 31 shift tx     #7: at   261, ideal   260.42, error  0.58 <=  0.64  ok
   line 32 drive tx     #0: at   293, ideal   292.97, error  0.03 <=  0.64  ok
   hold after last edge >= 39 cycles (needs 31.9)  ok
-ACCEPTED: 15 instructions, image c300 e000 4710 4010 4207 e000 25a0 8000 0206 e000 25a0 4011 25a0 4720 0000
+ACCEPTED: 17 instructions, image 4011 4111 c300 e000 4710 4010 4207 e000 25a0 8000 0208 e000 25a0 4011 25a0 4720 0002
 
 == role rx_side (target) on lane 1
 strategy: bit-timer pacing (DLY pacing rejected: shift rx (line 43, visit 0): error 2.45 cycles exceeds budget 0.65 (worst at phase 3, warm buffer))

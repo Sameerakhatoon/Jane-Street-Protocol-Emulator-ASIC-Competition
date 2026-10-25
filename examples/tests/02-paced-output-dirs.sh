@@ -1,9 +1,7 @@
 #!/usr/bin/env bash
-# Expected failure: the paced-frame lowering of tsec never sets the pin
-# direction of an output wire, so the UART transmitter would leave its pad
-# idle. The examples append a prologue (SET PINS idle, SET PINDIRS, JMP 0)
-# and start the lane there. This test turns into a failure the day tsec
-# emits the direction itself; then drop the prologue and this test.
+# The paced-frame lowering sets the output pins to their idle level and turns
+# their pads on before the anchor, so the UART transmitter image needs no
+# prologue from the host: the demo helper finds SET PINDIRS and starts at 0.
 . "$(dirname "$0")/lib.sh"
 
 python3 -m tools.tsec build specs/uart_tx.tse --emit img,json -o "$OUT" >"$OUT/tsec.log" 2>&1 \
@@ -14,12 +12,8 @@ sys.path.insert(0, "examples")
 import tse_demo as td
 role, words, regs, pins = td.read_tsec(sys.argv[1], "uart_tx")[0]
 prog, start = td.output_prologue(words, pins)
-print("sets" if start == 0 else "missing " + " ".join("%04x" % w for w in prog[start:]))
+print("sets" if start == 0 and prog == words else "missing")
 PY
 )"
-case "$res" in
-    "missing 4011 4111 0000") pass "expected failure: no SET PINDIRS in the program" ;;
-    missing*) fail "prologue changed: $res" ;;
-    sets) fail "tsec now sets the output direction: remove the prologue and this test" ;;
-    *) fail "unexpected: $res" ;;
-esac
+[ "$res" = "sets" ] || fail "the program does not set its output direction"
+pass "SET PINDIRS in the program, no host prologue"

@@ -116,7 +116,7 @@ def wave_eth10(keys, m, p, mode):
         dst, src, etype, payload = k.split()
         bits = jwave.eth_frame_bits(bytes.fromhex(dst), bytes.fromhex(src), int(etype, 16),
                                     bytes.fromhex(payload))
-        t = jwave.manchester_wave(w, m["td"], t, bits, p["bitrate"]) + 10e-6
+        t = jwave.eth_wave(w, m["td"], t, bits, scale=10e6 / p["bitrate"]) + 10e-6
     return w
 
 

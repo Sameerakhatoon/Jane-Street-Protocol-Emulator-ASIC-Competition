@@ -1,0 +1,10 @@
+protocol p {
+  wire rx : in;
+  role r : target uses rx {
+    var a : words[128];
+    var b : bits[8];
+    var c : bits[8];
+    state idle { on fall(rx) do { shift rx -> b msb 1; } -> two; }
+    state two { on fall(rx) do { shift rx -> c msb 1; push host b; } -> idle; }
+  }
+}

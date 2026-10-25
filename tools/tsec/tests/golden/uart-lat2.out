@@ -5,20 +5,22 @@ tsec: protocol 'uart', clock 60 MHz, S = 4, fetch buffer 2 word(s), fetch_latenc
 == role tx_side (controller) on lane 0
 strategy: DLY pacing
 addr  word   instruction                    note
-  0  c300   idle:  PULL  block                    anchor
-  1  4207          SET   X, 7                     loop count, also the phase lock
-  2  4010          SET   PINS, 0, mask=0b0001     drive tx
-  3  e1ff          DLY   511                      long delay, first part (9-bit DLY field)
-  4  e005          DLY   5                        
-  5  e003          DLY   3                        pad: loop starts a word (4 cycles, no fetch stall)
-  6  8000   L6:    OUT   PINS, 1                  shift tx
-  7  e1ff          DLY   511                      long delay, first part (9-bit DLY field)
-  8  e005          DLY   5                        
-  9  0206          JMP   XDEC, L6                 
- 10  4011          SET   PINS, 1, mask=0b0001     drive tx
- 11  e1ff          DLY   511                      long delay, first part (9-bit DLY field)
- 12  e005          DLY   5                        
- 13  0000          JMP   ALWAYS, idle             
+  0  4011          SET   PINS, 1, mask=0b0001     idle levels before driving
+  1  4111          SET   PINDIRS, 1, mask=0b0001  outputs on
+  2  c300   idle:  PULL  block                    anchor
+  3  4207          SET   X, 7                     loop count, also the phase lock
+  4  4010          SET   PINS, 0, mask=0b0001     drive tx
+  5  e1ff          DLY   511                      long delay, first part (9-bit DLY field)
+  6  e005          DLY   5                        
+  7  e003          DLY   3                        pad: loop starts a word (4 cycles, no fetch stall)
+  8  8000   L8:    OUT   PINS, 1                  shift tx
+  9  e1ff          DLY   511                      long delay, first part (9-bit DLY field)
+ 10  e005          DLY   5                        
+ 11  0208          JMP   XDEC, L8                 
+ 12  4011          SET   PINS, 1, mask=0b0001     drive tx
+ 13  e1ff          DLY   511                      long delay, first part (9-bit DLY field)
+ 14  e005          DLY   5                        
+ 15  0002          JMP   ALWAYS, idle             
 obligations (cycles; worst case over all slot phases and buffer states):
   line 30 drive tx     #0: at     0, ideal     0.00, error  0.00 <= 10.42  ok
   line 31 shift tx     #0: at   524, ideal   520.83, error  3.17 <= 10.39  ok
@@ -31,7 +33,7 @@ obligations (cycles; worst case over all slot phases and buffer states):
   line 31 shift tx     #7: at  4164, ideal  4166.67, error  2.67 <= 10.21  ok
   line 32 drive tx     #0: at  4688, ideal  4687.50, error  0.50 <= 10.18  ok
   hold after last edge >= 525 cycles (needs 510.4)  ok
-ACCEPTED: 14 instructions, image c300 4207 4010 e1ff e005 e003 8000 e1ff e005 0206 4011 e1ff e005 0000
+ACCEPTED: 16 instructions, image 4011 4111 c300 4207 4010 e1ff e005 e003 8000 e1ff e005 0208 4011 e1ff e005 0002
 
 == role rx_side (target) on lane 1
 strategy: DLY pacing

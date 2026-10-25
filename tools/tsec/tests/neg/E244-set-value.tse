@@ -1,0 +1,8 @@
+protocol p {
+  wire rx : in;
+  role r : target uses rx {
+    var b : bits[4];
+    var w : bits[8];
+    state idle { on fall(rx) do { set b = 16; set w = b; set w = parity(b); } -> idle; }
+  }
+}

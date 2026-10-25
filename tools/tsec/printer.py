@@ -115,6 +115,10 @@ def stmt(s, depth):
         return "reset " + ", ".join(n.text for n in s.names) + ";"
     if isinstance(s, A.Set):
         return f"set {s.name.text} = {expr(s.value)};"
+    if isinstance(s, A.Load):
+        return f"load {s.var.text} from {s.array.text}[{expr(s.index)}];"
+    if isinstance(s, A.Store):
+        return f"store {s.var.text} to {s.array.text}[{expr(s.index)}];"
     if isinstance(s, A.Send):
         args = "(" + ", ".join(expr(a) for a in s.args) + ")" if s.args else ""
         return f"send {s.name.text}{args}{timing(A.Timing(s.window))};"
@@ -146,23 +150,36 @@ def wire(w):
 def role(r):
     uses = ", ".join(u.text for u in r.uses)
     lane = f" lane {expr(r.lane)}" if r.lane is not None else ""
-    out = [f"  role {r.name.text} : {r.kind} uses {uses}{lane} {{"]
+    out = [f"  role {r.name.text} : {r.kind} uses {uses}{lane} {{"] + role_body(r, "    ")
+    out.append("  }")
+    return "\n".join(out)
+
+
+def role_body(r, pad):
+    out = []
     for v in r.vars:
         init = f" = {expr(v.init)}" if v.init is not None else ""
-        out.append(f"    var {v.name.text} : {type_ref(v.type)}{init};")
+        out.append(f"{pad}var {v.name.text} : {type_ref(v.type)}{init};")
     if r.clocks:
-        out.append("    clock " + ", ".join(c.text for c in r.clocks) + ";")
+        out.append(f"{pad}clock " + ", ".join(c.text for c in r.clocks) + ";")
     for a in r.assumes:
         rel = f" -> {event(a.b)} {a.relop} {expr(a.bound)}" if a.b else ""
-        out.append(f"    assume {a.name.text} : {event(a.a)}{rel};")
+        out.append(f"{pad}assume {a.name.text} : {event(a.a)}{rel};")
+    depth = len(pad) // 2
     for st in r.states:
         head = ("initial " if st.initial else "") + f"state {st.name.text}"
         head += f" inv {expr(st.inv)}" if st.inv is not None else ""
-        out.append(f"    {head} {{")
-        out += [f"      {edge(e, 3)}" for e in st.edges]
-        out.append("    }")
-    out.append("  }")
-    return "\n".join(out)
+        out.append(f"{pad}{head} {{")
+        out += [f"{pad}  {edge(e, depth + 1)}" for e in st.edges]
+        out.append(f"{pad}}}")
+    for c in r.conds:
+        out.append(f"{pad}if {expr(c.cond)} {{")
+        out += role_body(c.then, pad + "  ")
+        if c.orelse is not None:
+            out.append(f"{pad}}} else {{")
+            out += role_body(c.orelse, pad + "  ")
+        out.append(f"{pad}}}")
+    return out
 
 
 def item(it):
@@ -196,6 +213,11 @@ def item(it):
     if isinstance(it, A.Trigger):
         evs = " then ".join(tevent(te) for te in it.events)
         return f"  trigger {it.name.text} {{ match {evs} action {stmt(it.action, 2)} }}"
+    if isinstance(it, A.ItemIf):
+        out = [f"  if {expr(it.cond)} {{"] + [item(i) for i in it.then]
+        if it.orelse is not None:
+            out += ["  } else {"] + [item(i) for i in it.orelse]
+        return "\n".join(out + ["  }"])
     return role(it)
 
 

@@ -7,7 +7,7 @@ tsec: protocol 'i2c_target', clock 60 MHz, S = 4, fetch buffer 2 word(s), fetch_
   param margin = 2e-07 (time)
 
 == role tgt (target) on lane 0
-strategy: state machine, rolled loops (208067 analysis states)
+strategy: state machine, rolled loops (155787 analysis states)
 addr  word   instruction                    note
   0  4033          SET   PINS, 3, mask=0b0011     idle levels before driving
   1  4133          SET   PINDIRS, 3, mask=0b0011  outputs on (turnaround pins off)

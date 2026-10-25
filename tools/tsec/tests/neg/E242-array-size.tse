@@ -1,0 +1,7 @@
+protocol p {
+  wire rx : in;
+  role r : target uses rx {
+    var mem : words[12];
+    state idle { on fall(rx) -> idle; }
+  }
+}

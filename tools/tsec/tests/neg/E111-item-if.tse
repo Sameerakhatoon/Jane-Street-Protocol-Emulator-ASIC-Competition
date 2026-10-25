@@ -1,0 +1,7 @@
+protocol p {
+  wire rx : in;
+  if 2 + 1 { param q : time = 1 us; }
+  role r : target uses rx {
+    state idle { on fall(rx) -> idle; }
+  }
+}

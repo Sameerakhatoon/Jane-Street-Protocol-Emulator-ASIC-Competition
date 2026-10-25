@@ -19,10 +19,11 @@ def lowered(name, mode, **over):
 
 def test_tx_delay_loop_shape():
     low = lowered("tx_side", "dly")
-    assert ops(low) == ["PULL", "SET", "SET", "DLY", "DLY", "DLY", "OUT", "DLY", "DLY", "JMP",
-                        "SET", "DLY", "DLY", "JMP"]
-    assert low.prog[1].a == {"dst": "X", "imm": 7}            # loop count doubles as phase lock
-    assert low.prog[6].label == "L6" and low.prog[9].a["target"] == "L6"
+    assert ops(low) == ["SET", "SET", "PULL", "SET", "SET", "DLY", "DLY", "DLY", "OUT", "DLY",
+                        "DLY", "JMP", "SET", "DLY", "DLY", "JMP"]
+    assert low.prog[1].a == {"dst": "PINDIRS", "imm": 0x11}  # the output pad on, once
+    assert low.prog[3].a == {"dst": "X", "imm": 7}            # loop count doubles as phase lock
+    assert low.prog[8].label == "L8" and low.prog[11].a["target"] == "L8"
     assert [i.ob.name for i in low.prog if i.ob] == ["drive tx", "shift tx", "drive tx"]
 
 
