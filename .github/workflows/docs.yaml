@@ -10,8 +10,6 @@ jobs:
     steps:
       - name: Checkout repo
         uses: actions/checkout@v6
-        with:
-          submodules: recursive
 
       - name: Build docs
         uses: TinyTapeout/tt-gds-action/docs@ihp-cmos5l

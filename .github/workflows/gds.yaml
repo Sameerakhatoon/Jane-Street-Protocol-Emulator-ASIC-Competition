@@ -1,8 +1,21 @@
 name: gds
 
+# One hardening of the 6x4 tile takes hours of runner time, so a push only
+# starts it when an input of the flow or of the gate-level test changed, and
+# a newer push to the same branch cancels the older run. Run it by hand
+# before a submission so the submitted commit has its own GDS.
 on:
   push:
+    paths:
+      - 'src/**'
+      - 'info.yaml'
+      - 'test/**'
+      - '.github/workflows/gds.yaml'
   workflow_dispatch:
+
+concurrency:
+  group: gds-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   gds:
@@ -10,8 +23,6 @@ jobs:
     steps:
       - name: checkout repo
         uses: actions/checkout@v6
-        with:
-          submodules: recursive
 
       - name: Build GDS
         uses: TinyTapeout/tt-gds-action@ihp-cmos5l
@@ -31,14 +42,15 @@ jobs:
     steps:
       - name: checkout repo
         uses: actions/checkout@v6
-        with:
-          submodules: recursive
 
       - name: GL test
         uses: TinyTapeout/tt-gds-action/gl_test@ihp-cmos5l
 
+  # Needs GitHub Pages (source: GitHub Actions); repository variable
+  # TT_VIEWER=off skips it where Pages is not available.
   viewer:
     needs: gds
+    if: vars.TT_VIEWER != 'off'
     runs-on: ubuntu-24.04
     permissions:
       pages: write # to deploy to Pages

@@ -1,9 +1,9 @@
 name: fpga
 
+# Manual only. The UART top builds an ICE40UP5K bitstream; the full-chip top
+# does not, because its program memory is the IHP SRAM macro, which has no
+# FPGA model.
 on:
-  push:
-    # Comment out (or remove) the following line to run the FPGA workflow on every push:
-    branches: none
   workflow_dispatch:
 
 jobs:
@@ -12,8 +12,6 @@ jobs:
     steps:
       - name: checkout repo
         uses: actions/checkout@v6
-        with:
-          submodules: recursive
 
       - name: FPGA bitstream for TT ASIC Sim (ICE40UP5K)
         uses: TinyTapeout/tt-gds-action/fpga/ice40up5k@ihp-cmos5l

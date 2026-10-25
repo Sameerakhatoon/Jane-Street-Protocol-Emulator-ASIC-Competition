@@ -1,54 +1,83 @@
-# Reference model tests, RTL-versus-model lockstep (cocotb 2.1.0 + Hypothesis) and
-# formal proofs, through the same make targets as a local run. The template's own
-# test job (test.yaml) stays on its cocotb version and is not touched here.
+# The repository's own regression on every push: a fast hygiene job (files,
+# commit messages, workflow structure), then one parallel job per make regress
+# step. The step list comes from mk/regress.mk through make ci-matrix.
+# Repository variable TSE_RUNNER picks another runner label (self-hosted).
 name: verify
-on: [push, pull_request, workflow_dispatch]
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: verify-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
   CI: 'true'                  # Hypothesis: derandomized, no example database
 
 jobs:
-  model:
-    runs-on: ubuntu-24.04
+  hygiene:
+    runs-on: ${{ vars.TSE_RUNNER || 'ubuntu-24.04' }}
+    timeout-minutes: 10
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
     steps:
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@v6
         with:
           python-version: '3.11'
-      - run: pip install pytest==9.1.1
-      - run: make model-test
+      - run: pip install PyYAML==6.0.3
+      - name: Files
+        run: make hygiene
+      - name: Commit messages
+        env:
+          BEFORE: ${{ github.event.before }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          if [ -n "$BASE" ]; then
+              range="$BASE..$HEAD_SHA"
+          elif [ -n "$BEFORE" ] && git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
+              range="$BEFORE..HEAD"
+          else
+              range=HEAD          # new branch or rewritten history: every commit
+          fi
+          make hygiene-log RANGE="$range"
+      - name: Workflow files
+        run: make ci-check
+      - name: Step matrix
+        id: matrix
+        run: echo "matrix=$(make -s ci-matrix)" >> "$GITHUB_OUTPUT"
 
-  lockstep:
-    runs-on: ubuntu-24.04
-    if: hashFiles('src/tse_seq.sv') != ''
+  regress:
+    needs: hygiene
+    name: ${{ matrix.step }}
+    runs-on: ${{ vars.TSE_RUNNER || 'ubuntu-24.04' }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.hygiene.outputs.matrix) }}
     steps:
       - uses: actions/checkout@v6
-      - uses: YosysHQ/setup-oss-cad-suite@v4
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-      - uses: actions/setup-python@v6
-        with:
-          python-version: '3.11'
-      - run: pip install cocotb==2.1.0 hypothesis==6.169.0 pytest==9.1.1
-      - run: make verif-lint lockstep lane-lockstep block-lockstep
+      - uses: ./.github/actions/setup-tse
+      - name: make regress
+        env:
+          STEP: ${{ matrix.step }}
+          TARGETS: ${{ matrix.targets }}
+        run: make regress REGRESS_STEPS="$STEP=$TARGETS"
+      - name: Log
+        if: always()
+        env:
+          STEP: ${{ matrix.step }}
+        run: cat "build/regress/$STEP.log" || true
       - uses: actions/upload-artifact@v7
         if: always()
         with:
-          name: lockstep-results
-          path: verif/*/results.xml
-
-  formal:
-    runs-on: ubuntu-24.04
-    if: hashFiles('src/tse_crc.sv') != ''
-    timeout-minutes: 60
-    steps:
-      - uses: actions/checkout@v6
-      - uses: YosysHQ/setup-oss-cad-suite@v4
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-      - run: make formal
-      - uses: actions/upload-artifact@v7
-        if: failure()
-        with:
-          name: formal-counterexamples
-          path: build/formal/**/engine_*/trace*.vcd
+          name: regress-${{ matrix.step }}
+          if-no-files-found: ignore
+          path: |
+            build/regress/
+            **/results*.xml
+            build/formal/**/engine_*/trace*.vcd

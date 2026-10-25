@@ -1,0 +1,68 @@
+# Tools for the repository's own make targets: one pinned OSS CAD Suite build
+# (yosys, iverilog, verilator, sby, mcy), cached as the release archive, and
+# Python 3.11 with the pinned packages of .github/ci-requirements.txt.
+name: setup-tse
+description: Install the pinned OSS CAD Suite and Python packages
+inputs:
+  oss-cad-suite:
+    description: OSS CAD Suite release tag (YYYY-MM-DD)
+    default: '2026-10-11'
+runs:
+  using: composite
+  steps:
+    - name: Archive name
+      id: suite
+      shell: bash
+      env:
+        TAG: ${{ inputs.oss-cad-suite }}
+      run: |
+        name="oss-cad-suite-linux-x64-${TAG//-/}.tgz"
+        echo "name=$name" >> "$GITHUB_OUTPUT"
+        echo "url=https://github.com/YosysHQ/oss-cad-suite-build/releases/download/$TAG/$name" >> "$GITHUB_OUTPUT"
+
+    - name: Restore OSS CAD Suite archive
+      id: cache
+      uses: actions/cache@v4
+      with:
+        path: ~/.cache/oss-cad-suite/${{ steps.suite.outputs.name }}
+        key: ${{ steps.suite.outputs.name }}
+
+    - name: Download OSS CAD Suite
+      if: steps.cache.outputs.cache-hit != 'true'
+      shell: bash
+      env:
+        URL: ${{ steps.suite.outputs.url }}
+        NAME: ${{ steps.suite.outputs.name }}
+      run: |
+        mkdir -p ~/.cache/oss-cad-suite
+        curl -fsSL --retry 3 -o ~/.cache/oss-cad-suite/"$NAME" "$URL"
+
+    - name: Unpack OSS CAD Suite
+      shell: bash
+      env:
+        NAME: ${{ steps.suite.outputs.name }}
+      run: |
+        dir="$RUNNER_TEMP/oss-cad-suite"
+        rm -rf "$dir" && mkdir -p "$dir"
+        tar -xzf ~/.cache/oss-cad-suite/"$NAME" -C "$dir" --strip-components=1
+        echo "$dir/bin" >> "$GITHUB_PATH"
+
+    # after the suite, so this Python and its cocotb-config come first on PATH
+    - uses: actions/setup-python@v6
+      with:
+        python-version: '3.11'
+        cache: pip
+        cache-dependency-path: .github/ci-requirements.txt
+
+    - name: Python packages
+      shell: bash
+      run: pip install -r .github/ci-requirements.txt
+
+    - name: Versions
+      shell: bash
+      run: |
+        yosys -V
+        { iverilog -V 2>&1 || true; } | sed -n 1p
+        verilator --version
+        python --version
+        cocotb-config --version

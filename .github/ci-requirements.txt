@@ -1,0 +1,6 @@
+# Python packages for the verify and nightly workflows (the template's test
+# job keeps test/requirements.txt).
+cocotb==2.1.0
+hypothesis==6.169.0
+pytest==9.1.1
+PyYAML==6.0.3

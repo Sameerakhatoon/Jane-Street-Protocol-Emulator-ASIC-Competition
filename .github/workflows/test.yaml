@@ -6,12 +6,15 @@ jobs:
     steps:
       - name: Checkout repo
         uses: actions/checkout@v6
-        with:
-          submodules: recursive
 
+      # The same Icarus build the gate-level job of gds.yaml installs, so RTL
+      # and gate-level runs use one simulator version.
       - name: Install iverilog
         shell: bash
-        run: sudo apt-get update && sudo apt-get install -y iverilog
+        run: |
+          wget -q https://github.com/TinyTapeout/iverilog/releases/download/v13.0/iverilog_13.0-1_amd64.deb
+          sudo apt-get update -y
+          sudo apt-get install -y ./iverilog_13.0-1_amd64.deb
 
       # Set Python up and install cocotb
       - name: Setup python
@@ -29,6 +32,7 @@ jobs:
           make clean
           make
           # make will return success even if the test fails, so check for failure in the results.xml
+          test -f results.xml
           ! grep failure results.xml
 
       - name: Test Summary

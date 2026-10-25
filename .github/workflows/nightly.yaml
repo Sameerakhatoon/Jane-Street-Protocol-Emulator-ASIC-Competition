@@ -1,5 +1,9 @@
-# Nightly: many more random Hypothesis examples with a cached example database,
-# and mutation coverage of the CRC unit.
+# Nightly long suites: many random Hypothesis examples with the example
+# database kept between runs, Verilator as the second simulator, formal with
+# the window checker, mutation coverage, the slow spec build rows and the
+# compiler fuzz run. The schedule only runs when repository variable
+# TSE_NIGHTLY is on (it costs hours of runner time); a manual run always works.
+# TSE_RUNNER picks another runner label, as in verify.
 name: nightly
 on:
   schedule:
@@ -7,38 +11,75 @@ on:
   workflow_dispatch:
 
 jobs:
-  long-random:
-    runs-on: ubuntu-24.04
-    if: hashFiles('src/tse_seq.sv') != ''
-    timeout-minutes: 240
+  long:
+    if: github.event_name != 'schedule' || vars.TSE_NIGHTLY == 'on'
+    name: ${{ matrix.job }}
+    runs-on: ${{ vars.TSE_RUNNER || 'ubuntu-24.04' }}
+    timeout-minutes: 300
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - job: lockstep
+            make: lockstep HYP_EXAMPLES=2000 CI=false
+          - job: lane-lockstep
+            make: lane-lockstep LANE_EXAMPLES=1000 CI=false
+          - job: block-lockstep
+            make: block-lockstep BLOCK_EXAMPLES=1000 CI=false
+          - job: verilator
+            make: verilator-lockstep
+          - job: formal
+            make: formal tsec-proof
+          - job: mcy
+            make: mcy
+          - job: specs-slow
+            make: specs-test-slow
+          - job: fuzz
+            make: tsec-fuzz judges-test JUDGES_HYP_EXAMPLES=500
     steps:
       - uses: actions/checkout@v6
-      - uses: YosysHQ/setup-oss-cad-suite@v4
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-      - uses: actions/setup-python@v6
-        with:
-          python-version: '3.11'
-      - run: pip install cocotb==2.1.0 hypothesis==6.169.0 pytest==9.1.1
+      - uses: ./.github/actions/setup-tse
       - uses: actions/cache@v4
         with:
-          path: verif/lockstep/sim_build/.hypothesis-*
-          key: hypothesis-db-${{ github.run_id }}
-          restore-keys: hypothesis-db-
-      - run: make lockstep lane-lockstep block-lockstep verilator-lockstep HYP_EXAMPLES=2000 LANE_EXAMPLES=1000 BLOCK_EXAMPLES=1000 CI=false
-
-  mutation:
-    runs-on: ubuntu-24.04
-    if: hashFiles('src/tse_crc.sv') != ''
-    timeout-minutes: 300
-    steps:
-      - uses: actions/checkout@v6
-      - uses: YosysHQ/setup-oss-cad-suite@v4
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-      - run: make mcy | tee mcy.txt
+          path: verif/*/sim_build/.hypothesis-*
+          key: hypothesis-${{ matrix.job }}-${{ github.run_id }}
+          restore-keys: hypothesis-${{ matrix.job }}-
+      - name: make
+        env:
+          ARGS: ${{ matrix.make }}
+        run: make $ARGS 2>&1 | tee nightly.log
       - uses: actions/upload-artifact@v7
         if: always()
         with:
-          name: mcy-status
-          path: mcy.txt
+          name: nightly-${{ matrix.job }}
+          if-no-files-found: ignore
+          path: |
+            nightly.log
+            **/results*.xml
+            build/formal/**/status
+            build/formal/**/engine_*/trace*.vcd
+            build/tsec-proof/**/status
+
+  # Real OpenOCD (JTAG, SWD) and Linux ping through a TAP device against the
+  # stand-in top, then the judges on the recorded traces. Hosted Ubuntu runners
+  # block the unprivileged user namespace the TAP demo needs, so the judging
+  # step only runs on a self-hosted runner; elsewhere the traces are uploaded.
+  demos:
+    if: github.event_name != 'schedule' || vars.TSE_NIGHTLY == 'on'
+    runs-on: ${{ vars.TSE_RUNNER || 'ubuntu-24.04' }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/setup-tse
+      - name: OpenOCD
+        run: command -v openocd || { sudo apt-get update -y && sudo apt-get install -y openocd; }
+      - run: make judges-demos
+      - name: Judge the traces
+        if: vars.TSE_RUNNER != ''
+        run: make judges-run
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: nightly-demos
+          if-no-files-found: ignore
+          path: build/demos/
