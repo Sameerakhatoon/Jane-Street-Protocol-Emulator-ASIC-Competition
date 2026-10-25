@@ -39,16 +39,16 @@ module tse_cfg_bank #(
     logic [AW-1:0]    sel_q;
     logic [WORDS-1:0] en_q;
     logic [1:0]       ph;
-    logic             clr_q;
+    logic             clr_nq;
     logic [WORDS*32-1:0] qraw;
 
     assign busy = ph == 2'd1 || ph == 2'd2;
 
     always_ff @(posedge clk or negedge rst_n)
         if (!rst_n) begin
-            wd_q <= '0; sel_q <= '0; en_q <= '0; ph <= 2'd0; clr_q <= 1'b0;
+            wd_q <= '0; sel_q <= '0; en_q <= '0; ph <= 2'd0; clr_nq <= 1'b1;
         end else begin
-            clr_q <= clr;
+            clr_nq <= !clr;
             en_q  <= '0;
             case (ph)
                 2'd1:    begin en_q[sel_q] <= 1'b1; ph <= 2'd2; end
@@ -63,11 +63,11 @@ module tse_cfg_bank #(
     for (genvar i = 0; i < WORDS; i++) begin : g_word
         if (LATCH) begin : g_lat
             always_latch
-                if (clr_q)        qraw[32*i +: 32] = '0;
+                if (!clr_nq)      qraw[32*i +: 32] = '0;
                 else if (en_q[i]) qraw[32*i +: 32] = wd;
         end else begin : g_ff
             always_ff @(posedge clk)
-                if (clr_q)        qraw[32*i +: 32] <= '0;
+                if (!clr_nq)      qraw[32*i +: 32] <= '0;
                 else if (en_q[i]) qraw[32*i +: 32] <= wd;
         end
     end
