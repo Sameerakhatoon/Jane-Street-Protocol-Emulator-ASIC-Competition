@@ -12,6 +12,7 @@ from fractions import Fraction as Fr
 from . import isa
 from .diag import TseError
 from .fsmsched import Scheduler
+from . import assist_events, frametime     # frame roles
 from .lower import Lowering, frame_shape
 from .timing import Violation, analyse
 
@@ -93,6 +94,8 @@ def compile_role(sym, role, lane, fclk, fm, ppm, pads=(0, 25), window=(0, 128)):
     """Try each pacing strategy in order; the first that proves every obligation wins.
     A role outside the paced-frame shape goes to the state-machine lowering instead.
     Raises TseError for shapes and resources the lowering cannot handle (R300, R301, R307)."""
+    if assist_events.is_frame_role(sym, role):        # frame roles: send, recv, assist events
+        return frametime.compile_role(sym, role, lane, fclk, fm, ppm, pads)
     res = RoleResult(role, lane)
     try:
         frame_shape(role)

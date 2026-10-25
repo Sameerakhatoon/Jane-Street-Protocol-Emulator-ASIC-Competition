@@ -22,6 +22,9 @@ def hexw(v):
 
 def lane_config(sym, res, fclk):
     """(regs, pins, checks, notes) of one compiled role; R303, R304, R318, R319 on lane limits."""
+    if res.kind == "frames":                            # frame roles
+        from .frameconf import lane_config as frame_config
+        return frame_config(sym, res, fclk)
     role, lane, att = res.role, res.lane, res.chosen
     if res.kind == "fsm":
         f = att.fsm

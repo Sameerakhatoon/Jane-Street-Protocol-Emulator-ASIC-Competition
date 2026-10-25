@@ -106,6 +106,8 @@ def rejection_diags(res):
     """One diagnostic per unproven obligation of the attempt that came closest."""
     if res.kind == "fsm":
         return fsm_rejection_diags(res)
+    if res.kind == "frames":                            # frame roles
+        return res.tried[0].violations
     best = min(reversed(res.tried), key=lambda t: len({(v.code, v.span) for v in t.report.violations}))
     others = [t for t in res.tried if t is not best]
     seen, out = set(), []
@@ -160,7 +162,7 @@ def build(args, src, path):
             rejected.append(e)
             continue
         text += report.role_section(res, rows, fclk, pads)
-        if res.kind == "fsm":
+        if res.kind in ("fsm", "frames"):
             for t in res.tried:
                 warned += t.warnings if t is res.chosen or res.chosen is None else []
         if rows is None:
@@ -227,12 +229,14 @@ def write_outputs(out, stem, sym, accepted, text, emit, fclk, fm=None, pads=(0, 
         put(f"{stem}.lir", "\n".join(body))
     if "xml" in emit:
         for _, res, _, _ in accepted:
-            if res.kind == "fsm":
+            if res.kind in ("fsm", "frames"):
                 continue
             put(f"{stem}_{res.role.name.text}.xml", uppaal.export(res.role, res.chosen.low))
     if "proof" in emit:
         ticks = tuple(Fr(p) * fclk / 10**9 for p in pads[:2])
         for lane, res, rows, cfg in accepted:
+            if res.kind == "frames":        # frame roles have no proof harness yet
+                continue
             if res.kind == "fsm":
                 obs = proofgen.fsm_obs(sym, res.role, lane, res.chosen, fm, fclk)
                 window = [(w.addr + k, w.init if k == 0 and w.init is not None else 0)

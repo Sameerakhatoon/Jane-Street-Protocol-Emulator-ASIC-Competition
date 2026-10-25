@@ -8,7 +8,7 @@ from fractions import Fraction as Fr
 from .codegen import listing_lines
 
 STRATEGY_NAME = {"dly": "DLY pacing", "timer": "bit-timer pacing", "rolled": "rolled loops",
-                 "unrolled": "unrolled loops"}
+                 "unrolled": "unrolled loops", "frames": "frame engine"}
 
 
 def header(sym, fclk, fm, ppm):
@@ -112,6 +112,9 @@ def fsm_obligations(att, fclk, pads):
 
 
 def role_section(res, rows, fclk=None, pads=(0, 25)):
+    if res.kind == "frames":                            # frame roles
+        from .frametime import section
+        return section(res, rows, fclk, pads)
     if res.kind == "fsm":
         return fsm_section(res, rows, fclk, pads)
     role = res.role
