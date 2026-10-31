@@ -19,7 +19,9 @@ lines, through the U line of the pin server.
 import json
 import os
 import shlex
+import subprocess
 import sys
+import threading
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "host"))
@@ -132,7 +134,43 @@ def build_blocks(lanes, pads, inputs, extra=()):
 
 
 class BusPipePins(PipePins):
-    """The pin pipe plus the U line: run until the chip moves a uio line."""
+    """The pin pipe plus the U line (run until the chip moves a uio line),
+    the A line (adapters on or off) and the V line (start the VCD). With
+    log, the simulator's stderr (adapter addresses such as 'pty /dev/pts/N')
+    is collected by a thread, so it never blocks on a full pipe."""
+
+    def __init__(self, argv, log=False):
+        if not log:
+            PipePins.__init__(self, argv)
+            self.lines = None
+            return
+        self.proc = subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                     stderr=subprocess.PIPE, text=True, bufsize=1)
+        self.buf = []
+        self.ui_in, self.uio_in, self.rst_n = 0, 0, 1
+        self.lines = []
+        self.seen = threading.Condition()
+        threading.Thread(target=self._drain, daemon=True).start()
+
+    def _drain(self):
+        for ln in self.proc.stderr:
+            with self.seen:
+                self.lines.append(ln.rstrip("\n"))
+                self.seen.notify_all()
+
+    def wait_line(self, prefix, timeout=30):
+        """The first stderr line that starts with prefix."""
+        with self.seen:
+            ok = self.seen.wait_for(lambda: any(x.startswith(prefix) for x in self.lines), timeout)
+            if not ok:
+                raise IOError("simulator printed no '%s' line" % prefix)
+            return next(x for x in self.lines if x.startswith(prefix))
+
+    def adapters(self, on):
+        self.buf.append("A %x" % (1 if on else 0))
+
+    def vcd_start(self):
+        self.buf.append("V")
 
     def run_until(self, n, mask):
         """(cycles run, uo_out, uio_out, uio_oe)."""
@@ -256,8 +294,9 @@ def uart_edges(start, data, baud, gap_bits=0):
 class Chip:
     """The Verilated chip behind the pin pipe, with a session on top."""
 
-    def __init__(self, sim_cmd):
-        self.pins = DrivenPins(BusPipePins(shlex.split(sim_cmd)))
+    def __init__(self, sim_cmd, log=False):
+        self.pipe = BusPipePins(shlex.split(sim_cmd), log)
+        self.pins = DrivenPins(self.pipe)
         self.session = Session(PinLink(self.pins))
 
     def load(self, blocks):
@@ -277,6 +316,9 @@ class Chip:
 
     def close(self):
         self.pins.close()
+
+    def log(self):
+        return list(self.pipe.lines or [])
 
 
 def chip_reg(name, index=0):

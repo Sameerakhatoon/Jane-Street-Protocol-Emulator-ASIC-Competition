@@ -65,10 +65,11 @@ static void usage(void){
         "  --fst-from C           first cycle to dump (0)\n"
         "  --fst-cycles N         cycles to dump (0 = until exit)\n"
         "  --vcd FILE             pins-only VCD for sigrok (1 ns timescale)\n"
+        "  --vcd-hold             write no VCD samples until the pin server's V line\n"
         "  --free-run             run time even when no adapter is busy\n"
         "  --cycles N             stop after N cycles (0 = until SIGINT or SIGTERM)\n"
         "  --bench N              run N cycles flat out, print cycles per second\n"
-        "  --pin-server           pins from stdin: S ui uio rst, T n, R, U n mask, Q (hex)\n"
+        "  --pin-server           pins from stdin: S ui uio rst, T n, R, U n mask, A on, V, Q (hex)\n"
         "  --quantum N            cycles per batch between poll() calls (4096)\n"
         "PIN is ui0..ui7, uo0..uo7, uio0..uio7 or a pinout name (XIO2, RUN.SPI_MISO).\n",
         TOP_NAME, DEF_TX, DEF_IN);
@@ -81,10 +82,44 @@ static void usage(void){
 //   U <n> <mask>                 run up to n cycles, stopping after the first one in
 //                                which uio_out or uio_oe changed under mask; reply
 //                                "<cycles run> <uo_out> <uio_out> <uio_oe>\n"
+//   A <0|1>                      stop or start the adapters (on at start)
+//   V                            start the VCD samples (see --vcd-hold)
 //   Q                            quit
-// All numbers hex. Adapters still tick, but not while rst_n is low.
+// All numbers hex. Adapters tick while on and rst_n is high, and their host
+// fds are polled every PIN_POLL cycles, so a terminal on the UART pty talks
+// to the chip while the host program owns time. S leaves the input bits an
+// adapter drives alone.
+#define PIN_POLL 256
+
+typedef struct PinServer {
+    Harness* h;
+    int      on;
+    uint64_t polled;
+} PinServer;
+
+static void pin_step(PinServer* s){
+    Harness* h = s->h;
+    if(s->on && h->n_ad && h->cycle - s->polled >= PIN_POLL){
+        harness_poll(h, 0);
+        s->polled = h->cycle;
+    }
+    harness_step(h, s->on && h->pins.rst_n);
+}
+
+static void pin_set_inputs(Harness* h, unsigned ui, unsigned uio, unsigned rst){
+    uint8_t own_ui = 0, own_uio = 0;
+    for(int i = 0; i < h->n_ad; i++){
+        own_ui |= h->ad[i]->own_ui;
+        own_uio |= h->ad[i]->own_uio;
+    }
+    h->pins.ui_in = (uint8_t)((ui & ~own_ui) | (h->pins.ui_in & own_ui));
+    h->pins.uio_in = (uint8_t)((uio & ~own_uio) | (h->pins.uio_in & own_uio));
+    h->pins.rst_n = rst ? 1 : 0;
+}
+
 static int pin_server(Harness* h){
     char line[128];
+    PinServer s = {h, 1, 0};
     while(fgets(line, sizeof(line), stdin)){
         unsigned a, b, c;
         unsigned long long n;
@@ -92,15 +127,21 @@ static int pin_server(Harness* h){
         case 'S':
             if(sscanf(line + 1, "%x %x %x", &a, &b, &c) != 3)
                 goto bad;
-            h->pins.ui_in = (uint8_t)a;
-            h->pins.uio_in = (uint8_t)b;
-            h->pins.rst_n = c ? 1 : 0;
+            pin_set_inputs(h, a, b, c);
             break;
         case 'T':
             if(sscanf(line + 1, "%llx", &n) != 1)
                 goto bad;
             while(n--)
-                harness_step(h, h->pins.rst_n);
+                pin_step(&s);
+            break;
+        case 'A':
+            if(sscanf(line + 1, "%x", &a) != 1)
+                goto bad;
+            s.on = a != 0;
+            break;
+        case 'V':
+            h->vcd_hold = 0;
             break;
         case 'R':
             printf("%x\n", h->pins.uo_out);
@@ -113,7 +154,7 @@ static int pin_server(Harness* h){
                 goto bad;
             uint8_t o0 = h->pins.uio_out & a, e0 = h->pins.uio_oe & a;
             while(ran < n){
-                harness_step(h, h->pins.rst_n);
+                pin_step(&s);
                 ran++;
                 if((h->pins.uio_out & a) != o0 || (h->pins.uio_oe & a) != e0)
                     break;
@@ -158,6 +199,14 @@ static void announce(FILE* f, Adapter* uart, Adapter* sp, Adapter* rbb, Adapter*
     fflush(f);
 }
 
+static void uart_report(Adapter* uart){
+    if(!uart)
+        return;
+    unsigned long in, out, bad;
+    uart_pty_stats(uart, &in, &out, &bad);
+    fprintf(stderr, "tse_sim: uart %lu bytes in, %lu out, %lu framing errors\n", in, out, bad);
+}
+
 // "a,b,c" -> exactly n pins
 static int parse_pins(const char* s, PinRef* r, int n){
     char buf[128];
@@ -189,6 +238,7 @@ int main(int argc, char** argv){
     const char* vcd_path = NULL;
     uint64_t    stop_at = 0;
     int         pin_srv = 0;
+    int         vcd_hold = 0;
     int         rbb_port = -1, rbb_settle = 4;
     const char* jtag_pins = "ui2,ui3,ui4,uo3";
     const char* swd_pins = "ui5,uio2";
@@ -202,6 +252,7 @@ int main(int argc, char** argv){
         if(!strcmp(o, "--uart")){ want_uart = 1; continue; }
         if(!strcmp(o, "--free-run")){ free_run = 1; continue; }
         if(!strcmp(o, "--pin-server")){ pin_srv = 1; continue; }
+        if(!strcmp(o, "--vcd-hold")){ vcd_hold = 1; continue; }
         if(!strcmp(o, "--help") || !strcmp(o, "-h")){ usage(); return 0; }
         if(!v || strncmp(o, "--", 2)){ usage(); return 2; }
         i++;
@@ -242,6 +293,7 @@ int main(int argc, char** argv){
         h.quantum = quantum;
     h.free_run = free_run;
     h.stop_at = stop_at;
+    h.vcd_hold = vcd_hold;
     if(vcd_path && harness_vcd(&h, vcd_path) < 0)
         return 1;
     if(fst_path && harness_trace(&h, fst_path, fst_from, fst_cycles) < 0)
@@ -329,6 +381,7 @@ int main(int argc, char** argv){
         announce(stderr, uart, sp, rbb, can);
         rc = pin_server(&h);
         fprintf(stderr, "tse_sim: top %s, %llu cycles served\n", TOP_NAME, (unsigned long long)h.cycle);
+        uart_report(uart);
     }else if(bench){
         double c0 = cpu_s();
         for(uint64_t i = 0; i < bench; i++)
@@ -345,12 +398,7 @@ int main(int argc, char** argv){
         double dt = now_s() - t0;
         fprintf(stderr, "tse_sim: top %s, %llu cycles (%.3f ms of chip time) in %.2f s wall\n",
                 TOP_NAME, (unsigned long long)h.cycle, h.cycle * 1e3 / TSE_HZ, dt);
-        if(uart){
-            unsigned long in, out, bad;
-            uart_pty_stats(uart, &in, &out, &bad);
-            fprintf(stderr, "tse_sim: uart %lu bytes in, %lu out, %lu framing errors\n",
-                    in, out, bad);
-        }
+        uart_report(uart);
         if(rbb){
             RbbStats s;
             rbb_stats(rbb, &s);

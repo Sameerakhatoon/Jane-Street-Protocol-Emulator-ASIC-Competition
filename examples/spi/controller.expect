@@ -1,0 +1,5 @@
+# The controller lane: JEDEC ID 9F with three dummy bytes, then read status
+# 05 with one; the stand-in flash answers EF 40 15 and 00, MISO low during
+# the opcode.
+mosi=9F,00,00,00 miso=00,EF,40,15
+mosi=05,00 miso=00,00

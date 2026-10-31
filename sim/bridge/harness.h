@@ -28,6 +28,13 @@
 //
 // Open-drain buses (WiredAnd) registered with harness_wire are resolved
 // once per step, after the adapter ticks and before the model inputs.
+//
+// A uio pad the chip drives reads back its own level on uio_in, as the
+// Tiny Tapeout pad does, so one lane can listen to a pin another lane
+// drives and the VCD shows the pad level on uio_in.
+//
+// vcd_hold keeps the pins-only VCD closed to samples until it is cleared
+// (the pin server's V line), so a trace can start when the lanes start.
 
 #include <stdint.h>
 #include "adapter.h"
@@ -58,6 +65,7 @@ typedef struct Harness {
     int               n_wire;
     int               quantum;      // cycles per batch between poll() calls
     int               idle_ms;      // poll() timeout when nobody is busy
+    int               vcd_hold;     // 1: no VCD samples yet
 } Harness;
 
 int  harness_init(Harness* h, int argc, char** argv);
@@ -67,6 +75,7 @@ int  harness_add(Harness* h, Adapter* a);     // calls a->init
 int  harness_wire(Harness* h, WiredAnd* w);
 void harness_reset(Harness* h, int cycles);   // rst_n low, adapters not ticked
 void harness_step(Harness* h, int tick_adapters);
+int  harness_poll(Harness* h, int timeout_ms);  // poll adapter fds; 1 if one is busy
 void harness_run(Harness* h, volatile int* stop);
 void harness_teardown(Harness* h);
 

@@ -103,6 +103,7 @@ void harness_step(Harness* h, int tick_adapters){
     if(tick_adapters)
         for(int i = 0; i < h->n_ad; i++)
             h->ad[i]->tick(h->ad[i], &h->pins, h->cycle);
+    h->pins.uio_in = (uint8_t)((h->pins.uio_in & ~h->pins.uio_oe) | (h->pins.uio_out & h->pins.uio_oe));
     for(int i = 0; i < h->n_wire; i++)
         wired_and_resolve(h->wire[i], &h->pins);
     int dump = h->fst && h->cycle >= h->fst_from && h->cycle < h->fst_until;
@@ -117,7 +118,7 @@ void harness_step(Harness* h, int tick_adapters){
     if(dump)
         fst_dump(h, t + (cycle_ps(h->cycle + 1) - t) / 2);
     pull_outputs(h);
-    if(h->vcd.f)
+    if(h->vcd.f && !h->vcd_hold)
         vcd_pins_put(&h->vcd, &h->pins, h->cycle);
     h->cycle++;
 }
@@ -129,33 +130,41 @@ void harness_reset(Harness* h, int cycles){
     h->pins.rst_n = 1;
 }
 
-void harness_run(Harness* h, volatile int* stop){
+int harness_poll(Harness* h, int timeout_ms){
     struct pollfd pfd[HARNESS_MAX_ADAPTERS];
     int           who[HARNESS_MAX_ADAPTERS];
-    int           busy = 0;
+    int           n = 0, busy = 0;
+
+    for(int i = 0; i < h->n_ad; i++){
+        if(h->ad[i]->fd < 0)
+            continue;
+        pfd[n].fd = h->ad[i]->fd;
+        pfd[n].events = POLLIN;
+        pfd[n].revents = 0;
+        who[n++] = i;
+    }
+    if(poll(pfd, n, timeout_ms) < 0 && errno != EINTR){
+        perror("harness: poll");
+        return -1;
+    }
+    for(int i = 0; i < h->n_ad; i++){
+        short rev = 0;
+        for(int k = 0; k < n; k++)
+            if(who[k] == i)
+                rev = pfd[k].revents;
+        busy |= h->ad[i]->poll(h->ad[i], rev);
+    }
+    return busy;
+}
+
+void harness_run(Harness* h, volatile int* stop){
+    int busy = 0;
 
     while(!*stop && (!h->stop_at || h->cycle < h->stop_at)){
-        int n = 0;
-        for(int i = 0; i < h->n_ad; i++){
-            if(h->ad[i]->fd < 0)
-                continue;
-            pfd[n].fd = h->ad[i]->fd;
-            pfd[n].events = POLLIN;
-            pfd[n].revents = 0;
-            who[n++] = i;
-        }
-        if(poll(pfd, n, busy ? 0 : h->idle_ms) < 0 && errno != EINTR){
-            perror("harness: poll");
+        int r = harness_poll(h, busy ? 0 : h->idle_ms);
+        if(r < 0)
             return;
-        }
-        busy = h->free_run;
-        for(int i = 0; i < h->n_ad; i++){
-            short rev = 0;
-            for(int k = 0; k < n; k++)
-                if(who[k] == i)
-                    rev = pfd[k].revents;
-            busy |= h->ad[i]->poll(h->ad[i], rev);
-        }
+        busy = h->free_run | r;
         int yield = 0;
         for(int q = 0; busy && !yield && q < h->quantum; q++){
             harness_step(h, 1);

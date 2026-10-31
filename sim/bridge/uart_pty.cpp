@@ -44,6 +44,13 @@ static uint8_t ring_pop(UartPty* u){
     return u->ring[u->tail++ & (UART_RING - 1)];
 }
 
+static void own_pin(Adapter* a, PinRef r){
+    if(r.bus == PIN_UI)
+        a->own_ui |= (uint8_t)(1u << r.bit);
+    if(r.bus == PIN_UIO)
+        a->own_uio |= (uint8_t)(1u << r.bit);
+}
+
 static int uart_init(Adapter* a, Pins* p){
     UartPty* u = (UartPty*)a->ctx;
     int mfd = posix_openpt(O_RDWR | O_NOCTTY);
@@ -65,10 +72,15 @@ static int uart_init(Adapter* a, Pins* p){
     fcntl(mfd, F_SETFL, O_NONBLOCK);
     a->fd = mfd;
     u->prev_tx = 1;
-    if(u->cfg.in_mode == UART_IN_LINE)
+    if(u->cfg.in_mode == UART_IN_LINE){
         pin_set(p, u->cfg.rx, 1);
-    if(u->cfg.in_mode == UART_IN_BUS)
+        own_pin(a, u->cfg.rx);
+    }
+    if(u->cfg.in_mode == UART_IN_BUS){
         pin_set(p, u->cfg.strobe, 0);
+        a->own_ui = 0xff;
+        own_pin(a, u->cfg.strobe);
+    }
     return 0;
 }
 

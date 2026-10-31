@@ -25,6 +25,9 @@
 // Rules: one thread, adapters never call eval(), never block, never
 // tick during reset, and see outputs as they were after the last
 // rising edge. yield = 1 (set in tick) ends the current quantum early.
+// own_ui and own_uio mark the input bits the adapter drives (set in init):
+// the pin server's S line leaves them alone, so a host program and an
+// adapter can share the input bytes.
 
 #include <stdint.h>
 
@@ -84,6 +87,8 @@ struct Adapter {
     void*       ctx;
     int         fd;         // host fd the harness polls for input, or -1
     int         yield;      // set in tick: end this quantum, the harness clears it
+    uint8_t     own_ui;     // input bits this adapter drives
+    uint8_t     own_uio;
     int  (*init)(Adapter* a, Pins* p);
     int  (*poll)(Adapter* a, short revents);
     void (*tick)(Adapter* a, Pins* p, uint64_t cycle);
