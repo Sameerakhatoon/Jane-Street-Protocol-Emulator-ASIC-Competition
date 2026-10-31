@@ -1,0 +1,21 @@
+[tasks]
+sdc
+strict
+
+[options]
+mode prove
+depth 8
+multiclock on
+
+[engines]
+smtbmc yices
+
+[script]
+strict: verilog_defines -DSTRICT
+read_rtlil fp_core.il
+read -formal fp_props.sv
+prep -top fp_props
+
+[files]
+fp_core.il
+fp_props.sv
