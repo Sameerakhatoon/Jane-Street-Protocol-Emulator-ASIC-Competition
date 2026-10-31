@@ -1,0 +1,40 @@
+# Mutation coverage of tse_resp_rule (two rules, 16-bit patterns). test_eq:
+# does the mutant change any output (original and mutant side by side, any
+# constant configuration, every input)? test_fm: the kill test, the rule
+# proofs on the mutant as bounded checks of 16 cycles.
+[options]
+size 40
+tags COVERED UNCOVERED NOCHANGE
+
+[script]
+read -sv tse_resp_rule.sv
+prep -top tse_resp_rule
+
+[files]
+tse_resp_rule.sv
+rule_props.sv
+test_eq.sv
+test_eq.sby
+test_fm.sby
+run_test.sh
+
+[logic]
+if result("test_eq") == "PASS":
+    tag("NOCHANGE")
+elif result("test_fm") == "PASS":
+    tag("UNCOVERED")
+else:
+    tag("COVERED")
+
+[report]
+c, u, n = tags("COVERED"), tags("UNCOVERED"), tags("NOCHANGE")
+print("killed %d of %d output-changing mutants (%.1f%%), %d had no effect"
+      % (c, c + u, 100.0 * c / max(1, c + u), n))
+
+[test test_eq]
+expect PASS FAIL
+run bash $PRJDIR/run_test.sh test_eq
+
+[test test_fm]
+expect PASS FAIL
+run bash $PRJDIR/run_test.sh test_fm

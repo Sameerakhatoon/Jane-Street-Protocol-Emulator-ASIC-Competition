@@ -56,6 +56,7 @@ class SeqOut:
     sig: object = None         # (mask, val)
     emit: object = None        # (code, x[7:0], cycle)
     timer_ack: int = 0
+    pin_wr: int = 0            # PINS bits the instruction dispatching now writes
 
 
 class Seq:
@@ -210,6 +211,7 @@ class Seq:
             m, v = imm >> 4, imm & 0xF
             if dst == 0:
                 self.pins = (pins & ~m | v & m) & 0xF
+                o.pin_wr = m
             elif dst == 1:
                 self.dirs = (dirs & ~m | v & m) & 0xF
             elif dst == 2:
@@ -235,6 +237,7 @@ class Seq:
                 self.y = v
             elif dst == 2:
                 self.pins = v & 0xF
+                o.pin_wr = 0xF
             elif dst == 3:
                 self.dirs = v & 0xF
             elif dst == 4:
@@ -254,6 +257,7 @@ class Seq:
             dst = f["dst"]
             if dst == 0:
                 self.pins = pins & ~m4 & 0xF | bits & m4
+                o.pin_wr = m4
             elif dst == 1:
                 self.dirs = dirs & ~m4 & 0xF | bits & m4
             elif dst == 2:
@@ -312,6 +316,7 @@ class Seq:
             b0, b1 = self.cfg.ss_base, (self.cfg.ss_base + 1) & 3
             p = self.pins & ~((1 << b0) | (1 << b1)) & 0xF
             self.pins = p | ((ss & 1) << b0) | (((ss >> 1) & 1) << b1)
+            o.pin_wr |= (1 << b0) | (1 << b1)
         self.pc = npc
         ready = self.fetch.need(c, npc >> 1)
         if blocking is None:

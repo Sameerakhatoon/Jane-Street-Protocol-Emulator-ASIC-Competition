@@ -42,12 +42,35 @@ JOBS = {
          "MAN:     begin rx_bit <= rx_s ^ cfg_inv;", "MAN:     begin rx_bit <= h1 ^ cfg_inv;"),
     ]),
     "arb": ("arb", ["tse_slot_arb.sv"], [
-        ("idle_system_slot_to_lane", "ni3", "tse_slot_arb.sv",
+        ("idle_system_slot_to_lane", "ni2", "tse_slot_arb.sv",
          "gnt[i]  = req[i] && cnt[1:0] == 2'(i);",
          "gnt[i]  = req[i] && (cnt[1:0] == 2'(i) || (sys_slot && !sys_req && i == 1));"),
-        ("data_slot_off_by_one", "own3", "tse_slot_arb.sv",
+        ("data_slot_off_by_one", "own2", "tse_slot_arb.sv",
          "dgnt[i] = dreq[i] && sys_slot && cnt[3:2] == 2'(i);",
          "dgnt[i] = dreq[i] && cnt[1:0] == 2'd2 && cnt[3:2] == 2'(i);"),
+    ]),
+    "pmem": ("pmem", ["tse_slot_arb.sv", "tse_cfg_bank.sv", "tse_sram_512x32.sv", "tse_prog_mem.sv"], [
+        ("fallback_ignores_slot", "own", "tse_prog_mem.sv",
+         "f_gnt[i] = l_req[i] && l_fb[i] && cnt[1:0] == 2'(i);", "f_gnt[i] = l_req[i] && l_fb[i];"),
+        ("fallback_slot_lent_by_lane0", "ni", "tse_prog_mem.sv",
+         "f_gnt[i] = l_req[i] && l_fb[i] && cnt[1:0] == 2'(i);",
+         "f_gnt[i] = l_req[i] && l_fb[i] && (cnt[1:0] == 2'(i) || (i == 1 && !s_req[0]));"),
+        ("fallback_word_from_host_address", "own", "tse_prog_mem.sv",
+         "if (f_gnt != '0) fb_ra <= fa;", "if (f_gnt != '0) fb_ra <= h_addr[2:0];"),
+    ]),
+    "rule": ("rule", ["tse_resp_rule.sv"], [
+        ("tick_delay_one_late", "timing", "tse_resp_rule.sv",
+         "if (delayed && cedge) tk <= cfg_tdly;", "if (delayed && cedge) tk <= cfg_tdly + 8'd1;"),
+        ("offset_one_short", "timing", "tse_resp_rule.sv",
+         "assign wait0 = {1'b0, wctl[7:4]} + {4'd0, delayed};", "assign wait0 = {1'b0, wctl[7:4]};"),
+        ("chain_ignored", "chain", "tse_resp_rule.sv",
+         "&& (k == 0 || !cfg_ctl[14*k+13] || hit_flags[(k == 0) ? 0 : k - 1])", ""),
+        ("position_ignored", "ref", "tse_resp_rule.sv",
+         "&& (cfg_pos[9*k+8] || cfg_pos[9*k +: 8] == cnt);", ";"),
+        ("hold_ignored", "hold", "tse_resp_rule.sv",
+         "if (left == 4'd0) drv_en <= cfg_hold;", "if (left == 4'd0) drv_en <= 1'b0;"),
+        ("hold_never_released", "hold", "tse_resp_rule.sv",
+         "if (cfg_hold && seq_wr && !(any && wctl[10])) drv_en <= 1'b0;", ""),
     ]),
     "dpll": ("dpll", ["tse_dpll.sv"], [
         ("sample_strobe_repeats", None, "tse_dpll.sv",
@@ -82,13 +105,19 @@ def run_job(work, sby, task):
 
 def as_bmc(sby, depth=12):
     """Bug runs use BMC: a counterexample from abc pdr cannot always be replayed
-    into a trace, which sby reports as ERROR instead of FAIL."""
-    lines = []
+    into a trace, which sby reports as ERROR instead of FAIL. BUGRUN drops the
+    induction helpers and their register probes (the connect lines after an
+    "# induction helpers" line), so the named property alone must catch the
+    bug (a mutant may also optimise a probed register away)."""
+    lines, helpers = [], False
     for ln in sby.read_text().splitlines():
+        helpers = (helpers or ln.strip() == "# induction helpers") and ln.strip() != ""
         if ln.strip().endswith("mode prove"):
             pre = ln[:ln.index("mode")]
             lines += [pre + "mode bmc", pre + f"depth {depth}"]
-        else:
+        elif ln.strip() == "[script]":
+            lines += [ln, "verilog_defines -DBUGRUN"]
+        elif not (helpers and ln.startswith("connect -set ")):
             lines.append(ln.replace("abc pdr", "smtbmc yices"))
     sby.write_text("\n".join(lines) + "\n")
 

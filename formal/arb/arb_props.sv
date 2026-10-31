@@ -7,12 +7,12 @@
 //         timing (2-safety by self-composition).
 //  OWN:   fixed slot ownership in copy a: lane i is granted a fetch only
 //         when cnt mod 4 = i, a data access only when cnt = 4i + 3; the host
-//         only in its own cycle (cnt = 15 with 3 lanes) unless every lane is
+//         only in its own cycle (cnt = 15) unless every lane is
 //         stopped; at most one requester uses the memory in a cycle; a held
 //         fetch request is granted within 4 cycles.
 // all_stopped is 0: lane K is running, so not every lane is stopped.
 module arb_props #(
-  parameter int LANES = 3,
+  parameter int LANES = 2,
   parameter int K = 1
 ) (
   input logic                clk,
@@ -93,9 +93,9 @@ module arb_props #(
 `else
     for (int i = 0; i < LANES; i++) begin
       if (g_a[i]) assert (cnt_a[1:0] == 2'(i));
-      if (dg_a[i]) assert (LANES < 4 && cnt_a == 4'(4 * i + 3));
+      if (dg_a[i]) assert (cnt_a == 4'(4 * i + 3));
     end
-    if (sg_a) assert (LANES < 4 && cnt_a == 4'd15);
+    if (sg_a) assert (cnt_a == 4'd15);
     assert (users <= 1);
     assert (waited < 3'd4);
 `endif

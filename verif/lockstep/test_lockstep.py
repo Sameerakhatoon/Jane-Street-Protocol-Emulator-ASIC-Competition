@@ -56,9 +56,9 @@ async def search(dut, name, profile, setup_strategy):
 
 @cocotb.test()
 async def test_01_uart_directed(dut):
-    """UART TX at 8 cycles per bit on every lane, the host feeding two words."""
+    """UART TX at 8 cycles per bit on both lanes, the host feeding two words."""
     wave = [(2, 1 << 16), (60, 0), (2, 1 << 16), (200, 0)]
-    await directed(dut, UART + [E("JMP", cond=0, target=10)] * 6, range(3), wave, 240, ss_base=2)
+    await directed(dut, UART + [E("JMP", cond=0, target=10)] * 6, range(2), wave, 240, ss_base=2)
 
 
 @cocotb.test()

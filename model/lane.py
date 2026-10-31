@@ -99,7 +99,8 @@ class Lane:
             self.abort = 1
         clk_pin, rxpin = (self.rules.rule_clk >> 1) & 3, (lc >> 2) & 3
         self.rules.step(frame_rst, i.bit_valid, i.bit_in, i.bit_start,
-                        (i.pins >> clk_pin) & 1, (i.pins >> rxpin) & 1, i.crc_ok, i.tx_idle)
+                        (i.pins >> clk_pin) & 1, (i.pins >> rxpin) & 1, i.crc_ok, i.tx_idle,
+                        (o.pin_wr >> (lc & 3)) & 1)
         self.timer.step(frame_rst, o.timer_ack)
         due = [p for p in self.pending if p[0] == c + 1]
         for _, addr, val in due:

@@ -35,7 +35,7 @@ def test_lru_keeps_the_current_word():
     assert f.tags == [2, 1]
 
 
-@pytest.mark.parametrize("lane", [0, 1, 2])
+@pytest.mark.parametrize("lane", [0, 1])
 def test_uart_layout1(lane):
     assert uart_runs(UART, lane) == LAYOUT1
 
@@ -60,6 +60,6 @@ def test_square_wave(entries, lat, want):
 
 
 def test_run_dispatches_first_instruction_at_lane_plus_one():
-    for lane in range(4):
+    for lane in range(2):
         _, _, disp = run_seq([E("DLY")] * 4, 8, lane)
         assert dispatch_cycles(disp)[0] == (lane + 1, 0)

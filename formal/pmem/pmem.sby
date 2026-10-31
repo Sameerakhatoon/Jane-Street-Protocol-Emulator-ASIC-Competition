@@ -1,0 +1,27 @@
+[tasks]
+ni   NI
+own  OWN
+
+[options]
+mode prove
+depth 20
+
+[engines]
+smtbmc yices
+
+[script]
+NI: verilog_defines -DNI
+read -formal tse_slot_arb.sv tse_cfg_bank.sv tse_sram_512x32.sv pmem_props.sv
+read -formal sram_free.sv
+read -formal tse_prog_mem.sv
+prep -top pmem_props
+flatten
+OWN: connect -set p_fb_q a.fb_q
+
+[files]
+tse_slot_arb.sv
+tse_cfg_bank.sv
+tse_sram_512x32.sv
+sram_free.sv
+tse_prog_mem.sv
+pmem_props.sv

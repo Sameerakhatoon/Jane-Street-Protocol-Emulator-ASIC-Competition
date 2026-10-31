@@ -1,0 +1,16 @@
+[options]
+mode prove
+expect pass,fail
+timeout 300
+
+[engines]
+aiger suprove
+
+[script]
+read_rtlil mutated.il
+read -formal test_eq.sv
+prep -top miter
+
+[files]
+mutated.il
+test_eq.sv

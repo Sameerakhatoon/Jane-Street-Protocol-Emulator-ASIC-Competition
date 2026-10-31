@@ -110,7 +110,7 @@ def programs(profile):
 
 def setups(ss_bases=(0, 1, 2)):
     return st.fixed_dictionaries(dict(
-        lane=st.integers(0, 2), side_en=st.integers(0, 1), ss_base=st.sampled_from(ss_bases),
+        lane=st.integers(0, 1), side_en=st.integers(0, 1), ss_base=st.sampled_from(ss_bases),
         jmp_pin=st.integers(0, 3), alt_pol=st.integers(0, 1),
         alt=st.sampled_from([(s, i) for s, idxs in CORE_WAIT.items() for i in idxs])))
 

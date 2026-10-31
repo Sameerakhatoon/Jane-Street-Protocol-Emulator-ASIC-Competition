@@ -1,8 +1,6 @@
 [tasks]
-ni3   NI L3
-own3  OWN L3
-ni4   NI L4
-own4  OWN L4
+ni2   NI
+own2  OWN
 
 [options]
 mode prove
@@ -14,8 +12,7 @@ smtbmc yices
 [script]
 NI: verilog_defines -DNI
 read -formal tse_slot_arb.sv arb_props.sv
-L3: chparam -set LANES 3 arb_props
-L4: chparam -set LANES 4 arb_props
+chparam -set LANES 2 arb_props
 prep -top arb_props
 
 [files]

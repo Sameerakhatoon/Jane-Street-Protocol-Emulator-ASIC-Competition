@@ -30,7 +30,7 @@ def lane_test(name, cfgs, bodies, doc, expect_fail=False, status=False, cycles=0
         def run():
             @settings(max_examples=EXAMPLES, deadline=None, derandomize=IN_CI, database=db,
                       suppress_health_check=list(HealthCheck), phases=phases)
-            @given(cfgs, bodies, st.integers(0, 2), P.waves)
+            @given(cfgs, bodies, st.integers(0, 1), P.waves)
             def prop(cfg, body, lane, wave):
                 prog = assemble(cfg, body)
                 n = cycles or NC + 16 * len(cfg)          # about 16 cycles per preamble word
@@ -80,3 +80,6 @@ test_11_illegal_data = lane_test(
     "test_11_illegal_data", P.no_cfg(), P.body([P.ILLEGAL_DATA]),
     "an illegal LDW or STW (indirect with a nonzero address) halts the lane without touching "
     "the data window: no request, OSR and the window unchanged")
+test_12_rule_hold = lane_test(
+    "test_12_rule_hold", P.rules_cfg(hold=1), P.body([P.WRITE_TX, P.WRITE_TX]),
+    "RULE_CLK.hold: the rule drive stays until the program writes the TX pin")

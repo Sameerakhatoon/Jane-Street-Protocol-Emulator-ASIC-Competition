@@ -8,15 +8,15 @@ from model.tests.helpers import mem_of, parked
 def test_sig_highest_lane_wins_and_is_seen_next_cycle():
     l0 = parked([E("DLY", d=2), E("SIG", mask=1, val=1)])          # SIG in cycle 4
     l1 = parked([E("DLY", d=1), E("SIG", mask=1, val=0)])          # SIG in cycle 4
-    l2 = parked([E("WAIT", pol=1, src=3, idx=0), E("SET", dst=2, imm=9)])
-    chip = Chip([mem_of(l0), mem_of(l1), mem_of(l2)]).run(30)
-    assert chip.cf & 1 == 0 and chip.lanes[2].seq.x == 0
+    chip = Chip([mem_of(l0), mem_of(l1)]).run(30)
+    assert chip.cf & 1 == 0
+    l0 = parked([E("WAIT", pol=1, src=3, idx=0), E("SET", dst=2, imm=9)])
     l1 = parked([E("DLY", d=1), E("DLY"), E("SIG", mask=1, val=1)])
-    chip = Chip([mem_of(parked([E("DLY")])), mem_of(l1), mem_of(l2)])
+    chip = Chip([mem_of(l0), mem_of(l1)])
     seen = []
     for c in range(30):
         chip.step()
-        seen.append(chip.lanes[2].seq.x)
+        seen.append(chip.lanes[0].seq.x)
     assert chip.cf & 1 and seen.index(9) > 0
 
 

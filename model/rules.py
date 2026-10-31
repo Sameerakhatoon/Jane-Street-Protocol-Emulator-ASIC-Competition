@@ -4,6 +4,9 @@ Both rules share a 16-bit history and an 8-bit frame bit counter that
 saturates at 255. RULE_CLK.src selects bit mode (recovered bits, paced by
 BITSTART) or pin-edge mode (counted edges of clk_pin, bit = data pin one
 cycle before the edge, every drive change tick_delay cycles after its edge).
+With RULE_CLK.hold the drive keeps its last bit after the response until
+the program writes the driven pin (seq_wr) and ends at that clock edge;
+a new match in that cycle wins.
 drv_en / drv_val are the drive register: a change made in cycle n is visible
 in n + 1 and reaches the port one edge later. Where the ISA text is
 silent (a match while a response is pending, a bit in the frame_rst cycle)
@@ -35,9 +38,10 @@ class Rules:
         self.hit_pulse = self.abort_pulse = 0
 
     def step(self, frame_rst=0, bit_valid=0, bit_in=0, bit_start=0,
-             pin_clk=0, pin_dat=0, crc_ok=0, tx_idle=0):
+             pin_clk=0, pin_dat=0, crc_ok=0, tx_idle=0, seq_wr=0):
         src, edge = self.rule_clk & 1, (self.rule_clk >> 3) & 1
         tdly = (self.rule_clk >> 4) & 0xFF
+        hold = (self.rule_clk >> 12) & 1
         cedge = (not pin_clk and self.clk_q) if edge else (pin_clk and not self.clk_q)
         bv, bi = (cedge, self.dat_q) if src else (bit_valid, bit_in)
         delayed = src and tdly != 0
@@ -82,10 +86,12 @@ class Rules:
                     self.pending, self.drv_en = 0, 1
             elif self.drv_en:
                 if self.left == 0:
-                    self.drv_en = 0
+                    self.drv_en = hold
                 else:
                     self.rsr >>= 1
                     self.left -= 1
+        if hold and seq_wr and not (win is not None and self.r[win].f(10, 1)):
+            self.drv_en = 0
         self.drv_val = self.rsr & 1
         self.tk = tk
         self.clk_q, self.dat_q = pin_clk, pin_dat

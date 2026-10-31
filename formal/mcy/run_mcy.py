@@ -21,6 +21,7 @@ BLOCKS = {
     "crc": ("tse_crc.sv", ["crc/crc_props.sv", "crc/crc_full.sv"]),
     "stuffer": ("tse_stuffer.sv", ["stuffer/stuff_props.sv"]),
     "codec": ("tse_codec.sv", ["codec/codec_props.sv"]),
+    "rule": ("tse_resp_rule.sv", ["rule/rule_props.sv"]),
 }
 
 

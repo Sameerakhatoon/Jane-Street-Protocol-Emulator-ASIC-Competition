@@ -7,16 +7,16 @@ HYP_EXAMPLES   ?= 100
 LANE_EXAMPLES  ?= 30
 BLOCK_EXAMPLES ?= 30
 MCY_JOBS ?= 2
-MCY_BLOCKS ?= crc stuffer codec
+MCY_BLOCKS ?= crc stuffer codec rule
 CI      ?=
 VERIF_PY := $(wildcard model/*.py model/tests/*.py verif/lockstep/*.py verif/lane/*.py verif/blocks/*.py \
-                       formal/*.py formal/mcy/*.py)
+                       formal/*.py formal/mcy/*.py formal/prog/*.py)
 FORMAL_BUILD := build/formal
 LANE_SV := $(addprefix $(RTL_DIR)/,tse_isa_pkg.sv tse_regs_pkg.sv tse_cfg_bank.sv tse_crc.sv tse_stuffer.sv tse_codec.sv tse_dpll.sv \
              tse_resp_rule.sv tse_nco.sv tse_timer.sv tse_seq.sv tse_lane.sv)
 
 .PHONY: verif-lint verif-test model-test lockstep lane-lockstep block-lockstep verilator-lockstep formal mcy \
-        verif-nightly
+        prog-proof gl-test verif-nightly
 lint: verif-lint
 test: verif-test
 
@@ -25,6 +25,8 @@ verif-lint:
 	verilator --lint-only -Wall --top-module seq_harness $(RTL_DIR)/tse_isa_pkg.sv $(RTL_DIR)/tse_regs_pkg.sv $(RTL_DIR)/tse_seq.sv verif/lockstep/seq_harness.sv
 	verilator --lint-only -Wall --top-module lane_harness $(LANE_SV) verif/lane/lane_harness.sv
 	verilator --lint-only -Wall -Wno-PROCASSINIT -Wno-SYNCASYNCNET --top-module crc_props -DCAT $(RTL_DIR)/tse_crc.sv formal/crc/crc_props.sv
+	verilator --lint-only -Wall -Wno-UNUSEDSIGNAL -Wno-UNDRIVEN --top-module prog_lane $(LANE_SV) formal/prog/prog_lane.sv
+	verilator --lint-only -Wall -Wno-PROCASSINIT -Wno-UNDRIVEN -DREF -DTIMING -DONCE -DCHAIN -DHOLD --top-module rule_props $(RTL_DIR)/tse_resp_rule.sv formal/rule/rule_props.sv
 
 verif-test: model-test lockstep lane-lockstep block-lockstep
 
@@ -55,9 +57,19 @@ mcy:
 	  $(PYTHON) formal/mcy/run_mcy.py $$b --rtl $(RTL_DIR) --build $(FORMAL_BUILD) --jobs $(MCY_JOBS); \
 	done
 
+# the compiler's per-program proofs on the real lane, planted bugs included (slow)
+PROG_SPECS ?= specs/uart.tse
+prog-proof:
+	set -e; for s in $(PROG_SPECS); do $(PYTHON) formal/prog/prove_prog.py $$s --rtl $(RTL_DIR); done
+
+# one whole-chip test on the Yosys CMOS5L netlist with the PDK cell models (needs PDK_ROOT)
+gl-test:
+	$(MAKE) -C verif/gl
+
 verif-nightly:
 	$(MAKE) lockstep HYP_EXAMPLES=2000 CI=false
 	$(MAKE) lane-lockstep LANE_EXAMPLES=1000 CI=false
 	$(MAKE) block-lockstep BLOCK_EXAMPLES=1000 CI=false
 	$(MAKE) verilator-lockstep
 	$(MAKE) mcy
+	$(MAKE) gl-test

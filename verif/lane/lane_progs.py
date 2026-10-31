@@ -42,14 +42,20 @@ TIMER_CFG = st.builds(lambda r: [(0x15, r | 1 << 17 | 1 << 18)], st.integers(1, 
 WAIT_TIMER = st.builds(lambda ss: E("WAIT", ss, pol=1, src=1, idx=0), _ss())
 FRAME_RST = st.builds(lambda ss: E("SET", ss, dst=7, imm=1), _ss())
 
-# rules in pin-edge mode: clk_pin 1, rxpin 0, txpin 2; rule 1 chained on rule 0
-RULES_CFG = st.builds(
-    lambda edge, p0, m0, p1, m1, r1: [
-        (0x18, 0 << 2 | 2), (0x48, 1 | 1 << 1 | edge << 3),
-        (0x40, m0 << 16 | p0), (0x41, 1 << 24 | 0x0005), (0x42, 0x1400 | 0x2),
-        (0x44, m1 << 16 | p1), (0x45, 1 << 24 | r1), (0x46, 0x3400 | 0x1)],
-    st.integers(0, 1), st.integers(0, 0xFFFF), st.sampled_from([0x3, 0x7, 0xF]),
-    st.integers(0, 0xFFFF), st.sampled_from([0x1, 0x3]), st.integers(0, 0xFFFF))
+# rules in pin-edge mode: clk_pin 1, rxpin 0, txpin 2; rule 1 chained on rule 0;
+# with hold the drive stays until the program writes pin 2
+def rules_cfg(hold=0):
+    return st.builds(
+        lambda edge, p0, m0, p1, m1, r1: [
+            (0x18, 0 << 2 | 2), (0x48, 1 | 1 << 1 | edge << 3 | hold << 12),
+            (0x40, m0 << 16 | p0), (0x41, 1 << 24 | 0x0005), (0x42, 0x1400 | 0x2),
+            (0x44, m1 << 16 | p1), (0x45, 1 << 24 | r1), (0x46, 0x3400 | 0x1)],
+        st.integers(0, 1), st.integers(0, 0xFFFF), st.sampled_from([0x3, 0x7, 0xF]),
+        st.integers(0, 0xFFFF), st.sampled_from([0x1, 0x3]), st.integers(0, 0xFFFF))
+
+
+RULES_CFG = rules_cfg()
+WRITE_TX = st.builds(lambda ss, v: E("SET", ss, dst=0, imm=0x40 | v << 2), _ss(), st.integers(0, 1))
 
 ILLEGAL = st.sampled_from([0xC000 | 0x0100 | 0x80 | 0x05,     # PUSH/PULL group reserved bits
                            E("OUT", dst=5) | 0x0600,          # OUT selector 7

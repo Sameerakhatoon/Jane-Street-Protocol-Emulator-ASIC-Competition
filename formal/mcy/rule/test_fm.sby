@@ -1,0 +1,30 @@
+[tasks]
+ref    REF
+timing TIMING
+once   ONCE
+chain  CHAIN
+hold   HOLD
+
+[options]
+mode bmc
+depth 16
+timeout 120
+expect pass,fail
+
+[engines]
+smtbmc yices
+
+[script]
+verilog_defines -DBUGRUN
+REF: verilog_defines -DREF
+TIMING: verilog_defines -DTIMING
+ONCE: verilog_defines -DONCE
+CHAIN: verilog_defines -DCHAIN
+HOLD: verilog_defines -DHOLD
+read_rtlil mutated.il
+read -formal rule_props.sv
+prep -top rule_props
+
+[files]
+mutated.il
+rule_props.sv

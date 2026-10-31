@@ -1,0 +1,39 @@
+[tasks]
+ref    REF
+timing TIMING
+once   ONCE
+chain  CHAIN
+hold   HOLD
+cov    COV
+
+[options]
+~cov: mode prove
+cov: mode cover
+cov: depth 30
+
+[engines]
+smtbmc yices
+
+[script]
+REF: verilog_defines -DREF
+TIMING: verilog_defines -DTIMING
+ONCE: verilog_defines -DONCE
+CHAIN: verilog_defines -DCHAIN
+HOLD: verilog_defines -DHOLD
+read -formal tse_resp_rule.sv rule_props.sv
+prep -top rule_props
+flatten
+# induction helpers
+connect -set p_clk_q dut.clk_q
+connect -set p_dat_q dut.dat_q
+connect -set p_pending dut.pending
+connect -set p_tk dut.tk
+connect -set p_cnt dut.cnt
+connect -set p_hist dut.hist
+connect -set p_wait dut.wait_n
+connect -set p_left dut.left
+connect -set p_rsr dut.rsr
+
+[files]
+tse_resp_rule.sv
+rule_props.sv
