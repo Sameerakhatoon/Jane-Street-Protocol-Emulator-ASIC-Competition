@@ -1,0 +1,9 @@
+# serprog client (flashrom's traffic): JEDEC ID, a 16-byte read at 0x000100,
+# read status, write enable, read status. The flash lane's host answers with
+# ID EF 40 15, image byte a = a mod 256 and the write enable latch it keeps.
+# MISO stays low while the controller sends opcode and address.
+mosi=9F,00,00,00 miso=00,EF,40,15
+mosi=03,00,01,00,00,00,00,00,00,00,00,00,00,00,00,00,00,00,00,00 miso=00,00,00,00,00,01,02,03,04,05,06,07,08,09,0A,0B,0C,0D,0E,0F
+mosi=05,00 miso=00,00
+mosi=06 miso=00
+mosi=05,00 miso=00,02

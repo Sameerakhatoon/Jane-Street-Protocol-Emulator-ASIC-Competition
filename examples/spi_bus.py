@@ -16,8 +16,12 @@ sees the request (from flashrom) before the controller clocks it; that is
 the spec's `assume host_ready`. Two rules come from the compiled program:
 the mailbox cannot be flushed, so the host hands over exactly the words a
 frame needs; and a read or status frame that ends on a word boundary
-leaves the lane in a blocking PULL that the CS rise cannot end, so the
-host writes one zero word after such a frame to send the lane back to idle.
+leaves the lane in the blocking PULL of the next word, which the CS rise
+cannot end, so the host writes one zero word after such a frame. The lane
+runs that word's loop with CS high and leaves at its end-of-word wait,
+which takes hundreds of cycles for a 32-bit word; the host waits until
+the lane's PC is back at the idle wait it read at the start, or the next
+frame's first clocks would feed that loop.
 
 ControllerHost drives a spi_controller lane one step per mailbox word:
 1 select, 2 and a byte, 4 and a word, 3 deselect.
@@ -194,6 +198,12 @@ class FlashHost:
         self.got = []
         self.bad = []
         self.release = False
+        self.st = td.image.lane_addr(lane, "STATUS")
+        self.idle = self.pc()          # call while CS is high: the lane waits in idle
+
+    def pc(self):
+        hi, lo = td.regs_map.LANE["STATUS"]["fields"]["pc"]
+        return self.chip.peek(self.st) >> lo & ((1 << (hi - lo + 1)) - 1)
 
     def stage(self, out, nread):
         """Before the frame: the words the lane will pull, and the pushes
@@ -248,6 +258,13 @@ class FlashHost:
             self.chip.poke(self.mb.tx, 0)
             while self.mb.status() & self.mb.tx_full:
                 self.chip.wait(50)
+            for _ in range(100):
+                if self.pc() == self.idle:
+                    break
+                self.chip.wait(50)
+            else:
+                self.bad.append("op %02X: the lane stays at pc %d, idle is %d"
+                                % (self.op, self.pc(), self.idle))
         self.settle()
         if self.got != self.want:
             self.bad.append("op %02X: lane pushed %s, controller sent %s"

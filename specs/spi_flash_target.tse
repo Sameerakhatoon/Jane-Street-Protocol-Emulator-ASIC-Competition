@@ -22,24 +22,40 @@
 // demo's host model meets and a real host behind a slow link would not.
 // Written this way the lane needs no flag kept across states.
 //
-// Hand-computed obligations, windows inward, pads 0 to 25 ns, with the SCK
-// rate this lane is proven at (3 MHz at 60 MHz, 2.5 MHz at 50 MHz):
+// SCK rate. The windows below hold up to 3 MHz, but the first answer bit
+// is a second limit the compiler does not check: after the rise that samples
+// the last opcode bit (or address bit) the lane decodes, pushes, pulls and
+// must reach its wait for SCK high before SCK falls, or it misses that fall
+// and every answer bit comes one SCK period late. Counted with the ISA's
+// cycle model over every slot phase and fetch state, that path takes up to
+// 32 cycles for 0x9F, 40 for 0x05 and 20 for 0x03 at 60 MHz, so half a SCK
+// period must be longer than 40 cycles plus the input synchroniser: the
+// default 500 kHz gives 60 cycles (1 MHz gives 30, too few for 0x05).
 //
-//   obligation               window                 60 MHz, 3 MHz                 50 MHz, 2.5 MHz
-//   mosi  OB-WIN after rise   [0, half - t_mo]       [0, 146.7 ns]; achieved       [0, 180 ns]; achieved
-//                                                   16.7 to 108.3 ns, margin 38.3  20 to 125 ns, margin 55
-//   miso  OB-WIN after fall   [0, half - t_su]       [0, 161.7 ns]; achieved       [0, 195 ns]; achieved
-//                                                   66.7 to 158.3 ns, margin 3.3   80 to 185 ns, margin 10
+// Frame end. A WAIT ends on its own condition before its alternate, so a
+// bit loop that ends waiting for SCK low (the MISO loops) never sees the CS
+// rise in mode 0, where SCK idles low. Each answer byte or word therefore
+// ends with a wait for the rise that samples its last bit (the MOSI bit it
+// takes is not used); with CS high that wait ends on the alternate and the
+// lane goes back to idle. A frame that ends on a word boundary leaves the
+// lane in the pull of the next word: the host then hands over one more word
+// and the lane leaves through that word's loop. The opcode state drives MISO
+// low first, since an answer that ended on a 1 leaves it high.
+//
+// Obligations from the compiler report, windows inward, pads 0 to 25 ns:
+//
+//   obligation               window                 60 MHz, 500 kHz
+//   mosi  OB-WIN after rise   [0, half - t_mo]       [0, 980 ns]; achieved 16.7 to 108.3 ns
+//   miso  OB-WIN after fall   [0, half - t_su]       [0, 995 ns]; achieved 66.7 to 158.3 ns
 //   abort on rise(cs_n)      stated bound           a WAIT alternate in every byte loop
 //
-// At the demo's first choice of 4 MHz the MISO window is [0, 120 ns] and the
-// lane reaches 158.3 ns: rejected with the fix f_sck <= 3.06 MHz (3.61 MHz
-// with ideal pads); at 50 MHz the limit is 2.63 MHz. flashrom's serprog
-// driver sets the SPI speed, so the demo asks for 3 MHz (2.5 MHz at 50 MHz).
+// At 4 MHz the MISO window is [0, 120 ns] and the lane reaches 158.3 ns:
+// rejected. flashrom's serprog driver sets the SPI speed, so the demo asks
+// for 500 kHz.
 // A read served from the data window instead of the host needs an indexed
 // load the language cannot state yet (the address is data, not a constant).
 protocol spi_flash_target {
-  param f_sck    : freq = 3 MHz;
+  param f_sck    : freq = 500 kHz;
   param t_su     : time = 5 ns;            // controller's MISO setup before its sampling edge
   param t_css    : time = 100 ns;          // controller's CS fall to first SCK rise
   param t_mo     : time = 20 ns;           // controller's MOSI output delay after SCK falls
@@ -69,6 +85,7 @@ protocol spi_flash_target {
 
     state opcode {
       seq {
+        drive miso = 0;                           // the last frame may have left it high
         repeat 8 { shift mosi -> op msb 1 within [0 ns, half - t_mo] after rise(sck); }
       } -> decode abort on rise(cs_n) -> idle;
     }
@@ -99,6 +116,7 @@ protocol spi_flash_target {
       seq {
         pull host sr;
         repeat 8 { shift sr msb 1 -> miso within [0 ns, half - t_su] after fall(sck); }
+        shift mosi -> din msb 1 within [0 ns, half - t_mo] after rise(sck);   // end of byte
       } -> status_byte abort on rise(cs_n) -> idle;
     }
 
@@ -118,6 +136,7 @@ protocol spi_flash_target {
       seq {
         pull host dout;
         repeat 32 { shift dout msb 1 -> miso within [0 ns, half - t_su] after fall(sck); }
+        shift mosi -> din msb 1 within [0 ns, half - t_mo] after rise(sck);   // end of word
       } -> read_data abort on rise(cs_n) -> idle;
     }
 
