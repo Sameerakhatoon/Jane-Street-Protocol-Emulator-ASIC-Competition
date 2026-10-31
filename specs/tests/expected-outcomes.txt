@@ -58,7 +58,9 @@ jtag_probe.tse|--pad-skew 0|0|-|-
 ps2_host.tse|-|0|-|-
 # Frame-level specs with assists, through the frame lowering: 10BASE-T transmit builds (not yet run
 # on the chip); the others are rejected on a layout, pin plan or re-arm limit.
-can_rx_ack.tse|-|2|R300|not supported by this version of tsec: the layout of frame 'can_std' for `recv` (a header ending in the byte count, the bytes, the CRC, then our own field)
+can_rx_ack.tse|-|0|-|-
+can_rx_ack.tse|-D bitrate=125e3|0|-|-
+can_rx_ack.tse|-D bitrate=250e3|0|-|-
 usb_ls_device.tse|-|2|R307|pin plan impossible: assist 'line' codes the line on 2 wires (dp, dm); the codec drives and samples one lane pin. A second wire can only be the first one inverted on the crossbar, so a line state with both wires low (SE0, the end of a USB packet) can be neither driven nor seen
 eth10_tx.tse|-|0|-|-
 eth10_rx.tse|-|2|R314|re-arm too late in role 'mac_rx': start-of-frame detection armed again

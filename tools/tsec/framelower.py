@@ -337,6 +337,8 @@ class FrameLowering:
         ins.mark = "arm"
         if self.rearm is not None:
             ins.ob = self.rearm
+        if any(f.count for f in frames.layout(self.sym, body[0].name.text, body[0].span).fields):
+            self.emit("CSRR", addr=REG["RXDATA"], note="drop a word the idle line filled: RXFULL off")
         self.goto(e.target.text)
 
     rearm = None
@@ -673,8 +675,8 @@ class FrameLowering:
         v = lay.variable()
         k = lay.crc_field()
         mine = lay.first_sent_by(self.role.name.text)
-        if len(v) != 2 or lay.fields[v[0]].count is None or k is None or mine is None \
-                or v[1] != mine or k != v[0] + 1 or lay.index(lay.fields[v[0]].count) != v[0] - 1:
+        if len(v) != 1 or lay.fields[v[0]].count is None or k is None or mine is None \
+                or mine <= k or k != v[0] + 1 or lay.index(lay.fields[v[0]].count) != v[0] - 1:
             raise self.err(f"the layout of frame '{lay.frame.name.text}' for `recv` (a header ending in "
                            "the byte count, the bytes, the CRC, then our own field)", s.span)
         head = lay.offset(v[0])[0]
@@ -746,6 +748,7 @@ class FrameLowering:
         self.emit("STW", addr=base + 2, note="the last bytes")
         tl = self.label("tail")
         self.rx_len(tail - 1, 8 * P - 2 - AE.CFG_VISIBLE, s.span)
+        self.header_bits = head
         self.jump(tl)
         self.place(zero)
         self.emit("MOV", dst="OSR", src="X")
@@ -754,6 +757,8 @@ class FrameLowering:
         self.place(tl)
         w = self.wait("EV", "RXFULL", note=f"CRC and the bits up to our field: {tail} bits")
         w.fw = FWait("RXFULL", mark="rx", earliest=("rx", tail * P))
+        r = self.emit("CSRR", addr=REG["RXDATA"], note="drop the tail: only the read clears RXFULL")
+        self.feed_ob(r, "rxfull", AE.deadline("rxfull", P), s.span, "RXDATA read after RXFULL", "rx")
         good, bad = self.label("good"), self.label("bad")
         t = self.wait("EV", "RULEHIT", to=True, note="the rule matched: CRC good")
         t.fw = FWait("RULEHIT", test=True)
@@ -900,11 +905,15 @@ class FrameLowering:
         self.place(stat.bad)
         if stat.stream:
             self.flush_for[next(iter(self.flush_for))]()
+        elif stat.ack is not None:
+            self.field_end(stat)
         self.mark_frame_end(stat, bad=True)
         self.goto(bad.target.text)
         self.place(stat.good)
         if isinstance(good, A.RespondEdge):
             self.respond(good, stat)
+        elif stat.ack is not None:
+            self.field_end(stat)
         else:
             self.mark_frame_end(stat, bad=False)
         self.goto(good.target.text)
@@ -939,9 +948,19 @@ class FrameLowering:
             f"'{f.name}' (from {self.role.name.text}) of the frame just received, so its window is "
             f"measured from that field's start as the bit timer sees it, not from the CRC result",
             e.span))
+        self.field_end(stat)
+
+    def field_end(self, stat):
+        """Wait until our own field is over, answered or not: another node answering in it
+        (a dominant CAN ACK) must not look like the next start of frame."""
+        n = stat.ack[1].lo
         for i in range(n + 1):
             w = self.wait("EV", "BITSTART", note="answer field starts" if i == 0 else "answer done")
             w.fw = FWait("BITSTART", pulse=True, mark="fend" if i == n else None)
+        # back to header words for the next frame; no deadline: the arm comes later in program
+        # order and the header's first word ends many bits after it
+        self.load_yx(self.lane_cfg_with(rx_len_m1=self.header_bits - 1))
+        self.csrw("LANE_CFG", f"RX words of {self.header_bits} bits again")
         self.set_rearm(stat, "fend")
 
     def set_rearm(self, stat, mark):
@@ -959,8 +978,12 @@ class FrameLowering:
             end = A.Event("rise", w)
             delay = Fr(0)
         sep, rules = min_separation(self.sym, self.role, end, start, self.f)
+        quiet, tail = self.quiet_tail(stat, start)
+        sep += quiet
         hi = int(sep - delay) - 1
         names = ", ".join(r.name.text for r in rules) if rules else "no datasheet rule"
+        if tail:
+            names += f"; the frame's own fields {tail} come first"
         self.rearm = Ob("rearm", "R314", "start-of-frame detection armed again", start.span, mark,
                         lo=None, hi=hi,
                         why=f"the next {printer.event(start)} may come {float(sep):.2f} ticks after "
@@ -969,6 +992,23 @@ class FrameLowering:
         for ins in self.prog:
             if getattr(ins, "mark", None) == "arm":
                 ins.ob = self.rearm
+
+    def quiet_tail(self, stat, start):
+        """(ticks, names) the frame still lasts after our answer field when its last fields are
+        constants that cannot hold the start edge (a CAN ACK delimiter and end of frame), so the
+        next start cannot come before they are over. One bit is given up for the bit timer's
+        phase at the field end; every other bit counts at the shortest resynchronised period."""
+        if stat.ack is None or start.kind not in ("rise", "fall"):
+            return Fr(0), ""
+        lay = stat.frame
+        i = lay.fields.index(stat.ack[1])
+        tail = lay.fields[i + 1:]
+        if not tail or any(f.const is None or not f.fixed for f in tail):
+            return Fr(0), ""
+        bits = [b for f in tail for b in lay.bits_of(f)]
+        if any(b != (1 if start.kind == "fall" else 0) for b in bits):
+            return Fr(0), ""
+        return (len(bits) - 1) * self.p_min, f"{tail[0].name}..{tail[-1].name} ({len(bits)} bits)"
 
 
 def is_host_pull(ev):

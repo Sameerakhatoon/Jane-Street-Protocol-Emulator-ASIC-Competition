@@ -1,0 +1,10 @@
+# The good frames can_demo.py sends after the one with a wrong CRC; each must
+# be acknowledged in its ACK slot.
+123#DEADBEEF
+000#
+7FF#0102030405060708
+0F0#0000000000
+555#FF
+3E1#A5A5A5A5A5A5A5
+008#4224
+00E#11

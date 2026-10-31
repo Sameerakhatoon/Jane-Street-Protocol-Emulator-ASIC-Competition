@@ -65,6 +65,8 @@ protocol can_rx_ack {
 
   role node : target uses txd, rxd {
     var f : can_std;
+    assume host_ready : host.ready;      // the host takes the three frame words before the next SOF
+
     state idle    { on fall(rxd) -> receive; }                  // hard sync on SOF
     state receive { seq { recv can_std into f; } -> ack_slot; }
     state ack_slot {

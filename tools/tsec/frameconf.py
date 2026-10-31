@@ -83,7 +83,10 @@ def lane_config(sym, res, fclk):
     for u in role.uses:
         wd = sym.wires[u.text]
         entry = {"dir": wd.dir, "vpin": low.vpin[u.text]}
+        if wd.dir in ("in", "inout"):
+            entry["vpin_in"] = low.vpin[u.text]
         if wd.dir in ("out", "inout"):
+            entry["vpin_out"] = low.vpin[u.text]
             entry["PAD_OUT"] = hexw(regs.pack("PAD_OUT", src=lane * 4 + low.vpin[u.text],
                                               od=int(wd.open_drain), en=1, idle=low.idle_of(u.text),
                                               idle_oe=0 if wd.open_drain else 1))
