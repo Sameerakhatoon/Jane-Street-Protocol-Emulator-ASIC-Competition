@@ -1,0 +1,3 @@
+# lane 1: write 4 bytes from register 0x10, then read them back with a repeated START
+S 50W A 10 A DE A AD A BE A EF A P
+S 50W A 10 A Sr 50R A DE A AD A BE A EF N P

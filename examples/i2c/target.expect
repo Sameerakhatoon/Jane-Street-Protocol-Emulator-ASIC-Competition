@@ -1,0 +1,7 @@
+# the lane is the target at 0x50: the controller writes 7F 3C from register
+# 0x10, addresses 0x51 (nobody answers), reads the two bytes back with a
+# repeated START, then writes to read-only register 0x80 (the host NACKs)
+S 50W A 10 A 7F A 3C A P
+S 51W N P
+S 50W A 10 A Sr 50R A 7F A 3C N P
+S 50W A 80 A 55 N P

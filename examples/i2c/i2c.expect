@@ -1,3 +1,7 @@
-# write 4 bytes from register 0x10, then read them back with a repeated START
+# write 4 bytes from register 0x10; nothing answers at 0x51; read the 4 bytes
+# back with a repeated START; a byte written to read-only register 0x80 is
+# NACKed. After each NACK the controller sends STOP at once.
 S 50W A 10 A DE A AD A BE A EF A P
+S 51W N P
 S 50W A 10 A Sr 50R A DE A AD A BE A EF N P
+S 50W A 80 A 55 N P

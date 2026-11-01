@@ -1,0 +1,162 @@
+// i2c_target_sm.tse: I2C target at address 0x50, Standard-mode (100 kHz), clock
+// stretching, repeated START and STOP seen anywhere a controller may send
+// them. The host keeps the registers and decides the ACK of every byte
+// written.
+//
+// Source: NXP UM10204 (I2C-bus specification and user manual, Rev. 7.0),
+// Table 11 (Standard-mode column) and section 3.1.9 (clock stretching).
+//
+// Host interface. After every push the lane holds SCL low until the host
+// answers with one TX word (bit-reversed), so a slow host slows the bus but
+// never loses a byte:
+//   push 0x0002   addressed for a write (after our ACK of the address);
+//                 answer with any word
+//   push 0x0003   addressed for a read, or the controller ACKed our byte;
+//                 answer with the byte to send
+//   push 0x01nn   byte nn written by the controller; answer 0 to ACK it, 1
+//                 to NACK it
+// A START or STOP while a byte is moving sends the lane back to the address
+// state; a NACK from the controller ends a read. The host learns about a new
+// transaction from the next 0x0002 or 0x0003.
+//
+// Hand-computed obligations at 60 MHz (one tick = 16.67 ns), pads 0 to 25 ns:
+//
+//   obligation                 window              ticks      compiler result (worst case)       margin (low, high)
+//   address ACK, data bits     [300 ns, 3.45 us]   [18, 207]  316.7 to 408.3 ns                  16.7 ns, 3041.7 ns
+//   and SDA releases (OB-WIN)  after fall(scl)
+//   stretch (drive scl = 0)    [0, 4.5 us]         [0, 270]   66.7 to 308.3 ns                   66.7 ns, 4191.7 ns
+//   setup before releasing     wait t_su_dat       >= 15      15 to 17 cycles                    0 to 2 ticks
+//   SCL (OB-HOLD)
+//   START or STOP detection    armed before the earliest condition after the last bus event (OB-REARM)
+// While we hold SCL low no window applies: the host may take as long as it
+// likes, and the byte's first bit or our ACK is set up before SCL is released.
+//
+// The same lane code as the Fast-mode file meets the Standard-mode windows
+// with wide margins; the internal hold stays 300 ns. The re-arm rules are
+// the Fast-mode ones with Standard-mode values:
+//   t_su_cnd  rise(scl) -> cond   >= 4.0 us   tSU;STA 4.7 us, tSU;STO 4.0 us
+//   t_void    start -> cond       >= 12.7 us  at least one SCL pulse after a START:
+//                                             tHD;STA 4.0 + tLOW 4.7 + tSU 4.0
+//   t_buf_c   cond -> cond        >= 4.7 us   tBUF after a STOP, t_void after a START
+protocol i2c_target_sm {
+  param addr7    : bits[7] = 0x50;
+  const t_hd_int : time = 300 ns;     // internal SDA hold after SCL falls
+  const t_vd     : time = 3.45 us;    // tVD;DAT and tVD;ACK
+  const t_low    : time = 4.7 us;     // controller's minimum SCL low time
+  const t_su_dat : time = 250 ns;
+  const margin   : time = 200 ns;
+
+  wire scl : inout open_drain pull_up;
+  wire sda : inout open_drain pull_up;
+
+  event start = fall(sda) when scl == 1;
+  event stop  = rise(sda) when scl == 1;
+  event cond  = edge(sda) when scl == 1;  // a START or a STOP
+
+  datasheet i2c_sm {
+    rule t_hd_sta : start     -> fall(scl) >= 4.0 us;
+    rule t_low    : fall(scl) -> rise(scl) >= t_low;
+    rule t_high   : rise(scl) -> fall(scl) >= 4.0 us;
+    rule t_su_dat : edge(sda) -> rise(scl) >= t_su_dat when scl == 0;
+    rule t_su_sto : rise(scl) -> stop      >= 4.0 us;
+    rule t_su_cnd : rise(scl) -> cond      >= 4.0 us;
+    rule t_void   : start     -> cond      >= 12.7 us;
+    rule t_buf_c  : cond      -> cond      >= 4.7 us;
+  }
+
+  role tgt : target uses scl, sda {
+    var sh  : bits[8];
+    var d   : bits[16];
+    var out : bits[8];
+    var ack : bits[1];
+    var a   : bits[1];
+
+    state idle { on start -> addr; }
+
+    state addr {                                   // 7 address bits and R/W, MSB first
+      seq {
+        repeat 8 { await rise(scl); shift sda -> sh msb 1; }
+      } -> decide abort on cond -> addr;
+    }
+
+    state decide {                                 // waiting for the 8th falling edge
+      respond ack_a : on fall(scl) when sh[7:1] == addr7
+                    { drive sda = 0; } within [t_hd_int, t_vd] -> ack_slot;
+      on fall(scl) -> idle;                        // not our address: stay off the bus
+    }
+
+    state ack_slot {                               // SDA held low; waiting for the 9th fall
+      on fall(scl) when sh[0] == 1 do {            // read: hold SCL until the host has a byte
+        drive scl = 0 within [0 ns, t_low - margin] after fall(scl);
+        release sda within [t_hd_int, t_vd] after fall(scl);
+        set d = 3;
+        push host d;
+      } -> load;
+      on fall(scl) do {                            // write: end the ACK, wait for the host
+        drive scl = 0 within [0 ns, t_low - margin] after fall(scl);
+        release sda within [t_hd_int, t_vd] after fall(scl);
+        set d = 2;
+        push host d;
+      } -> resume;
+    }
+
+    state resume {
+      on host.pull(a) do {
+        wait t_su_dat;
+        release scl;
+      } -> wdata;
+    }
+
+    state load {                                   // we own SCL low: no window applies
+      on host.pull(out) do {
+        shift out msb 1 -> sda;
+        wait t_su_dat;
+        release scl;                               // end of the stretch
+      } -> rdata;
+    }
+
+    state rdata {                                  // 7 more data bits, then the controller's ACK
+      seq {
+        repeat 7 {
+          shift out msb 1 -> sda within [t_hd_int, t_vd] after fall(scl);
+        }
+        release sda within [t_hd_int, t_vd] after fall(scl);
+        await rise(scl);
+        shift sda -> ack msb 1;                    // 0 = the controller wants another byte
+      } -> ack_slot_read abort on cond -> addr;
+    }
+
+    state ack_slot_read {
+      on fall(scl) when ack[0] == 0 do {
+        drive scl = 0 within [0 ns, t_low - margin] after fall(scl);
+        set d = 3;
+        push host d;
+      } -> load;
+      on fall(scl) -> idle;                        // NACK: a STOP or a repeated START follows
+    }
+
+    state wdata {
+      seq {
+        set d = 1;                                 // bit 8 marks a data byte
+        repeat 8 { await rise(scl); shift sda -> d msb 1; }
+        push host d;
+      } -> wstretch abort on cond -> addr;
+    }
+
+    state wstretch {                               // the 8th fall: hold SCL for the host's answer
+      on fall(scl) do { drive scl = 0 within [0 ns, t_low - margin] after fall(scl); } -> wack;
+    }
+
+    state wack {
+      on host.pull(a) do {
+        shift a msb 1 -> sda;                      // 0 = ACK
+        wait t_su_dat;
+        release scl;
+      } -> ack_slot_w;
+    }
+
+    state ack_slot_w {
+      on fall(scl) do { release sda within [t_hd_int, t_vd] after fall(scl); } -> wdata;
+    }
+  }
+}

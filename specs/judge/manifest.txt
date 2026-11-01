@@ -18,6 +18,8 @@ spi_target_mode1        spi   ../../build/demos/spi_target_mode1.vcd spi_target.
 spi_target_mode2        spi   ../../build/demos/spi_target_mode2.vcd spi_target.expect --map clk=sck --map mosi=mosi --map miso=miso --map cs=cs_n --mode 2 --allow-skip
 spi_target_mode3        spi   ../../build/demos/spi_target_mode3.vcd spi_target.expect --map clk=sck --map mosi=mosi --map miso=miso --map cs=cs_n --mode 3 --allow-skip
 i2c_target              i2c   ../../build/demos/i2c_target.vcd i2c_target.expect --map scl=scl --map sda=sda --speed fm --require-ack --allow-skip
+i2c_target_fm           i2c   ../../build/demos/i2c_target_fm.vcd i2c_target_regs.expect --map scl=scl --map sda=sda --speed fm --allow-skip
+i2c_target_sm           i2c   ../../build/demos/i2c_target_sm.vcd i2c_target_regs.expect --map scl=scl --map sda=sda --speed sm --allow-skip
 i2c_controller_fm       i2c   ../../build/demos/i2c_controller_fm.vcd i2c_controller.expect --map scl=scl --map sda=sda --speed fm --require-ack --allow-skip
 i2c_controller_sm       i2c   ../../build/demos/i2c_controller_sm.vcd i2c_controller.expect --map scl=scl --map sda=sda --speed sm --require-ack --allow-skip
 can_node                can   ../../build/demos/can_node.vcd can_arb.expect --map rx=rxd --bitrate 500000 --sample-point 0.8 --allow-skip

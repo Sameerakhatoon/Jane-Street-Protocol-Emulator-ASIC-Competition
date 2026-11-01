@@ -1354,6 +1354,7 @@ class Fsm:
                 return self.action(ins, s.wires[0].text)
             if facts.isr not in (None, v):
                 self.save_isr(facts)
+            self.isr_for_shift(v, facts, s.span)
             ins = self.emit("IN", src="PINS", n=1)
             facts.isr = v
             self.mark_written(v, facts)
@@ -1463,6 +1464,21 @@ class Fsm:
         facts.levels, facts.isr, facts.osr, facts.x = m.levels, m.isr, m.osr, None
         facts.dirty, facts.stale = m.dirty, m.stale
 
+    def isr_for_shift(self, v, facts, span):
+        """Shifting in is v = v << 1 | bit, and IN shifts ISR: a value of v just set or pulled
+        (in OSR or X) must be in ISR first, or ISR's old contents become v's high bits."""
+        if facts.isr == v or (facts.osr != v and facts.x != v):
+            return
+        if self.rev(v):
+            raise unsupported(f"'{v}' is shifted in after a set, and OSR holds it bit-reversed "
+                              "(it is also shifted out msb first)", span)
+        self.save_isr(facts)
+        if facts.osr == v:
+            self.emit("IN", src="OSR", n=32).note = f"{v} into ISR before shifting in"
+        else:
+            self.emit("MOV", dst="ISR", src="X").note = f"{v} into ISR before shifting in"
+        facts.isr = v
+
     def prepare_loop(self, body, facts, span):
         """Before a loop: store kept vars from the registers the body overwrites (inside the loop
         the store would come too late or every pass), and bring a var the body shifts out into
@@ -1485,6 +1501,8 @@ class Fsm:
         walk(body)
         if facts.isr is not None and (other or (ins_ and facts.isr not in ins_)):
             self.save_isr(facts)
+        if len(ins_) == 1 and not other:     # the copy into ISR before the loop, not on every pass
+            self.isr_for_shift(next(iter(ins_)), facts, span)
         base = facts.osr.rstrip("~") if facts.osr else None
         if base is not None and (other or (outs and base not in outs)):
             self.save_osr(facts, keep=True)

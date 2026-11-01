@@ -86,6 +86,7 @@ class Analysis:
         self.lane, self.fm, self.f = lane, fm, fclk
         self.ms_cache, self.events = {}, {}
         self.abort_pcs = {labels[t] for t in abort_targets if t in labels}
+        self.abort_event = self.abort_events()
         self.refs = {id(ins.sep.ref) for ins in prog if ins.sep is not None}
         self.mark_far = {}          # per reference: distances beyond this all act the same
         for ins in prog:
@@ -96,6 +97,21 @@ class Analysis:
         self.res = Result()
         self.clamp = self.horizon()
         self.liveness()
+
+    def abort_events(self):
+        """{abort pc: event} for the JMP TOUT targets that only an exact abort reaches (every
+        alternate is the event, no pin check needed). Reaching one means the event happened
+        when the alternate ended the wait, so later events count from it, not an older one."""
+        evs = {}
+        for prev, ins in zip(self.prog, self.prog[1:]):
+            ab = prev.wait.abort if prev.wait is not None else None
+            if ins.op != "JMP" or ins.a["cond"] != "TOUT" or ins.a["target"] not in self.labels:
+                continue
+            pc = self.labels[ins.a["target"]]
+            exact = ab is not None and ab.mode != "host" and ab.check_level is None
+            evs.setdefault(pc, set()).add(self.ev(ab.event) if exact else None)
+        return {pc: next(iter(s)) for pc, s in evs.items()
+                if len(s) == 1 and None not in s and pc in self.abort_pcs}
 
     def horizon(self):
         evs = set()
@@ -232,6 +248,9 @@ class Analysis:
             lat = t - abort
             if self.res.abort_latency is None or lat > self.res.abort_latency:
                 self.res.abort_latency = lat
+            if pc in self.abort_event:  # the abort event is now the last one seen; it became
+                # visible no earlier than the dispatch of the wait it ended (up to S - 1 before)
+                last = (self.abort_event[pc], abort - (self.fm.S - 1))
             abort = None
         checking = abort is None        # after an abort only the latency to its state matters
         if ins.ob is not None and checking:

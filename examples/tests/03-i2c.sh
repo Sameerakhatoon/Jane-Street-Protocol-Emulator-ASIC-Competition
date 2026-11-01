@@ -1,8 +1,12 @@
 #!/usr/bin/env bash
-# The I2C controller demo end to end: host side, both transactions decoded
-# as expected, every Fast-mode timing rule held (tHIGH and the SCL period
-# included), every byte ACKed.
+# The I2C controller demo end to end in Fast and Standard mode: host side,
+# all four transactions decoded as expected (two of them end in a NACK the
+# host handles), every timing rule of the speed held (tHIGH and the SCL
+# period included).
 . "$(dirname "$0")/lib.sh"
 
-bash examples/i2c/run.sh "$OUT" >"$OUT/run.log" 2>&1 || { tail -30 "$OUT/run.log" >&2; fail "see $OUT/run.log"; }
-pass "$(tail -1 "$OUT/run.log")"
+for speed in fm sm; do
+    bash examples/i2c/run.sh controller $speed "$OUT/$speed" >"$OUT/$speed.log" 2>&1 \
+        || { tail -30 "$OUT/$speed.log" >&2; fail "$speed, see $OUT/$speed.log"; }
+done
+pass "$(tail -1 "$OUT/fm.log"); $(tail -1 "$OUT/sm.log")"

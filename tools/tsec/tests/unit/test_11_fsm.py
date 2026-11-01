@@ -107,6 +107,56 @@ def test_w220_disjoint_guards_are_quiet():
     assert front_warnings(src) == []
 
 
+SET_THEN_SHIFT = """protocol p { wire clk : in; wire dat : in;
+  role r : target uses clk, dat {
+    var d : bits[16];
+    state s {
+      seq { set d = 1; repeat 8 { await rise(clk); shift dat -> d msb 1; } push host d; } -> s;
+    } } }"""
+
+
+@pytest.mark.parametrize("mode", ["rolled", "unrolled"])
+def test_shift_in_after_set_keeps_the_set_value(mode):
+    # d = 1 then eight bits in: 0x1nn. IN shifts ISR, so the 1 (in OSR after the set) must be
+    # copied into ISR once, before the loop, not on every pass (that would drop earlier bits)
+    sym = front(SET_THEN_SHIFT)
+    prog, labels = layout(Fsm(sym, sym.roles[0], FCLK, mode).lower())
+    copies = [k for k, i in enumerate(prog) if i.op == "IN" and i.a.get("src") == "OSR"]
+    samples = [k for k, i in enumerate(prog) if i.op == "IN" and i.a.get("src") == "PINS"]
+    assert len(copies) == 1 and copies[0] < samples[0]
+    assert len(samples) == (1 if mode == "rolled" else 8)
+    if mode == "rolled":
+        loop = next(k for name, k in labels.items() if name.startswith("loop"))
+        assert copies[0] < loop
+
+
+def test_shift_in_without_set_adds_nothing():
+    sym = front(SET_THEN_SHIFT.replace("set d = 1; ", ""))
+    prog, _ = layout(Fsm(sym, sym.roles[0], FCLK, "rolled").lower())
+    assert not any(i.op == "IN" and i.a.get("src") == "OSR" for i in prog)
+
+
+with open("specs/i2c_target_fm.tse") as fh:
+    I2C_FM = fh.read()
+
+
+def test_i2c_target_with_restart_is_accepted():
+    sym = front(I2C_FM)
+    att, _ = Scheduler(sym, sym.roles[0], 0, FCLK, FetchModel(), (0, 25)).compile()
+    assert att is not None and att.mode == "rolled"
+
+
+def test_after_an_abort_separations_count_from_the_abort_event():
+    # Every abort into 'addr' is on cond (a START or STOP), so after it the next cond is bounded
+    # by the cond -> cond rule. Without that rule the re-arm check must name cond as the event
+    # before, not an older SCL edge or START that the abort made stale.
+    sym = front(I2C_FM.replace("    rule t_buf_c  : cond      -> cond      >= 1.3 us;\n", ""))
+    att, tried = Scheduler(sym, sym.roles[0], 0, FCLK, FetchModel(), (0, 25)).compile()
+    assert att is None
+    rearm = [dict(v.fields) for t in tried for v in t.violations if v.code == "R314"]
+    assert rearm and all(f["required"] == "armed before the earliest cond after cond" for f in rearm)
+
+
 def front_warnings(src):
     from tools.tsec.check import check
     from tools.tsec.parser import parse

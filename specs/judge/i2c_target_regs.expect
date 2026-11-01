@@ -1,0 +1,9 @@
+# Lane 0 runs i2c_target_fm or i2c_target_sm at address 0x50; the host keeps
+# the registers and NACKs writes at 0x80 and above. The testbench controller
+# writes 7F 3C from register 10, addresses 0x51 (no one answers), reads the
+# two bytes back with a repeated START, then writes 55 to register 80. The
+# NACKs are expected, so the cases run without --require-ack.
+S 50W A 10 A 7F A 3C A P
+S 51W N P
+S 50W A 10 A Sr 50R A 7F A 3C N P
+S 50W A 80 A 55 N P

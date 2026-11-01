@@ -1,5 +1,5 @@
-"""I2C controller (Fast mode) on the Verilated chip, writing to and reading
-from a simulated target.
+"""I2C controller (Fast or Standard mode, the image decides) on the
+Verilated chip, writing to and reading from a simulated target.
 
 The chip drives SCL and SDA as open-drain pads on uio[2] and uio[3]. Every
 model cycle this script reads the chip's uio outputs over the pin pipe,
@@ -10,7 +10,9 @@ allows). The target is a register device at address 0x50: the first byte
 written sets its register pointer, later bytes are stored, reads return
 registers from the pointer. It holds SCL low for STRETCH cycles after the
 ACK of the second byte of a write, so the controller must wait for the rise
-it observes.
+it observes. It NACKs a byte written to a register at READ_ONLY or above,
+and nothing answers at 0x51, so two transactions end in a NACK that the host
+handles by sending STOP at once.
 
 The host sends the controller one command per step over the TX mailbox
 (the word bit-reversed, as the tsec image contract says) and reads the ACK
@@ -33,6 +35,7 @@ HOLD = 20                           # target: clocks from an SCL fall to its SDA
 STRETCH = 300                       # target: clocks SCL is held low once (5 us)
 TR = 12                             # bus: clocks from release to a high level (200 ns)
 POLL = 200
+READ_ONLY = 0x80                    # target: a byte written at or above this register is NACKed
 
 
 def bitrev16(v):
@@ -98,6 +101,9 @@ class Target:
             else:
                 if self.nbytes == 0:
                     self.ptr = self.sh
+                elif self.ptr >= READ_ONLY:
+                    self.state = "nackout"      # leave SDA released: NACK
+                    return
                 else:
                     self.regs[self.ptr] = self.sh
                     self.ptr = (self.ptr + 1) & 0xFF
@@ -105,6 +111,8 @@ class Target:
                 self.next = "wdata"
             self._at(cycle + HOLD, "sda", 1)
             self.state = "ackout"
+        elif s == "nackout":
+            self.state = "idle"             # a STOP or a repeated START follows
         elif s == "ackout":
             self._at(cycle + HOLD, "sda", 0)
             if self.next == "wdata" and self.nbytes == 2 and not self.stretched:
@@ -174,20 +182,32 @@ DATA = [0xDE, 0xAD, 0xBE, 0xEF]
 WRITE = [(OP_START, 0), (OP_WRITE, 0xA0), (OP_WRITE, 0x10)] + [(OP_WRITE, d) for d in DATA] + [(OP_STOP, 0)]
 READ = [(OP_START, 0), (OP_WRITE, 0xA0), (OP_WRITE, 0x10), (OP_RESTART, 0), (OP_WRITE, 0xA1),
         (OP_READ_ACK, 0), (OP_READ_ACK, 0), (OP_READ_ACK, 0), (OP_READ_NACK, 0), (OP_STOP, 0)]
+# NACKs: no target at 0x51, and a byte written to a read-only register. The
+# host drops the rest of a transaction after a NACK and sends STOP.
+NO_TARGET = [(OP_START, 0), (OP_WRITE, 0xA2), (OP_WRITE, 0x00), (OP_STOP, 0)]
+READ_ONLY_WRITE = [(OP_START, 0), (OP_WRITE, 0xA0), (OP_WRITE, READ_ONLY), (OP_WRITE, 0x55),
+                   (OP_WRITE, 0x66), (OP_STOP, 0)]
+OPS = WRITE + NO_TARGET + READ + READ_ONLY_WRITE
+ACKS = [0] * 6 + [1] + [0] * 3 + [0, 0, 1]      # ACK bits pushed by the lane, in order
 
 
 class I2cJob:
     """Feeds controller commands to a lane and collects what it pushes back.
     poll() does at most one SPI access, given the MBOX_STATUS word."""
 
-    def __init__(self, lane, ops):
+    def __init__(self, lane, ops, acks=None, dropped=0):
+        """acks: the ACK bits expected in order (default: every write ACKed);
+        dropped: the commands the host should drop after NACKs."""
         self.lane = lane
         self.ops = list(ops)
+        self.want_acks = acks if acks is not None else [0] * sum(op == OP_WRITE for op, _ in ops)
+        self.want_dropped = dropped
         self.tx = td.chip_reg("MBOX_TX", lane)
         self.rx = td.chip_reg("MBOX_RX", lane)
         self.tx_full, self.rx_full = 1 << (2 * lane), 1 << (2 * lane + 1)
         self.wait_push = None
         self.acks, self.got = [], []
+        self.dropped = 0
 
     def done(self):
         return not self.ops and self.wait_push is None
@@ -199,6 +219,9 @@ class I2cJob:
             v = chip.peek(self.rx)
             if self.wait_push == OP_WRITE:
                 self.acks.append(v & 1)
+                while v & 1 and self.ops[0][0] != OP_STOP:  # NACK: straight to STOP
+                    self.ops.pop(0)
+                    self.dropped += 1
             else:
                 self.got.append(v & 0xFF)
             self.wait_push = None
@@ -216,10 +239,15 @@ class I2cJob:
         print("i2c: acks %s, read %s, target registers 0x10.. %s"
               % ("".join(str(a) for a in self.acks), bytes(self.got).hex(), bytes(r or 0 for r in regs).hex()))
         bad = []
-        if any(self.acks) or len(self.acks) != 9:
-            bad.append("a byte was not ACKed")
+        if self.acks != self.want_acks:
+            bad.append("ACK bits %s, expected %s"
+                       % ("".join(map(str, self.acks)), "".join(map(str, self.want_acks))))
+        if self.dropped != self.want_dropped:
+            bad.append("%d commands dropped after a NACK, expected %d" % (self.dropped, self.want_dropped))
         if self.got != DATA or regs != DATA:
             bad.append("data differ")
+        if target.regs.get(READ_ONLY) is not None:
+            bad.append("the read-only register was written")
         return bad
 
 
@@ -239,6 +267,7 @@ def main():
     ap.add_argument("--tsec", nargs=2, required=True, metavar=("DIR", "NAME"))
     ap.add_argument("--image", required=True)
     ap.add_argument("--tr", type=int, default=TR, help="bus rise time, clocks")
+    ap.add_argument("--limit", type=int, default=600000, help="cycles the transactions may take")
     a = ap.parse_args()
 
     lanes = td.read_tsec(*a.tsec)
@@ -250,7 +279,7 @@ def main():
         blocks = image.unpack(fh.read())[2]
 
     target = Target(0x50)
-    job = I2cJob(lane, WRITE + READ)
+    job = I2cJob(lane, OPS, ACKS, 2)
     chip = td.Chip(a.sim)
     chip.pins.hold(td.UIO, SCL, 1)
     chip.pins.hold(td.UIO, SDA, 1)
@@ -260,7 +289,7 @@ def main():
     run_at = chip.pins.cycle
     print("run: lane %d from cycle %d, STATUS %s" % (lane, run_at, st), flush=True)
     chip.pins.attach(Bus(target, a.tr))
-    run_jobs(chip, [job], run_at + 400000)
+    run_jobs(chip, [job], run_at + a.limit)
     chip.wait(600)
     st = td.status_fields(chip.peek(td.chip_reg("STATUS")))
     chip.close()
@@ -273,7 +302,8 @@ def main():
     if bad:
         print("FAIL host: " + "; ".join(bad))
         return 1
-    print("PASS host: %d bytes written, %d read back, %d ACKs" % (len(DATA), len(job.got), len(job.acks)))
+    print("PASS host: %d bytes written, %d read back, %d ACKs, %d NACKs handled"
+          % (len(DATA), len(job.got), job.acks.count(0), job.acks.count(1)))
     return 0
 
 

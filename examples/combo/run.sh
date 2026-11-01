@@ -46,7 +46,7 @@ python3 examples/uart/timing.py --report "$OUT/uart_tx/uart_tx.report.txt" --rol
     --vcd "$VCD" --pin uo_out0 --from "$FROM" --baud $BAUD >"$OUT/timing.log" || true
 cat "$OUT/timing.log"
 python3 -m verif.judges i2c "$VCD" --map scl=uio_in2 --map sda=uio_in3 --speed fm --require-ack \
-    --from "$FROM" --expect "$HERE/../i2c/i2c.expect" >"$OUT/judge-i2c.log" || true
+    --from "$FROM" --expect "$HERE/i2c.expect" >"$OUT/judge-i2c.log" || true
 grep -v "^VIOLATION" "$OUT/judge-i2c.log"
 { grep "^VIOLATION" "$OUT/judge-i2c.log" | sed 's/^VIOLATION *[0-9.]* [mun]*s  //' | sort | uniq -c | sort -rn | head -5; } || true
 grep -q "^PASS uart" "$OUT/judge-uart.log" || die "UART judge"

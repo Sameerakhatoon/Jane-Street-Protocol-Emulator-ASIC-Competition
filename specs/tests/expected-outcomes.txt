@@ -44,6 +44,10 @@ spi_flash_target.tse|-|0|-|-
 spi_flash_target.tse|-D f_sck=2.5e6 --fclk 50e6|0|-|-
 spi_flash_target.tse|-D f_sck=4e6|2|R311|response window not met in role 'flash': shift mosi late
 i2c_target.tse|-|2|R314|re-arm too late in role 'tgt': the wait that detects stop (abort) starts 12 cycles after stop may already be visible
+# I2C target with repeated START, host-paced writes and the START and STOP bounds of the standard.
+i2c_target_fm.tse|-|0|-|-
+i2c_target_fm.tse|--fclk 50e6|0|-|-
+i2c_target_sm.tse|-|0|-|-
 i2c_controller_fm.tse|-|0|-|-
 i2c_controller_fm.tse|--fclk 50e6|0|-|-
 i2c_controller_sm.tse|-|0|-|-
