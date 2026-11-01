@@ -4,19 +4,21 @@
 
 Write a serial protocol once, as a timed spec. The chip speaks it, checks it and triggers on it, and the compiler proves that every response lands inside its datasheet window, or refuses to build the program.
 
-TSE is a Tiny Tapeout design for the IHP CMOS5L shuttle, 6x4 tiles, 60 MHz. It is in development. Every result below comes from simulation of the RTL in this repository; no chip exists yet.
+TSE is a Tiny Tapeout design for the IHP CMOS5L shuttle, 6x4 tiles. It is in development. Every result below comes from simulation of the RTL in this repository or from the physical-design flow; no chip exists yet, and there is no hardware or FPGA evidence.
 
 ## What it is
 
 A timed spec is a text file that describes one side of a protocol: its states, what it drives on which wire, and the timing rules from the datasheet ("hold SCL high at least 600 ns", "MISO valid before the next SCK rise"). The compiler, `tsec` (in `tools/tsec/`), turns the spec into programs and configuration words for the chip. Before it writes anything it works out, cycle by cycle, when every output edge and every sample happens, and checks each against its window. If one cannot be met it rejects the spec with the rule, how late the edge is and a suggested fix. A rejected spec produces no image.
 
-The chip runs the result in one of three ways:
+The chip runs the result in one of three modes:
 
 - **Speak**: act as a controller or a target of the protocol on real pins.
 - **Check**: watch a bus between other devices, timestamp what happens and report every broken timing rule; sweep one threshold a clock at a time to measure a device's margin.
 - **Trigger**: decode the traffic and pulse an output pin when a chosen sequence of events happens.
 
-What of this works is in the evidence table below, each row with the command that shows it.
+What of this works, and at what level of evidence, is in the claims table below.
+
+## Architecture
 
 Inside the chip:
 
@@ -26,39 +28,91 @@ Inside the chip:
 - **An event unit** timestamps events from both lanes on one clock and drives the trigger pin from a sequence of up to three stages.
 - **A loader** fills the SRAM and the configuration after every power-up, with a self-test of the SRAM and a CRC-32 check, and a fallback store for the case where the SRAM self-test fails. At run time the host reaches the chip over SPI.
 
-The tile holds a UART test design (the datasheet page is `docs/info.md`); the full chip is the top `src/tt_um_tse_sk_chip.sv` with its source list in `info_chip.yaml`, and every test below builds it.
+A lane answers a bit-level pattern and a CRC verdict at a bit offset through its two response rules, with no program in the loop. That is why the compiler can treat a target role's reaction time as a constant and prove it against the datasheet window. Where PIO or PRU would count cycles by hand, TSE places the edges and either proves the window or refuses the program.
+
+The tile holds a UART test design (the datasheet page is `docs/info.md`); the full chip is the top `src/tt_um_tse_sk_chip.sv` with its source list in `info_chip.yaml`, and every claim below that says "on the chip" builds it.
+
+## The instruction set
+
+A lane runs 16-bit instructions, one source of truth in `isa/tse_isa.yaml`, from which the SystemVerilog packages and the assembler tables are generated (`make isa-gen`; CI fails on any drift). The groups:
+
+- **Control**: `JMP` (conditional, with counter decrement), `WAIT` (stall until a pin, event or flag matches, with a timeout and an alternate condition), `DLY` (idle a fixed number of cycles).
+- **Data movement**: `SET` (write an immediate), `MOV` (copy a register), `OUT` and `IN` (shift 1 to 32 bits out of or into the shift registers, for the bit-level work the assists do not), `PUSH` and `PULL` (host mailboxes), `LDW` and `STW` (load and store a data-window word in the lane's own data slot).
+- **Configuration and timing**: `CSRW` and `CSRR` (write and read a lane register; configuration words take three cycles), `TMR` (timed-automaton clock control with a guard threshold), `SIG` (set chip-wide flags), `EMIT` (send a decoded event to the event unit).
+
+Each instruction's exact encoding, cycle cost and pipeline latency (for example an output port changes two cycles after the instruction dispatches; a trigger output three cycles after `EMIT`) is in `isa/tse_isa.yaml`. The assembler and disassembler are in `tools/tseasm/`.
+
+## Claims and evidence
+
+The status words:
+
+- **PROVEN**: a formal proof passes in the formal step; it must also catch a planted bug, and an UNKNOWN result counts as a failure.
+- **LOCKSTEP**: the RTL matches the Python reference model instruction by instruction under randomised tests.
+- **SIM**: demonstrated in the Verilator full-chip simulation and judged on the pins only by an independent decoder; no silicon, no FPGA.
+- **BUILDS**: the compiler accepts or rejects the spec with a recorded, pinned outcome, checked in CI.
+- **MEASURED**: a number read from the physical-design flow.
+- **OPEN**: not done yet.
+
+| Claim | Status | Run it | Caveat |
+|---|---|---|---|
+| A UART spec is compiled, loaded over the loader pins into the two-lane chip and run from SRAM: 46 frames sent, 30 received, 0 violations at nominal and plus or minus 1.5 percent baud | SIM | `make e2e-uart` | simulation only; one baud family |
+| Every UART transmit edge lands on the cycle the compiler predicted | SIM | `make e2e-uart` | worst error about 3.5 of 10.18 ticks over 230 edges |
+| I2C controller and target both run on the chip at 100 and 400 kHz, 0 judge violations; the target stretches SCL | SIM | `examples/tests/11-i2c-target.sh` | the RTL window proof for the target has not closed |
+| SPI controller, modes 0 to 3, drives a simulated target | SIM, BUILDS | `examples/tests/07-spi.sh` | builds only with `--pad-skew 0` (R310); a real pad-skew figure is still needed |
+| CAN receiver answers with an in-bit ACK by a response rule; a bad-CRC frame is not ACKed, at 125k and 500k | SIM | `examples/tests/09-can.sh` | receiver only; two independent CAN nodes are not expressible |
+| 10BASE-T transmit, 3 frames, 0 violations | SIM | `examples/tests/10-eth10.sh` | transmit only; receive is blocked |
+| SPI flash target answers an ID and a read (ef4015) | SIM | `examples/tests/08-flash.sh` | about 500 to 714 kHz only |
+| The compiler rejects a spec it cannot prove and names the fix | BUILDS | `python3 -m tools.tsec build specs/spi_target.tse` | rejected R314; with `-D t_css=117e-9 -D f_sck=1.875e6` it builds. The analysis is checked against the reference model, not mechanised |
+| 25 specs across 9 protocols compile to a pinned set of accept or reject outcomes | BUILDS | `make specs-test` | several are rejected by design, each for a recorded reason |
+| The RTL matches the reference model instruction by instruction on random programs | LOCKSTEP | `make verif-test` | Hypothesis property tests in cocotb |
+| CRC of any width 5 to 32 equals a textbook CRC; the stuffer, codec, DPLL, slot arbiter and SRAM false path meet their properties | PROVEN | `make formal` | planted bugs must fail; UNKNOWN is a failure |
+| Per-program window proof on the real lane RTL, SPI target | PROVEN (one program) | `make tsec-proof` | the I2C target and 10BASE-T frame proofs do not close yet; frame-role obligations 2 of 5 pass |
+| Check flags timing violations and sweeps a device's margin; Trigger fires on a decoded event sequence | SIM | `make check-thd-sta check-sweep check-trigger` | on the chip in simulation; compiling a spec directly into a Check program is partly done |
+| Independent judges decode pins-only traces from the published standards | SIM | `make judges-test` | nine protocols |
+| Unmodified OpenOCD reads a JTAG IDCODE and an SWD DPIDR, and Linux ping runs over 10BASE-T, through simulated pins | SIM | `make judges-demos judges-run` | runs on a small stand-in test top, not yet on the TSE lanes |
+| The full two-lane chip reaches global-route overflow 0 on every layer, then passes detailed routing, KLayout DRC, antenna, LVS and hold at three corners | MEASURED | the full signoff flow | slow-corner setup and a Magic power-stripe DRC are still open, below |
+| Full-chip setup at 60 MHz, Tiny Tapeout precheck, gate-level simulation with SDF at three corners | OPEN | | slow corner is about 49 MHz; typ and fast corners meet 60 MHz |
+
+### Known limits
+
+These are the compiler refusing to build a spec it cannot meet. The rejection is the evidence that the tool is honest.
+
+- A USB low-speed device cannot drive SE0 (both wires low): the codec drives and samples one lane pin, so the two-wire line code cannot reach that state (`specs/usb_ls_device.tse`, R307).
+- 10BASE-T receive is blocked by a late start-of-frame re-arm and by DPLL limits (`specs/eth10_rx.tse`, R314); transmit works.
+- Two independent CAN nodes are not expressible: the shifted-in and shifted-out bits share one virtual pin (`specs/can_node.tse`, R307).
+- The SPI target runs to about 1.9 MHz, not 4 MHz; the SPI flash target to about 714 kHz.
+- Clocked controllers (SPI, SWD) need the real pad-skew figure from layout; they build at zero skew.
+- Literal zero global-route overflow and slow-corner setup at 60 MHz conflict; the clean fix is a config-bank or fetch-path RTL change.
+
+## Verification
+
+Four independent checks back the claims above, so a bug has to pass more than one of them:
+
+- **Lockstep**: a Python reference model of the lane, the assists and the chip runs beside the RTL under Hypothesis-generated programs, and every instruction must agree (`make verif-test`, model in `model/`, suites in `verif/`).
+- **Formal**: SymbiYosys proofs of the CRC against a textbook CRC for every width, the stuffer, the codecs, the DPLL, the slot arbiter's non-interference and the SRAM false path. Each proof must also catch a planted bug, and an UNKNOWN result is treated as a failure (`make formal`, `formal/`).
+- **Independent judges**: decoders written from the published standards read the pins-only traces and count violations, so the thing that judges a run is not the thing that produced it (`make judges-test`, `verif/judges/`).
+- **Compiler soundness**: every accepted or rejected build outcome is pinned and replayed against the reference model; three soundness holes were found this way and fixed with failing tests written first (`make specs-test`).
+
+What is not covered, stated plainly: no silicon, no FPGA, no measured CMOS5L pad timing; the compiler's timing analysis is checked against the reference model but is not a mechanised proof; several per-program RTL window proofs do not close yet; and the full chip does not yet pass precheck or slow-corner setup. `make regress` runs the standing suite end to end.
 
 ## What we do differently from PIO and PRU
 
-1. **Timing is checked before a program exists.** With PIO or PRU the programmer counts cycles; here the compiler places every edge and rejects a spec it cannot meet. Example: `specs/spi_target.tse` at 4 MHz is rejected (`R314`, the lane reaches its wait for the next SCK rise up to 7 cycles late, fix `f_sck <= 1.99 MHz`); with `-D t_css=117e-9 -D f_sck=1.875e6` it builds.
+1. **Timing is checked before a program exists.** With PIO or PRU the programmer counts cycles; here the compiler places every edge and rejects a spec it cannot meet. Example: `specs/spi_target.tse` at 4 MHz is rejected (`R314`, the lane reaches its wait for the next SCK rise too late, fix `f_sck <= 1.99 MHz`); with `-D t_css=117e-9 -D f_sck=1.875e6` it builds.
 2. **Protocol assists in every lane.** CRC, bit stuffing, line codes, clock recovery and response rules are hardware, so a lane does not spend instructions per bit on them (PIO has none of these; a PRU does them in software).
 3. **Lanes cannot disturb each other.** Memory access is granted by fixed slots, proven with SymbiYosys for the slot arbiter (`formal/arb/`), and measured end to end in `examples/combo/`.
 
 PIO is much smaller and mature, and a PRU is a full CPU; TSE trades both for timing that is stated and checked.
 
-## Evidence
+## Related work
 
-"Works" means the command passes on the current branch.
+Other public projects reached parts of the same idea first. This is an honest credit; none of their code is used here.
 
-| Claim | How it is checked | Run it | Status |
-|---|---|---|---|
-| A UART spec goes through the whole flow: compiled, loaded over the loader pins into the full two-lane chip, run from SRAM; the transmitter sends 46 frames and the receiver takes 30 frames at nominal, +1.5 % and -1.5 % baud rate, all with 0 violations | `examples/uart/`, independent judge `verif/judges/uart.py` on the pins-only trace | `make e2e-uart` | works |
-| Every transmit edge lands on the cycle the compiler predicted (worst error 3.48 of 10.18 ticks over 230 edges) | `examples/uart/timing.py` compares the trace with the compiler report | `make e2e-uart` | works |
-| Two lanes run at once and the second does not disturb the first: UART on lane 0 keeps every edge on its predicted cycle while lane 1 runs I2C | `examples/combo/` | `make e2e-combo` | works on the UART side |
-| I2C Fast-mode controller against a simulated target: both transactions decode, every byte acknowledged and read back | `examples/i2c/` | `make e2e-i2c` | runs; the judge flags SCL high time 583 ns against 600 ns, a known compiler bug (a dropped wait), kept as an expected failure in `examples/tests/03-i2c.sh` |
-| The compiler rejects a spec it cannot prove and says why | `specs/spi_target.tse` at 4 MHz (rejected, `R314`), the same spec with `-D t_css=117e-9 -D f_sck=1.875e6` (accepted) | `python3 -m tools.tsec build specs/spi_target.tse` | works |
-| 25 specs for 9 protocols (UART, SPI, I2C, CAN, SWD, JTAG, PS/2, USB low speed, 10BASE-T); 49 pinned compiler outcomes: which build, which are rejected and for what reason | `specs/`, `specs/tests/expected-outcomes.txt` | `make specs-test` | works; some specs are rejected, each for the reason recorded in that file (the frame-level specs for USB, 10BASE-T and CAN are not lowered yet) |
-| The RTL matches a Python reference model, instruction by instruction, on random programs | lockstep with Hypothesis: `verif/lockstep/` (sequencer), `verif/lane/`, `verif/blocks/` (assists), model in `model/` | `make verif-test` | works |
-| CRC matches the catalogue values (CRC-5 and CRC-16 of USB, CRC-15 of CAN, CRC-32); stuffer, codec and DPLL properties; slot arbiter non-interference and slot ownership | SymbiYosys in `formal/`; every proof must also catch planted bugs, and UNKNOWN counts as a failure | `make formal` | works |
-| Loading is safe: CRC-32 checked at `COMMIT`, readback, `RUN` refused before a good load, SRAM self-test (March C-) finds stuck, transition, coupling and address faults, fallback store runs when the SRAM is dead | `verif/chip/`, `host/tests/rtl/` | `make chip-test host-rtl` | works |
-| Trigger: an event reaches the trigger pin 3 clock edges after the lane emits it | `test/rtl/tb_chip_pins.sv` | `make rtl-sim` | works |
-| Check-mode host tools turn event records into timing compliance reports and margin sweeps | `host/tse_check/` | `make tools-test` | works on recorded events; a spec does not compile into a Check program yet |
-| Independent judges decode pins-only traces from the published standards (UART, SPI, I2C, JTAG, SWD, CAN, USB low speed, 10BASE-T, PS/2) | `verif/judges/` and its tests | `make judges-test` | works |
-| Unmodified OpenOCD reads a JTAG IDCODE and an SWD DPIDR, and Linux `ping` runs over 10BASE-T, through simulated pins | `sim/bridge/`, `verif/judges/demos/` | `make judges-demos judges-run` | works on a small stand-in test top (`sim/rtl/tt_um_uart_echo.sv`), not yet on TSE lanes |
-| The RP2350 host code loads and runs the chip through the Tiny Tapeout SDK | `host/tse_rp2/`, tested against a CPython stand-in of the SDK | `make host-test` | works in simulation; not yet run on a board |
-| The UART test design that the tile holds | `test/` (Tiny Tapeout cocotb test) | `make rtl-test` | works |
-| Full chip hardened with the Tiny Tapeout flow, timing at three corners, precheck | | | not done yet |
-| Per-program formal proof of each compiled image against the lane RTL | `tools/tsec/proofgen.py` writes the harness; `make tsec-proof` checks the window checker itself | | not done yet |
+- **SPEX** runs timed-automaton protocol specifications in Drive, Check, Stress and Cover roles and rejects programs it cannot meet. It is the closest conceptual neighbour and made the earliest public claim of a chip that executes timed-automaton protocol specs.
+- **Escapement** proves, unbounded and in hardware, that no pin edge is ever late for any program, and refuses firmware that is not certified. Its guarantee is stronger in form than a per-program compiler analysis.
+- **MarcosAsh** compiles a job to certified firmware or a named refusal and sweeps real device margins on a bench.
+- **FIPE** compiles timing rules out of a spec into on-chip timing monitors and publishes measured device datasheets, on a closed layout.
+
+What is left that is TSE's, all on one design: reaction-window proofs for target roles over every memory slot phase with the fix named; hardware response rules that answer a bit pattern plus a CRC verdict at a bit offset; a CRC of any width 5 to 32 proved equal to a textbook CRC; and Speak, Check and a three-stage decoded-event Trigger from one spec on the same chip. The honest counterweight: TSE has no passing official GDS yet and no hardware, while most serious rivals have one or both.
 
 ## Run it
 
@@ -73,19 +127,6 @@ The end-to-end examples (the first run builds the Verilated chip, about 2 minute
     make e2e-test            # all examples and their checks
     examples/uart/run.sh     # one example; outputs in build/e2e/uart/
     examples/i2c/run.sh
-    examples/combo/run.sh
-
-`examples/uart/run.sh` prints, among its step logs:
-
-    PASS host: 16 bytes sent, 30 received and echoed
-    PASS uart: 46 frames, 0 violations
-    PASS uart: 30 frames, 0 violations
-    PASS timing: every edge at the compiler's cycle, worst error 3.48 of 10.18 ticks
-    PASS e2e-uart: 46 TX frames, 30 RX frames judged, 0 violations
-
-Real software against the simulated pins (needs OpenOCD and unprivileged user namespaces):
-
-    make judges-demos judges-run
 
 Compile a spec yourself:
 
