@@ -234,6 +234,8 @@ class RoleChecker:
             if s.name.text not in self.sym.frames:
                 self.err("E101", f"unknown frame '{s.name.text}'", s.name.span)
             for a in s.args:
+                if isinstance(a, A.Ref) and a.index is None and self.is_array(self.vars.get(a.name.text)):
+                    continue            # the frame is sent from a data window array
                 self.guard(a)
             self.timing(A.Timing(s.window), s.span)
         elif isinstance(s, A.Recv):

@@ -154,6 +154,8 @@ def build(args, src, path):
             res = compile_role(sym, role, lane, fclk, fm, args.ppm, pads, (wbase, DATA_WORDS))
             if res.kind == "fsm" and res.chosen is not None:
                 wbase = res.chosen.fsm.window.end
+            elif res.kind == "frames" and res.chosen is not None:     # a later role starts after
+                wbase = max([wbase] + [b + n for b, n in res.chosen.low.windows])
             rows = assemble(res.chosen) if res.chosen else None
             cfg = config.lane_config(sym, res, fclk) if rows is not None else None
         except TseError as e:
@@ -183,7 +185,7 @@ def build(args, src, path):
                 os.remove(stale)
         return EXIT_REJECTED
     if args.out:
-        write_outputs(args.out, stem, sym, accepted, text, emit, fclk, fm, pads)
+        write_outputs(args.out, stem, sym, accepted, text, emit, fclk, fm, pads, args.ppm)
     return EXIT_OK
 
 
@@ -202,7 +204,7 @@ def window_rows(accepted):
             for w in res.chosen.fsm.window.rows()]
 
 
-def write_outputs(out, stem, sym, accepted, text, emit, fclk, fm=None, pads=(0, 25)):
+def write_outputs(out, stem, sym, accepted, text, emit, fclk, fm=None, pads=(0, 25), ppm=50):
     os.makedirs(out, exist_ok=True)
 
     def put(name, body):
@@ -235,7 +237,11 @@ def write_outputs(out, stem, sym, accepted, text, emit, fclk, fm=None, pads=(0, 
     if "proof" in emit:
         ticks = tuple(Fr(p) * fclk / 10**9 for p in pads[:2])
         for lane, res, rows, cfg in accepted:
-            if res.kind == "frames":        # frame roles have no proof harness yet
+            if res.kind == "frames":        # engine events and pins; the data window reads 0
+                checks, _ = proofgen.frame_checks(res.chosen, lane, fm, ppm)
+                if checks:
+                    proofgen.write_frames(os.path.join(out, "proof"), res.role, lane, checks, cfg[0],
+                                          [w for _, w, _, _, _ in rows], [], res.chosen.low.host_ready)
                 continue
             if res.kind == "fsm":
                 obs = proofgen.fsm_obs(sym, res.role, lane, res.chosen, fm, fclk)

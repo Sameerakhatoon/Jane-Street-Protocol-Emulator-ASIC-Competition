@@ -237,6 +237,7 @@ class FrameLowering:
             raise self.err(f"state '{state}' is entered with different levels on "
                            f"{', '.join(self.side)}", self.states[state].name.span)
         self.entry_level[state] = lvl
+        self.entry_pulled.setdefault(state, set()).add(self.pulled)
         self.jump(state)
         if state not in self.done:
             self.done.add(state)
@@ -245,15 +246,33 @@ class FrameLowering:
     # ------------------------------------------------------------ driver
     def lower(self):
         self.prologue()
+        self.entry_pulled = {self.init.name.text: {None}}
+        self.resp_sets = []
         self.done.add(self.init.name.text)
         self.entry_level[self.init.name.text] = dict(self.side_level)
         self.queue.append(self.init.name.text)
+        used = {}
         while self.queue:
             name = self.queue.pop(0)
             self.side_level = dict(self.entry_level[name])
+            got = self.entry_pulled.get(name, {None})
+            self.pulled = next(iter(got)) if len(got) == 1 else None
             self.place(name)
             self.state(self.states[name])
+            if self.pulled_used:
+                used[name], self.pulled_used = self.pulled_used, None
+        for name, var in used.items():          # entries found after the state was lowered
+            if self.entry_pulled[name] != {var}:
+                raise self.err(f"state '{name}' sends '{var}', but a way into it does not pull '{var}' "
+                               "from the host just before", self.states[name].name.span)
+        for ins, span in self.resp_sets:        # the rule position write keeps the answer bits
+            resp = self.rules[0].resp
+            if resp > 0xFF:
+                raise self.err("an answer of more than 8 bits written with the rule position", span)
+            ins.a["imm"] = resp
         return self
+
+    pulled_used = None
 
     def prologue(self):
         dirs = sum(1 << self.vpin[w] for w in self.side)
@@ -480,6 +499,14 @@ class FrameLowering:
         if before_send:
             if codec or gap is not None:
                 raise self.err("a timed drive or a drive of the codec's pin before `send`", group[0].span)
+            # After a frame the line keeps the level its end left (TP_IDL high, say), so the drives
+            # that start a frame also put the line at its wire's idle level until the first bit.
+            v = self.idle_of(self.codec_pin)
+            ins = self.cmd("line_set", *(["line_val"] if v else []),
+                           note=f"{self.codec_pin} = {v} (idle) before the frame"
+                           + (f", side {self.levels()}" if self.side else ""))
+            ins.drives = dict({s.wire.text: int(self.sym.eval(s.value).v) for s in group},
+                              **{self.codec_pin: v})
             return None
         if codec:
             v = int(self.sym.eval(codec[0].value).v)
@@ -487,6 +514,7 @@ class FrameLowering:
                            note=f"{self.codec_pin} = {v}" + (f", side {self.levels()}" if self.side else ""))
         else:
             ins = self.emit("DLY", d=0, note=f"side {self.levels()}")
+        ins.drives = {s.wire.text: int(self.sym.eval(s.value).v) for s in group}
         mark = self.label("t")
         ins.mark = mark
         if prev is not None and prev[2] is not None:
@@ -567,8 +595,13 @@ class FrameLowering:
         bits, nfix = lay.prefix()
         k = lay.crc_field()
         var = s.args[0].name.text if s.args and isinstance(s.args[0], A.Ref) else None
-        if var is None or var != self.pulled:
+        buf = self.buffer_of(var)
+        if buf is None and (var is None or var != self.pulled):
             raise self.err("`send F(v)` needs v pulled from the host just before", s.span)
+        if buf is not None and self.pulled is None:
+            raise self.err(f"`send F({var})` from a data window array needs the header word pulled from "
+                           "the host just before", s.span)
+        self.pulled_used = self.pulled          # every way into this state must pull it (lower())
         if len(bits) % 32 or k != len(lay.fields) - 1 or lay.crc_field() is None \
                 or lay.fields[k].crc[1] != lay.fields[nfix].name \
                 or lay.fields[k].crc[2] != lay.fields[k - 1].name \
@@ -579,32 +612,14 @@ class FrameLowering:
             raise self.err("`send` of a most significant bit first frame", s.span)
         self.cfg["tx_crc"] = 1
         self.crc_prefix = bits
+        if buf is not None:
+            return self.send_buffered(s, lay, bits, nfix, k, var, buf)
         self.notes[f"pull host {var}"] = (
             "first word, the header: bits 15..0 = number of 32-bit words before the last one, minus "
             "1 (at least 1 word); bits 21..16 = 0x20 + bits in the last word - 1 (TXCTL). Then the "
             f"words of '{lay.fields[nfix].name}' to '{lay.fields[k - 1].name}', bit 0 first on the "
             "line, first octet in bits 7..0")
-        P = self.p_min
-        need = AE.deadline("txneed", P)
-        timer = self.assists.get("timer")
-        if timer is not None:
-            self.load_yx(self.timer_ctl(timer, 0))
-            self.csrw("TIMER_CTL", "event 0 is TXNEED")
-        self.emit("OUT", dst="X", n=16, note="header: words before the last, minus 1")
-        self.emit("MOV", dst="ISR", src="X")
-        self.emit("OUT", dst="T", n=16, note="header: TXCTL of the last word")
-        self.cmd("crc_clear", note="the CRC starts with the constant prefix (CRC_INIT accounts for it)")
-        first = True
-        for w in range(0, len(bits), 32):
-            word = sum(b << i for i, b in enumerate(bits[w:w + 32]))
-            self.load_yx(word)
-            if not first:
-                self.feed_wait("TXNEED", ("txw", 2 + 31 * P))
-            ins = self.csrw("TXDATA", f"prefix word 0x{word:08X}")
-            ins.mark = "txw"
-            if not first:
-                self.feed_ob(ins, "txneed", need, s.span, "TXDATA write after TXNEED")
-            first = False
+        P, need = self.tx_prefix(s, bits, "words before the last, minus 1")
         top, more, last = self.label("tx"), self.label("more"), self.label("last")
         self.place(top)
         p = self.emit("PULL", blk=1, note="next word")
@@ -624,6 +639,52 @@ class FrameLowering:
         self.place(last)
         p = self.emit("PULL", blk=1, note="last word")
         p.fw = FWait("HOST")
+        self.tx_last(s, P, need)
+
+    def tx_prefix(self, s, bits, count):
+        """The header word in OSR (count, TXCTL of the last word), then the constant prefix words."""
+        P = self.p_min
+        need = AE.deadline("txneed", P)
+        timer = self.assists.get("timer")
+        if timer is not None:
+            self.load_yx(self.timer_ctl(timer, 0))
+            self.csrw("TIMER_CTL", "event 0 is TXNEED")
+        self.emit("OUT", dst="X", n=16, note=f"header: {count}")
+        self.emit("MOV", dst="ISR", src="X")
+        self.emit("OUT", dst="T", n=16, note="header: TXCTL of the last word")
+        self.cmd("crc_clear", note="the CRC starts with the constant prefix (CRC_INIT accounts for it)")
+        first = True
+        for w in range(0, len(bits), 32):
+            word = sum(b << i for i, b in enumerate(bits[w:w + 32]))
+            self.load_yx(word)
+            if not first:
+                self.feed_wait("TXNEED", ("txw", 2 + 31 * P))
+            else:
+                self.half_wait()
+            ins = self.csrw("TXDATA", f"prefix word 0x{word:08X}")
+            ins.mark = "txw"
+            if not first:
+                self.feed_ob(ins, "txneed", need, s.span, "TXDATA write after TXNEED")
+            else:
+                ins.ob = Ob("feed", "R316", "first TXDATA write after a half-bit strobe", s.span, "ev_HALF",
+                            lo=0, hi=P - 2 - -(-(self.q16 // 2) // 16),
+                            why="the first word must be in before the next bit start, or that bit's half "
+                            "strobe drives the previous frame's last bit onto the line first")
+            first = False
+        return P, need
+
+    def half_wait(self):
+        """The bit timer runs freely, and the codec takes a half-bit strobe once TX is active: a first
+        word written after a bit start but before its half strobe would put the last frame's final bit
+        on the line for the rest of that bit. So the first word is written just after a half strobe:
+        the strobe comes ceil(period / 2) cycles after the bit-start cycle's phase wraps, the next bit
+        start P - 1 cycles after that wrap."""
+        w = self.wait("FLAG", "HALF", note="a half-bit strobe: the first word goes in before the bit start")
+        w.fw = FWait("HALF", mark="ev_HALF", pulse=True)
+        w.react = True
+
+    def tx_last(self, s, P, need):
+        """The last word in OSR: its TXCTL, the write, then back to whole words and wait for idle."""
         self.emit("MOV", dst="X", src="T")
         self.csrw("TXCTL", "last word: its bits and the CRC append")
         self.emit("OUT", dst="X", n=16)
@@ -637,6 +698,53 @@ class FrameLowering:
         w = self.wait("EV", "TXIDLE", note="the frame and its CRC are out: the line is idle")
         w.fw = FWait("TXIDLE", mark="txend", earliest=("txw", 2 + 32 * P))
         self.pulled = None
+
+    def buffer_of(self, var):
+        """(base, words) of a data window array named var, None if var is not one."""
+        v = self.vars.get(var)
+        if v is None or v.type.name.text != "words":
+            return None
+        return DATA_BASE * self.lane, int(self.sym.eval(v.type.width).v)
+
+    def send_buffered(self, s, lay, bits, nfix, k, var, buf):
+        """The host words come from a data window array the host wrote beforehand, the last word at
+        the array's first word and the first word highest, so one register walks down to the base.
+        The host's mailbox is then needed only for the header, not at the line's pace."""
+        base, n = buf
+        most = -(-(lay.offset(k)[1] - len(bits)) // 32)
+        if n > DATA_BASE or most > n:
+            raise TseError("R308", f"`send {lay.frame.name.text}({var})`: frame '{lay.frame.name.text}' "
+                           f"needs up to {most} words after its constant start, the array has {n} and a "
+                           f"frame role has {DATA_BASE} data window words per lane", s.span)
+        self.windows = [(base, n)]
+        self.notes[f"pull host {self.pulled}"] = (
+            f"the header, after the frame is in '{var}' (data window words {base} to {base + n - 1}): "
+            f"bits 15..0 = {base} + the number of 32-bit words before the last one (at least 1); bits "
+            "21..16 = 0x20 + bits in the last word - 1 (TXCTL)")
+        self.notes[f"data window {var}"] = (
+            f"the words of '{lay.fields[nfix].name}' to '{lay.fields[k - 1].name}' in reverse: the last "
+            f"word in word {base}, the one before it in word {base + 1}, and so on; bit 0 first on the "
+            "line, first octet in bits 7..0")
+        P, need = self.tx_prefix(s, bits, "data window word of the first frame word")
+        top, dec, last = self.label("tx"), self.label("dec"), self.label("last")
+        self.place(top)
+        self.emit("MOV", dst="X", src="ISR")
+        self.emit("LDW", ind=1, addr=0, note="next word from the data window")
+        self.emit("OUT", dst="X", n=16)
+        self.emit("OUT", dst="Y", n=16)
+        self.feed_wait("TXNEED", ("txw", 2 + 31 * P))
+        ins = self.csrw("TXDATA")
+        ins.mark = "txw"
+        self.feed_ob(ins, "txneed", need, s.span, "TXDATA write after TXNEED")
+        self.emit("MOV", dst="X", src="ISR")
+        self.emit("SET", dst="Y", imm=base)
+        self.jump(dec, "XDEC")
+        self.place(dec)
+        self.emit("MOV", dst="ISR", src="X")
+        self.jump(top, "XNEY")
+        self.place(last)
+        self.emit("LDW", addr=base, note="last word")
+        self.tx_last(s, P, need)
 
     def feed_wait(self, key, earliest, alt=None):
         w = self.wait("EV", key, alt=alt is not None)
@@ -785,7 +893,8 @@ class FrameLowering:
         return (0, f)
 
     def rule_pos(self, ack, hi, span):
-        self.emit("SET", dst="X", imm=0)
+        # X is the answer (RESP, bits 15..0): the respond is lowered later, so lower() fills it in
+        self.resp_sets.append((self.emit("SET", dst="X", imm=0), span))
         ins = self.csrw("RULE0_RESP_POS", "answer position")
         self.feed_ob(ins, "rxfull", hi, span, "rule position written before the earliest answer "
                      "position", "rx")
@@ -826,28 +935,38 @@ class FrameLowering:
         w.fw = FWait("RULEHIT", mark="hit", earliest=("arm", len(bits) * P))
         w.react = True
         r = self.cmd("frame_rst", "crc_clear", note="frame starts: RX words and the CRC from here")
-        r.mark = "rx0"
+        # One mark for the reset and every RXFULL: the octet waits measure from the latest of them
+        # (a mark of the reset alone would be stale on every pass after the first).
+        r.mark = "rx"
         r.ob = Ob("feed", "R316", "frame reset after the start matched", s.span, "hit", lo=0,
                   hi=AE.deadline("rulehit", P), why=AE.FACTS["rulehit"][1])
-        top = self.label("rx")
-        self.place(top, align=True)
+        top, rx1 = self.label("rx"), self.label("rx")
         good, bad = self.label("good"), self.label("bad")
-        ends = []
-        for j in range(4):
-            end = self.label(f"end{j}_")
-            ends.append(end)
+        ends = [self.label(f"end{j}_") for j in range(4)]
+
+        def octet(j, earliest, err):
             w = self.wait("EV", "RXFULL", alt=True, note=f"octet {j}, or the end of the frame")
-            w.fw = FWait("RXFULL", mark="rx", earliest=("rx0" if j == 0 else "rx", 8 * P), alt="ERR",
-                         alt_mark="err", alt_earliest=("rx0", 0))
+            w.fw = FWait("RXFULL", mark="rx", earliest=("rx", earliest), alt="ERR", alt_mark="err",
+                         alt_earliest=("rx", err))
             w.react = True
             w.odd = True
-            self.jump(end, "TOUT")
+            self.jump(ends[j], "TOUT")
             rd = self.emit("CSRR", addr=REG["RXDATA"])
             self.feed_ob(rd, "rxfull", AE.deadline("rxfull", P), s.span, "RXDATA read after RXFULL", "rx")
             self.emit("IN", src="X", n=8)
-        p = self.emit("PUSH", note="four octets")
+        # The first octet after the reset: its first bit may enter 1 cycle on (7 periods and 1
+        # cycle), and ERR (cleared by the reset) needs a cell decoded after it. Every later octet:
+        # 8 periods after the last RXFULL, and ERR, from a cell sampled at least a period after
+        # that octet's last bit, is seen at least P - 1 cycles after RXFULL was.
+        octet(0, 7 * P + 1, 1)
+        self.jump(rx1)
+        self.place(top, align=True)
+        for j in range(4):
+            if j == 1:
+                self.place(rx1)
+            octet(j, 8 * P, P - 1)
+        self.emit("PUSH", note="four octets")
         self.jump(top)
-        del p
         for j, end in enumerate(ends):
             self.place(end)
             t = self.wait("EV", "CRCOK", to=True, note="CRC good, frame plus one idle bit")
@@ -978,6 +1097,14 @@ class FrameLowering:
             end = A.Event("rise", w)
             delay = Fr(0)
         sep, rules = min_separation(self.sym, self.role, end, start, self.f)
+        codec = self.assists.get("manchester")
+        if stat.stream and codec is not None:
+            # A gap between frames is a rule from the codec's end of frame (the frame's last
+            # edge, as the line shows it) to the next start: edge to edge rules hold inside a frame
+            eop = A.Event("named", A.Ident(codec.name.text), A.Ident("eop"))
+            t, r = min_separation(self.sym, self.role, eop, start, self.f)
+            if r and t > sep:
+                sep, rules, end = t, r, eop
         quiet, tail = self.quiet_tail(stat, start)
         sep += quiet
         hi = int(sep - delay) - 1

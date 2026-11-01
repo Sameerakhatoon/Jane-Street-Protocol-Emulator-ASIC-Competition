@@ -1,0 +1,58 @@
+// eth10_tx_window.tse: the 10BASE-T transmitter of specs/eth10_tx.tse with the frame
+// buffered in the data window instead of streamed from the host.
+//
+// The host mailbox moves one 32-bit word per runtime SPI transaction (at least 56
+// SCK bits), while the line takes a word every 32 bit times (192 cycles at 60 MHz),
+// so on the chip a host cannot stream a frame at the line's pace. Here the host
+// writes the frame into the array `buf` first, at its own pace, then pulls the
+// header word into the lane; the lane reads the words with LDW at the line's pace.
+// The array holds 32 words, so the payload is limited to 64 octets (a frame of
+// 82 octets with the FCS).
+protocol eth10_tx_window {
+  const bitrate : freq = 10 MHz;
+  unit  bit     = 1 / bitrate;
+
+  wire td : out push_pull idle 0;            // RS-485 driver DI
+  wire de : out push_pull idle 0;            // driver enable
+
+  assist line : manchester { pins = (td); convention = ieee; }
+  assist fcs  : crc   { width = 32; poly = 0x04C11DB7; init = 0xFFFFFFFF; refin = true;
+                        refout = true; xorout = 0xFFFFFFFF; check = 0xCBF43926; }
+  assist nlp  : timer { period = 1 ms; }
+
+  frame eth {
+    preamble : bytes[7] = 0x55;
+    sfd      : bits[8]  = 0xD5;
+    dst      : bytes[6];
+    src      : bytes[6];
+    etype    : bits[16];
+    payload  : bytes[46..64];
+    fcs      : bits[32] crc fcs over dst..payload;
+  }
+
+  role mac_tx : controller uses td, de {
+    var hdr : bits[32];
+    var buf : words[32];
+    state idle {
+      on host.pull(hdr) -> send;
+      on nlp.tick -> link;
+    }
+    state link {                             // normal link pulse after 16 ms without a frame
+      seq {
+        repeat 15 { await nlp.tick; }
+        drive de = 1;
+        drive td = 1 for 1 bit ~ 5 %;
+        drive td = 0;
+        drive de = 0;
+      } -> idle abort on host.pull(hdr) -> send;
+    }
+    state send {
+      seq {
+        drive de = 1;
+        send eth(buf);
+        drive td = 1 for 3 bit ~ 10 %;       // TP_IDL
+        drive de = 0 for 96 bit;             // interframe gap before the next frame
+      } -> idle;
+    }
+  }
+}
