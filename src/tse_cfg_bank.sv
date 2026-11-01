@@ -60,26 +60,11 @@ module tse_cfg_bank #(
 
     assign wd = WD_REG ? wd_q : wdata;
 
-    // In the CMOS5L flow every existing bit is the reset latch cell itself:
-    // the Yosys in the flow image does not infer a latch reset from the
-    // behavioural form and would fold the clear into data and enable, with a
-    // tie cell on every latch. Simulation, lint and formal use the
-    // behavioural form, which has the same function.
     for (genvar i = 0; i < WORDS; i++) begin : g_word
         if (LATCH) begin : g_lat
-`ifdef SCL_sg13cmos5l_stdcell
-            for (genvar b = 0; b < 32; b++) begin : g_bit
-                if (MASK[32*i + b]) begin : g_on
-                    sg13cmos5l_dlhrq_1 u_l (.GATE(en_q[i]), .RESET_B(clr_nq), .D(wd[b]), .Q(qraw[32*i + b]));
-                end else begin : g_off
-                    assign qraw[32*i + b] = 1'b0;
-                end
-            end
-`else
             always_latch
                 if (!clr_nq)      qraw[32*i +: 32] = '0;
                 else if (en_q[i]) qraw[32*i +: 32] = wd;
-`endif
         end else begin : g_ff
             always_ff @(posedge clk)
                 if (!clr_nq)      qraw[32*i +: 32] <= '0;
@@ -87,9 +72,6 @@ module tse_cfg_bank #(
         end
     end
 
-`ifdef SCL_sg13cmos5l_stdcell
-    wire _unused_en = &{1'b0, en_q};    // words without bits have no cells
-`endif
     assign q       = qraw & MASK;
     assign rd_data = READBACK ? q[32*rd_addr +: 32] : 32'd0;
 endmodule

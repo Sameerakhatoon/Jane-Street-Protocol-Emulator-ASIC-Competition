@@ -412,16 +412,9 @@ module tse_seq #(
         always_ff @(posedge clk or negedge rst_n)
             if (!rst_n) tx_en_q <= 1'b0;
             else        tx_en_q <= h_tx_we;
-        // the reset latch cell in the CMOS5L flow, as in tse_cfg_bank
-`ifdef SCL_sg13cmos5l_stdcell
-        for (genvar b = 0; b < 32; b++) begin : g_bit
-            sg13cmos5l_dlhrq_1 u_l (.GATE(tx_en_q), .RESET_B(rst_n), .D(h_tx_data[b]), .Q(h_tx_data_q[b]));
-        end
-`else
         always_latch
             if (!rst_n)       h_tx_data_q = '0;
             else if (tx_en_q) h_tx_data_q = h_tx_data;
-`endif
     end else begin : g_txf
         always_ff @(posedge clk or negedge rst_n)
             if (!rst_n)       h_tx_data_q <= '0;
