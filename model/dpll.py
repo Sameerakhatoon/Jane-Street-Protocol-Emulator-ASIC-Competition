@@ -3,7 +3,10 @@
 Times are in sixteenths of a cycle. The phase ph runs from 0 to period and
 advances 16 per cycle; reaching period starts a new bit (bit_start), and the
 strobes q1 (period / 4), half (period / 2) and sample (DPLL_SPT) fire once
-per bit, when the phase first passes their point. An enabled edge (rising,
+per bit. The transmit strobes (bit_start, half) fire in the cycle before the
+phase reaches their point, because the codec moves the line at the next
+edge; the receive strobes (q1, sample) fire in the first cycle at or past
+their point, because they take that cycle's pin value. An enabled edge (rising,
 falling or both, DPLL_CTL) either hard-syncs (when armed by CMD.hard_arm:
 the bit starts now) or, with resync on, pulls the phase toward the edge by
 at most DPLL_SJW, one cycle after the edge. While armed for a hard sync the
@@ -80,7 +83,7 @@ class Dpll:
         bs = int(bool(en and (wrap or hard)))
         return dict(bit_start=bs,
                     q1=int(bool(en and not self.armed and not self.q_done and self.ph >= c.period >> 2)),
-                    half=int(bool(en and not self.h_done and self.ph >= c.period >> 1)),
+                    half=int(bool(en and not self.h_done and s >= 0 and s >= c.period >> 1)),
                     sample=int(bool(en and not self.armed and not self.s_done and self.ph >= c.spt)),
                     samp_val=i.s_p, edge_seen=edge), (edge, hard, s, wrap)
 

@@ -150,11 +150,11 @@ module tse_lane #(
         .rx_step(cd_rxv), .rx_din(cd_rxb), .rx_valid(rx_v), .rx_dout(rx_b), .rx_err(rx_serr)
     );
 
-    logic cd_step, cd_bit, tx_active;
+    logic cd_step, cd_bit, tx_active, tx_begun;
     tse_codec u_codec (
         .clk, .rst_n, .cfg_mode(codec[tse_regs_pkg::LR_CODEC_CFG_MODE_HI:tse_regs_pkg::LR_CODEC_CFG_MODE_LO]),
         .cfg_inv(codec[tse_regs_pkg::LR_CODEC_CFG_INV_HI]), .cfg_t_on(codec[tse_regs_pkg::LR_CODEC_CFG_T_ON1_HI]),
-        .tx_step(cd_step), .tx_half(half && tx_active), .tx_bit(cd_bit),
+        .tx_step(cd_step), .tx_half(half && tx_active && tx_begun), .tx_bit(cd_bit),
         .line_set, .line_val, .tx_line(line),
         .rx_sample(sample), .rx_s(samp_val), .rx_q1(q1), .rx_q1_s(vp[rxpin]),
         .rx_valid(cd_rxv), .rx_bit(cd_rxb), .rx_err(cd_rxerr)
@@ -231,6 +231,13 @@ module tse_lane #(
             if (crc_shift) ccnt <= ccnt - 6'd1;
             if (tx_fin) tx_active <= 1'b0;
         end
+
+    // A frame's half-bit strobes count only from its first bit: a TXDATA
+    // write between a bit start and its half strobe would otherwise drive the
+    // previous frame's last bit (the codec's mbit) at that strobe.
+    always_ff @(posedge clk or negedge rst_n)
+        if (!rst_n) tx_begun <= 1'b0;
+        else        tx_begun <= tx_active && (tx_begun || tx_step);
 
     // RX word assembly and sticky flags
     logic [31:0] rxsr;

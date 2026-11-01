@@ -20,9 +20,16 @@ module tse_cfg_word #(
         always_ff @(posedge clk or negedge clr_n)
             if (!clr_n) en_q <= 1'b0;
             else        en_q <= we;
+        // the reset latch cell in the CMOS5L flow, as in tse_cfg_bank
+`ifdef SCL_sg13cmos5l_stdcell
+        for (genvar b = 0; b < W; b++) begin : g_bit
+            sg13cmos5l_dlhrq_1 u_l (.GATE(en_q), .RESET_B(clr_n), .D(wdata[b]), .Q(q[b]));
+        end
+`else
         always_latch
             if (!clr_n)    q = '0;
             else if (en_q) q = wdata;
+`endif
     end else begin : g_ff
         always_ff @(posedge clk or negedge clr_n)
             if (!clr_n)  q <= '0;

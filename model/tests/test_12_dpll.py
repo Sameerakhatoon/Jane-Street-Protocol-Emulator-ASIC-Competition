@@ -19,9 +19,10 @@ def test_01_strobes_once_per_bit_at_their_points():
     outs = free_run(DpllCfg(period=960, spt=768), 600)
     bs = cycles_of(outs, "bit_start")
     assert [b - a for a, b in zip(bs, bs[1:])] == [60] * (len(bs) - 1)
-    for key, at in (("q1", 15), ("half", 30), ("sample", 48)):
+    # receive strobes in the first cycle at or past their point, half (transmit) one cycle before it
+    for key, after in (("q1", 16), ("half", 30), ("sample", 49)):
         got = cycles_of(outs, key)
-        assert [c - b for b, c in zip([-1] + bs, got)] [1:] == [at + 1] * (len(got) - 1), key
+        assert [c - b for b, c in zip([-1] + bs, got)] [1:] == [after] * (len(got) - 1), key
 
 
 def test_02_fractional_period_is_exact_on_average():
@@ -95,3 +96,19 @@ def test_07_restart_mid_bit_keeps_every_strobe():
     outs = [d.step(DpllIn(enable=1)) for _ in range(20)]
     for key in ("q1", "half", "sample"):
         assert len(cycles_of(outs, key)) == 1, key
+
+
+def test_08_half_strobe_splits_the_bit_evenly():
+    """The codec moves the line one cycle after bit_start and after half, so the two half bits of a
+    Manchester cell are bit_start to half and half to the next bit_start: equal for an even number
+    of cycles per bit, at most one cycle apart otherwise."""
+    for period in (96, 100, 160, 168, 40, 320):
+        outs = free_run(DpllCfg(period=period, spt=period // 2), 400)
+        bs, hs = cycles_of(outs, "bit_start"), cycles_of(outs, "half")
+        for a, b in zip(bs, bs[1:]):
+            h = [c for c in hs if a < c < b]
+            assert len(h) == 1, (period, a)
+            first, second = h[0] - a, b - h[0]
+            assert abs(first - second) <= 1, (period, first, second)
+            if period % 32 == 0:
+                assert first == second, (period, first, second)

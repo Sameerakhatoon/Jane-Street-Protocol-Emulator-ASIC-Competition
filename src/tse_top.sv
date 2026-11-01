@@ -234,8 +234,11 @@ module tse_top #(
         assign hb_we = h_wr && sel && hcls == tse_regs_pkg::RC_L;
         assign live_pins[V*i +: V] = {V{lane_live[i]}};
 
-        // The bank writes straight from its source: the lane holds {Y, X}
-        // through its 3-cycle CSRW, the host data register holds longer.
+        // The bank takes the write word into its own register at the accept
+        // edge (WD_REG), so the die-wide write sources drive 32 flops beside
+        // each bank instead of every latch D pin. The writers still hold the
+        // word (the lane {Y, X} through its 3-cycle CSRW, the host data
+        // register longer), so the latches see the same value either way.
         // lsrc_q keeps the lane selected until a lane write completes, even
         // if the lane stops meanwhile.
         logic lsrc_q;
@@ -243,7 +246,7 @@ module tse_top #(
             if (!sys_rst_n) lsrc_q <= 1'b0;
             else            lsrc_q <= lane_live[i] || (lsrc_q && lane_busy[i]);
 
-        tse_cfg_bank #(.WORDS(32), .LATCH(CFG_LATCH), .WD_REG(0), .MASK(tse_regs_pkg::LANE_BANK_MASK)) u_cfg (
+        tse_cfg_bank #(.WORDS(32), .LATCH(CFG_LATCH), .WD_REG(1), .MASK(tse_regs_pkg::LANE_BANK_MASK)) u_cfg (
             .clk, .rst_n(sys_rst_n), .clr(cfg_clr),
             .we(lane_live[i] ? l_cfg_we[i] : hb_we),
             .addr(lane_live[i] ? l_cfg_word[5*i +: 5] : hword),

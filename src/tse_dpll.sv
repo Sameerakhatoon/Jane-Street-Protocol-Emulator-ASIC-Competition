@@ -3,6 +3,11 @@
 // 20 bits. s_p: pin sampled at the last rising edge; s_n: same pin sampled at
 // the falling edge half a cycle earlier. Hard sync on an armed edge, otherwise
 // resync limited to cfg_sjw, split over two cycles for timing.
+// The transmit strobes (bit_start, half) fire in the cycle whose next phase
+// s reaches their point: the codec acts on them at the next edge, so the
+// line changes exactly there and a Manchester cell splits evenly. The
+// receive strobes (q1, sample) fire in the first cycle whose phase is at or
+// past their point, because they take the pin value of that same cycle.
 module tse_dpll (
     input  logic        clk,
     input  logic        rst_n,
@@ -55,7 +60,7 @@ module tse_dpll (
     assign edge_seen = edge_q;
     assign bit_start = enable && (wrap || hard);
     assign q1        = enable && !armed && !q_done && ph >= q_p;   // each strobe once per bit
-    assign half      = enable && !h_done && ph >= half_p;
+    assign half      = enable && !h_done && !s[20] && s[19:0] >= half_p;
     assign sample    = enable && !armed && !s_done && ph >= cfg_spt;
     assign samp_val  = s_p;
 
