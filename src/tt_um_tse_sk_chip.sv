@@ -14,5 +14,8 @@ module tt_um_tse_sk_chip (
     tse_chip #(.LANES(2), .CFG_LATCH(1'b1)) u_chip (
         .ui_in, .uo_out, .uio_in, .uio_out, .uio_oe, .ena, .clk, .rst_n
     );
+`ifndef SIM
+    (* keep *) sg13cmos5l_antennanp u_ena_tie (.A(ena));
+`endif
 endmodule
 `default_nettype wire

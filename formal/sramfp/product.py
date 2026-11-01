@@ -6,9 +6,10 @@ and asynchronous reset is a global-clock $ff plus logic, so a transparent
 latch or a reset stays logic in each copy. Output: module fp_core with two
 copies of that logic, a and b. They share the top-level inputs and every
 storage element: copy b has no $ff of its own, each of its $ff outputs is
-wired to the same $ff of copy a. Each copy keeps its own
-SRAM stand-in, so the two read-data values are independent free values.
-The kept SRAM input wires (fp_*) of both copies become outputs a_* and b_*.
+wired to the same $ff of copy a. Each copy keeps its own two SRAM
+stand-ins (u_macro_lo and u_macro_hi), so the read data of the two copies
+are independent free values. The kept SRAM input wires (fp_*) of each macro
+in both copies become outputs a_lo_*, a_hi_*, b_lo_* and b_hi_*.
 With the state shared, a difference between a_* and b_* in a cycle can only
 come from the read data of that cycle, through combinational logic.
 
@@ -22,6 +23,7 @@ OTHER_STORAGE = {"$dff", "$dffe", "$adff", "$adffe", "$aldff", "$aldffe", "$dffs
                  "$sdff", "$sdffe", "$sdffce", "$dlatch", "$adlatch", "$dlatchsr", "$sr",
                  "$mem", "$mem_v2"}
 KEEP = ("fp_men", "fp_wen", "fp_ren", "fp_addr", "fp_din")
+MACROS = ("u_macro_lo", "u_macro_hi")
 
 
 def ren(tok, c):
@@ -114,11 +116,13 @@ def main():
     items = parse(lines[mods[0] + 1:end])
     wires = {x.split()[-1]: x for k, _, x in items if k == "wire"}
     found = {}
-    for k in KEEP:
-        hits = [n for n in wires if n.endswith(".u_macro." + k)]
-        if len(hits) != 1:
-            sys.exit(f"product.py: SRAM stand-in wire {k} not found once: {hits}")
-        found[k] = hits[0]
+    for m in MACROS:
+        for k in KEEP:
+            hits = [n for n in wires if n.endswith(f".{m}.{k}")]
+            if len(hits) != 1:
+                sys.exit(f"product.py: SRAM stand-in wire {m}.{k} not found once: {hits}")
+            found[m.split("_")[-1] + "_" + k[3:]] = hits[0]
+    print("product.py: bound " + " ".join(found.values()))
 
     body, ports = [], {}
     copy_of(items, "a", ports, body)
@@ -132,7 +136,7 @@ def main():
     for c in "ab":
         for k, w in found.items():
             m = re.search(r"width (\d+)", wires[w])
-            p = f"\\{c}_{k[3:]}"
+            p = f"\\{c}_{k}"
             head.append(f"  wire {'width ' + m.group(1) + ' ' if m else ''}output {n} {p}")
             body.append(f"  connect {p} {ren(w, c)}")
             n += 1

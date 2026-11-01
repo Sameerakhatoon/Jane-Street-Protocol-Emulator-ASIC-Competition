@@ -4,11 +4,13 @@
 # routing overhead come on top of these numbers.
 # usage: tools/pd/area.sh <top> "<hierarchy -chparam args>" <file>...
 # The Liberty file is $LIB, else build/lib/<name>, copied once from $LIB_SRC
-# (a directory holding the CMOS5L typical-corner standard-cell Liberty).
+# (a directory holding the CMOS5L typical-corner standard-cell Liberty;
+# defaults to the PDK copy under $PDK_ROOT).
 set -eu
 cd "$(dirname "$0")/../.."
 
 LIB_NAME=sg13cmos5l_stdcell_typ_1p20V_25C.lib
+LIB_SRC=${LIB_SRC:-${PDK_ROOT:+$PDK_ROOT/ihp-sg13cmos5l/libs.ref/sg13cmos5l_stdcell/lib}}
 if [ -z "${LIB:-}" ]; then
     LIB=build/lib/$LIB_NAME
     if [ ! -f $LIB ]; then

@@ -14,6 +14,9 @@
 // guard_errors counts accesses next to an A_BIST_EN change, which the
 // datasheet forbids one cycle before and after; the check is one cycle
 // stricter (the cycle the new value is first sampled, and the one after).
+// The 512x32 model is the golden reference the simulation wraps as u_macro; the
+// 512x16 model below serves the gate-level netlist, where the store is built
+// from two 512x16 macros (see tse_sram_512x32.sv).
 `ifdef SIM
 /* verilator lint_off DECLFILENAME */
 module RM_IHPSG13_1P_512x32_c2_bm_bist (
@@ -88,6 +91,46 @@ module RM_IHPSG13_1P_512x32_c2_bm_bist (
         en_q  <= A_BIST_EN;
         acc_q <= acc;
     end
+
+    wire _unused = &{A_DLY, 1'b0};
+endmodule
+
+// Functional 512x16 half used by the gate-level netlist (two halves make the
+// 32-bit word). Registered read that holds, bit-masked write-through, and
+// A_BIST_EN selecting the test port. No fault injection: the gate-level test
+// does not inject faults, and the RTL simulation uses the 512x32 model above.
+module RM_IHPSG13_1P_512x16_c2_bm_bist (
+    input         A_CLK, A_MEN, A_WEN, A_REN,
+    input  [8:0]  A_ADDR,
+    input  [15:0] A_DIN,
+    input         A_DLY,
+    output [15:0] A_DOUT,
+    input  [15:0] A_BM,
+    input         A_BIST_CLK, A_BIST_EN, A_BIST_MEN, A_BIST_WEN, A_BIST_REN,
+    input  [8:0]  A_BIST_ADDR,
+    input  [15:0] A_BIST_DIN, A_BIST_BM
+);
+    reg [15:0] mem [0:511];
+    reg [15:0] dr;
+
+    /* verilator lint_off SYNCASYNCNET */
+    wire        clk_m = A_BIST_EN ? A_BIST_CLK  : A_CLK;
+    /* verilator lint_on SYNCASYNCNET */
+    wire        men   = A_BIST_EN ? A_BIST_MEN  : A_MEN;
+    wire        wen   = A_BIST_EN ? A_BIST_WEN  : A_WEN;
+    wire        ren   = A_BIST_EN ? A_BIST_REN  : A_REN;
+    wire [8:0]  addr  = A_BIST_EN ? A_BIST_ADDR : A_ADDR;
+    wire [15:0] din   = A_BIST_EN ? A_BIST_DIN  : A_DIN;
+    wire [15:0] bm    = A_BIST_EN ? A_BIST_BM   : A_BM;
+
+    wire [15:0] nv = (mem[addr] & ~bm) | (din & bm);
+    always @(posedge clk_m)
+        if (men && wen) begin
+            mem[addr] <= nv;
+            if (ren) dr <= nv;
+        end else if (men && ren) dr <= mem[addr];
+
+    assign A_DOUT = dr;
 
     wire _unused = &{A_DLY, 1'b0};
 endmodule

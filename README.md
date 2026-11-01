@@ -58,7 +58,7 @@ The status words:
 | A UART spec is compiled, loaded over the loader pins into the two-lane chip and run from SRAM: 46 frames sent, 30 received, 0 violations at nominal and plus or minus 1.5 percent baud | SIM | `make e2e-uart` | simulation only; one baud family |
 | Every UART transmit edge lands on the cycle the compiler predicted | SIM | `make e2e-uart` | worst error about 3.5 of 10.18 ticks over 230 edges |
 | I2C controller and target both run on the chip at 100 and 400 kHz, 0 judge violations; the target stretches SCL | SIM | `examples/tests/11-i2c-target.sh` | the RTL window proof for the target has not closed |
-| SPI controller, modes 0 to 3, drives a simulated target | SIM, BUILDS | `examples/tests/07-spi.sh` | builds only with `--pad-skew 0` (R310); a real pad-skew figure is still needed |
+| SPI controller, modes 0 to 3, drives a simulated target | SIM, BUILDS | `examples/tests/07-spi.sh` | builds only with `--pad-skew 0` (R310); the tile alone has up to 1.05 ns of pad skew, below |
 | CAN receiver answers with an in-bit ACK by a response rule; a bad-CRC frame is not ACKed, at 125k and 500k | SIM | `examples/tests/09-can.sh` | receiver only; two independent CAN nodes are not expressible |
 | 10BASE-T transmit, 3 frames, 0 violations | SIM | `examples/tests/10-eth10.sh` | transmit only; receive is blocked |
 | SPI flash target answers an ID and a read (ef4015) | SIM | `examples/tests/08-flash.sh` | about 500 to 714 kHz only |
@@ -70,8 +70,10 @@ The status words:
 | Check flags timing violations and sweeps a device's margin; Trigger fires on a decoded event sequence | SIM | `make check-thd-sta check-sweep check-trigger` | on the chip in simulation; compiling a spec directly into a Check program is partly done |
 | Independent judges decode pins-only traces from the published standards | SIM | `make judges-test` | nine protocols |
 | Unmodified OpenOCD reads a JTAG IDCODE and an SWD DPIDR, and Linux ping runs over 10BASE-T, through simulated pins | SIM | `make judges-demos judges-run` | runs on a small stand-in test top, not yet on the TSE lanes |
-| The full two-lane chip reaches global-route overflow 0 on every layer, then passes detailed routing, KLayout DRC, antenna, LVS and hold at three corners | MEASURED | the full signoff flow | slow-corner setup and a Magic power-stripe DRC are still open, below |
-| Full-chip setup at 60 MHz, Tiny Tapeout precheck, gate-level simulation with SDF at three corners | OPEN | | slow corner is about 49 MHz; typ and fast corners meet 60 MHz |
+| The full two-lane chip signs off at 60 MHz: global-route overflow 0 on every layer; detailed routing, KLayout DRC, LVS, antenna, disconnected pins, max cap and max slew all 0; setup and hold met at three corners | MEASURED | `tools/pd/harden-variant.sh info_chip.yaml src/config_chip.json <tag>` | run rtl6d (rtl6c with the supply pin fix; same routing and timing); slow-corner setup slack +1.41 ns, fast-corner hold slack only +0.020 ns; Magic DRC reports 51 flags, all only on the SRAM abstract and waived (`tools/pd/magic-flags.sh`) |
+| Tiny Tapeout precheck passes all nine checks | MEASURED | `tools/pd/precheck.sh <gds>` | on rtl6d, the full-chip layout of the signoff row (and on rtl5e); rtl6c failed the pin check because its supply pins were cut at the SRAMs |
+| Pin delays inside the tile from the clock edge: outputs 0.77 to 2.87 ns, inputs sampled 0.32 to 1.51 ns after the edge; at most 1.05 ns between two outputs and 0.84 ns between two inputs | MEASURED | `tools/pd/padskew.sh` | rtl6c, over three corners (the spreads are the slow corner's); the Tiny Tapeout multiplexer and pad ring outside the tile are not included |
+| The routed full chip, with its signoff delays (SDF) at all three corners, loads three random images over the loader pins, commits them and reads them back exactly; in run mode it answers register reads and writes over SPI and refuses what it must while a lane runs | SIM | `make -C verif/glsdf CORNER=<corner> [GL_MODULES=test_spi GL_TEST=]` | rtl6c, `test_loader` test 1 and both `test_spi` tests; the running lane only loops on one word, so no lane drives a protocol yet; Icarus applies the delays but runs no setup or hold checks, so only a wrong value at the pins would show a timing failure; 219 wires on SRAM pins (at most 24 ps) are left out |
 
 ### Known limits
 
@@ -81,8 +83,7 @@ These are the compiler refusing to build a spec it cannot meet. The rejection is
 - 10BASE-T receive is blocked by a late start-of-frame re-arm and by DPLL limits (`specs/eth10_rx.tse`, R314); transmit works.
 - Two independent CAN nodes are not expressible: the shifted-in and shifted-out bits share one virtual pin (`specs/can_node.tse`, R307).
 - The SPI target runs to about 1.9 MHz, not 4 MHz; the SPI flash target to about 714 kHz.
-- Clocked controllers (SPI, SWD) need the real pad-skew figure from layout; they build at zero skew.
-- Literal zero global-route overflow and slow-corner setup at 60 MHz conflict; the clean fix is a config-bank or fetch-path RTL change.
+- The SPI controller specs build only at `--pad-skew 0`: their edge obligations have no budget left, so any skew between pins is rejected (R310, R312), the tile's measured 1.05 ns as well; a wider `t_jit` does not change it. SWD is rejected even at zero skew.
 
 ## Verification
 

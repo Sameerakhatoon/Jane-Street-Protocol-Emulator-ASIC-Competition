@@ -1,28 +1,30 @@
 // Synthesis-only black box; simulation compiles the behavioural model instead
-// (sim/RM_IHPSG13_1P_512x32_c2_bm_bist.v from the PDK, or sim/tse_sram_model.v).
+// (sim/RM_IHPSG13_1P_512x16_c2_bm_bist.v from the PDK, or sim/tse_sram_model.v).
+// The 512x32 program store is built from two of these 512x16 macros, see
+// tse_sram_512x32.sv.
 `ifndef SIM
 /* verilator lint_off DECLFILENAME */
 /* verilator lint_off UNUSEDSIGNAL */
 /* verilator lint_off UNDRIVEN */
 (* blackbox *)
-module RM_IHPSG13_1P_512x32_c2_bm_bist (
+module RM_IHPSG13_1P_512x16_c2_bm_bist (
     input  wire        A_CLK,
     input  wire        A_MEN,
     input  wire        A_WEN,
     input  wire        A_REN,
     input  wire [8:0]  A_ADDR,
-    input  wire [31:0] A_DIN,
+    input  wire [15:0] A_DIN,
     input  wire        A_DLY,
-    output wire [31:0] A_DOUT,
-    input  wire [31:0] A_BM,
+    output wire [15:0] A_DOUT,
+    input  wire [15:0] A_BM,
     input  wire        A_BIST_CLK,
     input  wire        A_BIST_EN,
     input  wire        A_BIST_MEN,
     input  wire        A_BIST_WEN,
     input  wire        A_BIST_REN,
     input  wire [8:0]  A_BIST_ADDR,
-    input  wire [31:0] A_BIST_DIN,
-    input  wire [31:0] A_BIST_BM
+    input  wire [15:0] A_BIST_DIN,
+    input  wire [15:0] A_BIST_BM
 );
 endmodule
 /* verilator lint_on UNDRIVEN */

@@ -1,17 +1,12 @@
 {
-  "//": "Full-chip configuration (top tt_um_tse_sk_chip, 6x4, one 512x32 SRAM macro).",
-  "//": "Template keys first (values kept unless the SRAM or the 60 MHz clock needs a change), then additions.",
-
-  "//": "---- template keys we tune ----",
+  "//": "---- the SRAM: two 512x16 macros stacked on the bottom-left edge, low word half below the high half. Locations are a starting point for the layout trial and want tuning (orientation, gap, PDN alignment) for the new footprint ----",
   "PL_TARGET_DENSITY_PCT": 60,
   "CLOCK_PERIOD": 16.67,
   "PL_RESIZER_HOLD_SLACK_MARGIN": 0.1,
-  "GRT_RESIZER_HOLD_SLACK_MARGIN": 0.05,
+  "GRT_RESIZER_HOLD_SLACK_MARGIN": 0.1,
   "RUN_LINTER": 1,
   "LINTER_INCLUDE_PDK_MODELS": 1,
   "CLOCK_PORT": "clk",
-
-  "//": "---- template keys kept exactly ----",
   "RUN_KLAYOUT_XOR": 0,
   "DESIGN_REPAIR_BUFFER_OUTPUT_PORTS": 0,
   "TOP_MARGIN_MULT": 1,
@@ -27,53 +22,365 @@
   "FP_PDN_MULTILAYER": 0,
   "MAGIC_DEF_LABELS": 0,
   "MAGIC_WRITE_LEF_PINONLY": 1,
-
-  "//": "---- changed for the SRAM: Metal4 stripes at 6 x 11.24 um, offset so every stripe over the macro at x = 3.36 lands in a same-net column ----",
   "FP_PDN_VPITCH": 67.44,
   "FP_PDN_VSPACING": 3.52,
   "FP_PDN_VOFFSET": 40.2,
   "PDN_CFG": "dir::pdn_cfg.tcl",
   "RUN_KLAYOUT_DRC": 1,
   "KLAYOUT_DRC_RUNSET": "pdk_dir::libs.tech/klayout/tech/drc/ihp-sg13cmos5l.drc",
-  "RUN_MAGIC_DRC": 0,
-  "MAGIC_EXT_ABSTRACT_CELLS": ["RM_IHPSG13_.*"],
+  "RUN_MAGIC_DRC": 1,
+  "MAGIC_EXT_ABSTRACT_CELLS": [
+    "RM_IHPSG13_.*"
+  ],
   "ERROR_ON_ILLEGAL_OVERLAPS": 0,
-
-  "//": "---- timing ----",
-  "PNR_CORNERS": ["nom_typ_1p20V_25C", "nom_slow_1p08V_125C"],
+  "PNR_CORNERS": [
+    "nom_fast_1p32V_m40C",
+    "nom_typ_1p20V_25C",
+    "nom_slow_1p08V_125C"
+  ],
   "RUN_POST_GRT_RESIZER_TIMING": true,
-
-  "//": "---- antenna: rule-based repair only ----",
   "DIODE_CELL": "sg13cmos5l_antennanp/A",
   "RUN_ANTENNA_REPAIR": 1,
   "RUN_HEURISTIC_DIODE_INSERTION": 0,
   "DRT_ANTENNA_REPAIR_ITERS": 6,
-
-  "//": "---- routing diagnostics ----",
   "DRT_SAVE_DRC_REPORT_ITERS": 4,
-
-  "//": "---- the SRAM macro: bottom-left, flipped so the pin edge faces the logic ----",
   "MACROS": {
-    "RM_IHPSG13_1P_512x32_c2_bm_bist": {
-      "gds":   ["pdk_dir::libs.ref/sg13cmos5l_sram/gds/RM_IHPSG13_1P_512x32_c2_bm_bist.gds"],
-      "lef":   ["pdk_dir::libs.ref/sg13cmos5l_sram/lef/RM_IHPSG13_1P_512x32_c2_bm_bist.lef"],
-      "spice": ["pdk_dir::libs.ref/sg13cmos5l_sram/cdl/RM_IHPSG13_1P_512x32_c2_bm_bist.cdl"],
+    "RM_IHPSG13_1P_512x16_c2_bm_bist": {
+      "gds": [
+        "pdk_dir::libs.ref/sg13cmos5l_sram/gds/RM_IHPSG13_1P_512x16_c2_bm_bist.gds"
+      ],
+      "lef": [
+        "pdk_dir::libs.ref/sg13cmos5l_sram/lef/RM_IHPSG13_1P_512x16_c2_bm_bist.lef"
+      ],
+      "spice": [
+        "pdk_dir::libs.ref/sg13cmos5l_sram/cdl/RM_IHPSG13_1P_512x16_c2_bm_bist.cdl"
+      ],
       "nl": [],
       "spef": {},
       "lib": {
-        "nom_typ_1p20V_25C":   ["pdk_dir::libs.ref/sg13cmos5l_sram/lib/RM_IHPSG13_1P_512x32_c2_bm_bist_typ_1p20V_25C.lib"],
-        "nom_fast_1p32V_m40C": ["pdk_dir::libs.ref/sg13cmos5l_sram/lib/RM_IHPSG13_1P_512x32_c2_bm_bist_fast_1p32V_m55C.lib"],
-        "nom_slow_1p08V_125C": ["pdk_dir::libs.ref/sg13cmos5l_sram/lib/RM_IHPSG13_1P_512x32_c2_bm_bist_slow_1p08V_125C.lib"]
+        "nom_typ_1p20V_25C": [
+          "pdk_dir::libs.ref/sg13cmos5l_sram/lib/RM_IHPSG13_1P_512x16_c2_bm_bist_typ_1p20V_25C.lib"
+        ],
+        "nom_fast_1p32V_m40C": [
+          "pdk_dir::libs.ref/sg13cmos5l_sram/lib/RM_IHPSG13_1P_512x16_c2_bm_bist_fast_1p32V_m55C.lib"
+        ],
+        "nom_slow_1p08V_125C": [
+          "pdk_dir::libs.ref/sg13cmos5l_sram/lib/RM_IHPSG13_1P_512x16_c2_bm_bist_slow_1p08V_125C.lib"
+        ]
       },
       "instances": {
-        "u_chip.u_top.u_pmem.u_sram.u_macro": { "location": [3.36, 3.78], "orientation": "FS" }
+        "u_chip.u_top.u_pmem.u_sram.u_macro_lo": {
+          "location": [
+            3.36,
+            15.12
+          ],
+          "orientation": "FS"
+        },
+        "u_chip.u_top.u_pmem.u_sram.u_macro_hi": {
+          "location": [
+            3.36,
+            249.48
+          ],
+          "orientation": "FS"
+        }
       }
     }
   },
   "PDN_MACRO_CONNECTIONS": [
-    "u_chip\\.u_top\\.u_pmem\\.u_sram\\.u_macro VPWR VGND VDD! VSS!",
-    "u_chip\\.u_top\\.u_pmem\\.u_sram\\.u_macro VPWR VGND VDDARRAY! VSS!"
+    "u_chip\\.u_top\\.u_pmem\\.u_sram\\.u_macro_lo VPWR VGND VDD! VSS!",
+    "u_chip\\.u_top\\.u_pmem\\.u_sram\\.u_macro_lo VPWR VGND VDDARRAY! VSS!",
+    "u_chip\\.u_top\\.u_pmem\\.u_sram\\.u_macro_hi VPWR VGND VDD! VSS!",
+    "u_chip\\.u_top\\.u_pmem\\.u_sram\\.u_macro_hi VPWR VGND VDDARRAY! VSS!"
   ],
   "FP_MACRO_HORIZONTAL_HALO": 2.0,
-  "FP_MACRO_VERTICAL_HALO": 0.48
+  "FP_MACRO_VERTICAL_HALO": 0.48,
+  "RT_MIN_LAYER": "Metal1",
+  "DECAP_CELLS": [],
+  "OPENROAD_THREADS": 4,
+  "DESIGN_REPAIR_MAX_WIRE_LENGTH": 400,
+  "FP_OBSTRUCTIONS": [
+    [
+      240.0,
+      196.56,
+      410.0,
+      204.12
+    ],
+    [
+      240.0,
+      207.9,
+      410.0,
+      215.46
+    ],
+    [
+      240.0,
+      219.24,
+      410.0,
+      226.8
+    ],
+    [
+      240.0,
+      230.58,
+      410.0,
+      238.14
+    ],
+    [
+      240.0,
+      241.92,
+      410.0,
+      249.48
+    ],
+    [
+      240.0,
+      253.26,
+      410.0,
+      260.82
+    ],
+    [
+      240.0,
+      264.6,
+      410.0,
+      272.16
+    ],
+    [
+      240.0,
+      275.94,
+      410.0,
+      283.5
+    ],
+    [
+      240.0,
+      287.28,
+      410.0,
+      294.84
+    ],
+    [
+      240.0,
+      298.62,
+      410.0,
+      306.18
+    ],
+    [
+      240.0,
+      309.96,
+      410.0,
+      317.52
+    ],
+    [
+      240.0,
+      321.3,
+      410.0,
+      328.86
+    ],
+    [
+      240.0,
+      332.64,
+      410.0,
+      340.2
+    ],
+    [
+      240.0,
+      343.98,
+      410.0,
+      351.54
+    ],
+    [
+      240.0,
+      355.32,
+      410.0,
+      362.88
+    ],
+    [
+      240.0,
+      366.66,
+      410.0,
+      374.22
+    ],
+    [
+      240.0,
+      378.0,
+      410.0,
+      385.56
+    ],
+    [
+      240.0,
+      389.34,
+      410.0,
+      396.9
+    ],
+    [
+      240.0,
+      400.68,
+      410.0,
+      408.24
+    ],
+    [
+      240.0,
+      412.02,
+      410.0,
+      419.58
+    ],
+    [
+      240.0,
+      423.36,
+      410.0,
+      430.92
+    ],
+    [
+      240.0,
+      434.7,
+      410.0,
+      442.26
+    ],
+    [
+      240.0,
+      446.04,
+      410.0,
+      453.6
+    ],
+    [
+      240.0,
+      457.38,
+      410.0,
+      464.94
+    ],
+    [
+      240.0,
+      468.72,
+      410.0,
+      476.28
+    ],
+    [
+      240.0,
+      480.06,
+      410.0,
+      487.62
+    ],
+    [
+      240.0,
+      491.4,
+      410.0,
+      498.96
+    ],
+    [
+      240.0,
+      502.74,
+      410.0,
+      510.3
+    ],
+    [
+      240.0,
+      514.08,
+      410.0,
+      521.64
+    ],
+    [
+      240.0,
+      525.42,
+      410.0,
+      532.98
+    ],
+    [
+      240.0,
+      536.76,
+      410.0,
+      544.32
+    ],
+    [
+      240.0,
+      548.1,
+      410.0,
+      555.66
+    ],
+    [
+      240.0,
+      559.44,
+      410.0,
+      567.0
+    ],
+    [
+      240.0,
+      570.78,
+      410.0,
+      578.34
+    ],
+    [
+      240.0,
+      582.12,
+      410.0,
+      589.68
+    ],
+    [
+      240.0,
+      593.46,
+      410.0,
+      601.02
+    ],
+    [
+      240.0,
+      604.8,
+      410.0,
+      612.36
+    ],
+    [
+      240.0,
+      616.14,
+      410.0,
+      623.7
+    ],
+    [
+      240.0,
+      627.48,
+      410.0,
+      635.04
+    ],
+    [
+      240.0,
+      638.82,
+      410.0,
+      646.38
+    ],
+    [
+      240.0,
+      650.16,
+      410.0,
+      657.72
+    ]
+  ],
+  "PNR_SDC_FILE": "dir::tse.sdc",
+  "SIGNOFF_SDC_FILE": "dir::tse.sdc",
+  "PL_TIMING_DRIVEN": true,
+  "PL_ROUTABILITY_DRIVEN": false,
+  "LAYERS_RC": {
+    "*": {
+      "Metal1": {
+        "res": 0.00084375,
+        "cap": 0.00012381
+      },
+      "Metal2": {
+        "res": 0.000515,
+        "cap": 0.00016744
+      },
+      "Metal3": {
+        "res": 0.000515,
+        "cap": 0.0001656
+      },
+      "Metal4": {
+        "res": 0.000515,
+        "cap": 0.00016522
+      }
+    }
+  },
+  "PL_RESIZER_SETUP_SLACK_MARGIN": 1.5,
+  "GRT_RESIZER_SETUP_SLACK_MARGIN": 1.5,
+  "RUN_POST_GRT_DESIGN_REPAIR": true,
+  "DESIGN_REPAIR_MAX_SLEW_PCT": 30,
+  "DESIGN_REPAIR_MAX_CAP_PCT": 30,
+  "GRT_DESIGN_REPAIR_MAX_SLEW_PCT": 30,
+  "GRT_DESIGN_REPAIR_MAX_CAP_PCT": 30,
+  "GRT_DESIGN_REPAIR_MAX_WIRE_LENGTH": 400,
+  "MAX_FANOUT_CONSTRAINT": 8,
+  "CTS_SINK_CLUSTERING_SIZE": 8,
+  "MAGIC_DRC_MAGLEFS": [
+    "dir::maglef/RM_IHPSG13_1P_512x16_c2_bm_bist.mag"
+  ]
 }

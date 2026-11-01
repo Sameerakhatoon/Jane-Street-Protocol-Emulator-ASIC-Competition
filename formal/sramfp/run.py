@@ -1,18 +1,22 @@
 #!/usr/bin/env python3
 """SRAM read data never steers the SRAM inputs in the same cycle.
 
-The program SRAM's output A_DOUT reaches its own inputs (A_ADDR, A_DIN,
-A_MEN, A_WEN, A_REN) through lane and arbiter logic in the netlist; the
-fixed fetch slots make those paths unable to matter, which is what lets the
-layout constraints exempt them from timing. This runner proves it on the
-whole Tiny Tapeout top:
+The program SRAM is two 512x16 macros (u_macro_lo, u_macro_hi). Their
+outputs A_DOUT reach the macro inputs (A_ADDR, A_DIN, A_MEN, A_WEN,
+A_REN) through lane and arbiter logic in the netlist; the fixed fetch
+slots make those paths unable to matter, which is what lets the layout
+constraints exempt them from timing. The proof frees the read data of both
+macros at once, so it also covers paths from one macro to the other; the
+layout constraints only use the paths from a macro to its own inputs.
+This runner proves it on the whole Tiny Tapeout top:
 
-  1. flatten the chip (the source list of info_chip.yaml) with the SRAM
-     replaced by sram_free.sv, a stand-in whose read data is free;
+  1. flatten the chip (the source list of info_chip.yaml) with each SRAM
+     macro replaced by sram_free.sv, a stand-in whose read data is free;
   2. product.py builds fp_core: two copies sharing every register, each
-     with its own free read data;
-  3. sby proves fp_props.sv: the SRAM inputs of both copies agree (task sdc:
-     whenever the macro uses them; task strict: always).
+     with its own free read data of both macros; it fails unless it finds
+     the inputs of both macros, and prints the wires it bound;
+  3. sby proves fp_props.sv: the inputs of each macro agree in both copies
+     (task sdc: whenever that macro uses them; task strict: always).
 
 Then each planted bug (a text substitution in a copy of the RTL) must make
 the sdc task FAIL in BMC. UNKNOWN, ERROR, a timeout or a missing status
