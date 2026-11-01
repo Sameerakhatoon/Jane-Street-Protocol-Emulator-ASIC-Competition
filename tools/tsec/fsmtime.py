@@ -14,10 +14,22 @@ At an edge wait for E, with e the earliest cycle E can be visible:
     also be there by now (now >= e + floor(min separation)), the edge can be
     missed altogether: a re-arm violation (R314).
   - E comes later: the wait ends at max(now + 1, e) + j for each slot phase j.
-A pre-wait (the level an edge needs first) ends at once or later; a pull
-from the host ends at any phase and forgets the environment; an alternate
-(abort) can end any wait that carries it, and from then on every wait that
-carries a level alternate ends at once until the abort target is reached.
+A pre-wait (the level an edge needs first) ends at once or later, and must
+be reached before the edge it prepares can have come since the last event,
+or it waits through that edge and catches the next one (R314). A pull from
+the host ends at any phase. Under `assume host_ready` it ends at once, so the
+environment keeps running through it and is kept. Without it a `pull host`
+statement may take any time while the environment runs on (kept, and also
+past the horizon), and a state's `on host.pull` is an unbounded wait after
+which the next event counts from its end (forgotten).
+An alternate (abort) can end any wait that carries it. While the abort is
+pending every wait that carries a level alternate ends at once, but its own
+condition has priority (the RTL and the ISA): if that condition can also
+hold, the wait ends on it with AFLAG clear and JMP TOUT falls through. A
+JMP PIN on the abort level sees the level itself. A pending abort that
+reaches a pull, a push or a wait without the alternate, or that runs longer
+than the horizon, is lost (R314), as is a change alternate that can arrive
+in the same cycle as the wait's own edge.
 
 States are merged on their normalised form, so loops terminate; offsets
 older than a horizon are clamped: the longest separation the rules give plus
@@ -30,7 +42,7 @@ from fractions import Fraction as Fr
 from . import ast as A
 from . import cycles, isa, printer
 from .diag import TseError
-from .semantics import min_separation, opposite, stable_after
+from .semantics import level_guard, min_separation, opposite, stable_after
 
 DATA = "data"                  # a register value that depends on data (a count from a variable)
 MAX_STATES = 1_500_000         # beyond this the analysis gives up (R325) instead of exhausting memory
@@ -58,6 +70,7 @@ class Miss:
     rules: list
     where: str
     alt: bool = False
+    kind: str = "edge"          # edge, pre (a pre-wait after its edge), lost or tie (an abort lost)
 
 
 @dataclass
@@ -85,7 +98,15 @@ class Analysis:
         self.sym, self.role, self.prog, self.labels = sym, role, prog, labels
         self.lane, self.fm, self.f = lane, fm, fclk
         self.ms_cache, self.events = {}, {}
-        self.abort_pcs = {labels[t] for t in abort_targets if t in labels}
+        self.host_ready = any(a.b is None and a.a.kind == "named" and a.a.name.text == "host"
+                              and a.a.attr is not None and a.a.attr.text == "ready" for a in role.assumes)
+        # a checked abort keeps its state through the pin check and the "wait again" instruction
+        # (both are JMP TOUT targets); it ends at the jump into the abort state
+        checked = {k for k, i in enumerate(prog) if getattr(i, "abort_check", False)
+                   or getattr(i, "rewait", False)}
+        self.abort_pcs = {labels[t] for t in abort_targets if t in labels} - checked
+        self.abort_pcs |= {labels[i.a["target"]] for i in prog if i.op == "JMP" and
+                           (getattr(i, "abort_jump", False) or getattr(i, "abort_pin", False))}
         self.abort_event = self.abort_events()
         self.refs = {id(ins.sep.ref) for ins in prog if ins.sep is not None}
         self.mark_far = {}          # per reference: distances beyond this all act the same
@@ -99,16 +120,18 @@ class Analysis:
         self.liveness()
 
     def abort_events(self):
-        """{abort pc: event} for the JMP TOUT targets that only an exact abort reaches (every
-        alternate is the event, no pin check needed). Reaching one means the event happened
-        when the alternate ended the wait, so later events count from it, not an older one."""
+        """{abort pc: event} for the JMP TOUT targets that only an exact change abort reaches
+        (every alternate is the event, no pin check needed). A change alternate sees only changes
+        after the wait's dispatch, so the event happened when it ended the wait and later events
+        count from it. A level alternate may have been there long before (an earlier wait ended
+        on its own condition first), so it gives no such time."""
         evs = {}
         for prev, ins in zip(self.prog, self.prog[1:]):
             ab = prev.wait.abort if prev.wait is not None else None
             if ins.op != "JMP" or ins.a["cond"] != "TOUT" or ins.a["target"] not in self.labels:
                 continue
             pc = self.labels[ins.a["target"]]
-            exact = ab is not None and ab.mode != "host" and ab.check_level is None
+            exact = ab is not None and ab.mode == "change" and ab.check_level is None
             evs.setdefault(pc, set()).add(self.ev(ab.event) if exact else None)
         return {pc: next(iter(s)) for pc, s in evs.items()
                 if len(s) == 1 and None not in s and pc in self.abort_pcs}
@@ -156,8 +179,9 @@ class Analysis:
         def waits(i):
             return i.wait is not None and i.wait.kind in ("edge", "pre")
 
-        def pull(i):
-            return i.wait is not None and i.wait.kind == "pull"
+        def pull(i):                # a pull that forgets the environment
+            return i.wait is not None and i.wait.kind == "pull" and not self.keeps(i) \
+                and not getattr(i.wait, "inline", False)
         self.need_anchor = self.live(lambda i: i.ob is not None or i.reads is not None,
                                      lambda i: edge(i) or pull(i))
         self.need_pre = self.live(edge, lambda i: edge(i) or pull(i))
@@ -175,10 +199,14 @@ class Analysis:
         def sets_reg(r):
             return lambda i: i.op in ("SET", "OUT", "MOV") and i.a.get("dst") == r
         self.need_chain = self.live(lambda i: bool(getattr(i, "paces", None)),
-                                    lambda i: waits(i) or pull(i))
+                                    lambda i: waits(i) or (i.wait is not None and i.wait.kind == "pull"))
         self.need_x = self.live(reads_reg("X"), sets_reg("X"))
         self.need_y = self.live(reads_reg("Y"), sets_reg("Y"))
         self.phase_mod = DATA_FRAME if any(i.op in ("LDW", "STW") for i in self.prog) else self.fm.S
+
+    def keeps(self, ins):
+        """A pull that ends at once: under host_ready, or after the host alternate saw the word."""
+        return self.host_ready or getattr(ins.wait, "ready", False)
 
     # ------------------------------------------------------------ environment
     def ev(self, e):
@@ -229,7 +257,7 @@ class Analysis:
         pre = None if pre is None or not self.need_pre[pc] else (pre[0], off(pre[1]))
         marks = tuple((k, max(off(v), t % m - self.mark_far[k])) for k, v in marks
                       if self.need_mark[k][pc])
-        abort = off(abort)
+        abort = None if abort is None else (off(abort[0]), abort[1])
         x = x if self.need_x[pc] else None
         y = y if self.need_y[pc] else None
         chain = None if chain is None or not self.need_chain[pc] else (chain[0], chain[1] - base, chain[2])
@@ -242,16 +270,21 @@ class Analysis:
         ins = self.prog[pc]
         where = f"phase {t % self.fm.S}"
         if getattr(ins, "rewait", False) and abort is not None:
-            self.rewait_check(ins, t, abort, where)
+            self.rewait_check(ins, t, abort[0], where)
+            other = self.other_event(ins)
+            if other is not None:   # that change is now the last event, seen at the alternate
+                last = (other, abort[0] - (self.fm.S - 1))
             abort = None            # the change was not the abort event: back to normal
         if pc in self.abort_pcs and abort is not None:
-            lat = t - abort
+            lat = t - abort[0]
             if self.res.abort_latency is None or lat > self.res.abort_latency:
                 self.res.abort_latency = lat
             if pc in self.abort_event:  # the abort event is now the last one seen; it became
                 # visible no earlier than the dispatch of the wait it ended (up to S - 1 before)
-                last = (self.abort_event[pc], abort - (self.fm.S - 1))
+                last = (self.abort_event[pc], abort[0] - (self.fm.S - 1))
             abort = None
+        if abort is not None and self.abort_lost(ins, t, abort, where):
+            return []
         checking = abort is None        # after an abort only the latency to its state matters
         if ins.ob is not None and checking:
             self.record_ob(ins, t, anchor, where)
@@ -290,8 +323,18 @@ class Analysis:
             go(pc + 1, t, tf=0)
             go(pc + 1, t, tf=1)
         elif ins.op == "PULL" and ins.a.get("blk"):
+            keep = w is not None and self.keeps(ins)
+            inline = w is not None and getattr(w, "inline", False)
+            m = self.phase_mod
+            far = (self.clamp // m + 1) * m
             for j in range(self.fm.S):
-                go(pc + 1, t + j, last=None, anchor=None, pre=None)
+                if keep:                # ends at once: the environment ran on meanwhile
+                    go(pc + 1, t + j)
+                elif inline:            # a statement: the environment runs on for as long as
+                    go(pc + 1, t + j)   # the host takes, past the horizon at the worst
+                    go(pc + 1, t + far + j)
+                else:                   # a state's event: the next event counts from its end
+                    go(pc + 1, t + j, last=None, anchor=None, pre=None)
         elif ins.op == "JMP":
             c = ins.a["cond"]
             tgt = self.labels[ins.a["target"]]
@@ -313,6 +356,8 @@ class Analysis:
                     go(tgt)
                 if tf in (0, None):
                     go(pc + 1)
+            elif c == "PIN" and getattr(ins, "abort_pin", False) and abort is not None:
+                go(tgt)                 # the abort level is still there
             else:                       # XNEY, PIN, XZ, GUARD: data, both ways
                 go(tgt)
                 go(pc + 1)
@@ -331,11 +376,15 @@ class Analysis:
 
     def wait(self, ins, w, t, last, anchor, pre, abort, go, where):
         S = self.fm.S
-        pc = self.prog.index(ins) if False else None
         npc = self.index(ins) + 1
         E = self.ev(w.event)
         if abort is not None and w.abort is not None and w.abort.mode == "level":
-            go(npc, t, tf=1)            # the alternate level is still there
+            # the alternate level is still there, so the wait ends at once; its own condition
+            # has priority, so if the level it waits for can be there too it ends on that, AFLAG
+            # clear. A change wait (level None) sees no change in its dispatch cycle.
+            if w.level is not None:
+                go(npc, t, tf=0)
+            go(npc, t, tf=1)
             return
         e = None
         if last is not None:
@@ -357,12 +406,16 @@ class Analysis:
                 end = first + j
                 go(npc, end, tf=0, last=(E, end), anchor=(E, end, end), pre=None)
         else:
+            if last is not None and abort is None and not getattr(w, "own", False):
+                self.check_pre(ins, w, t, last, where)
             go(npc, t, tf=0, pre=(w.wire, t))
             P = E
             first = t + 1 if e is None else max(t + 1, e)
             for j in range(S):
                 end = first + j
                 go(npc, end, tf=0, last=(P, end), pre=(w.wire, end))
+        if w.abort is not None and w.abort.mode == "change" and abort is None:
+            self.check_tie(ins, w, E, where)
         if w.abort is not None:
             A_ = self.ev(w.abort.event)
             if w.abort.mode == "change" and last is not None and abort is None \
@@ -374,9 +427,65 @@ class Analysis:
             host = w.abort.mode == "host"       # the host's word ends it: no abort, a branch
             for j in range(S):          # ended on the alternate: its own level was absent at end
                 end = t + j
-                go(npc, end, tf=1, abort=None if host else end,
+                go(npc, end, tf=1, abort=None if host else (end, A_),
                    pre=(w.wire, end) if w.kind == "edge" else pre,
                    anchor=anchor if host else (A_, end, end))
+
+    def check_pre(self, ins, w, t, last, where):
+        """A pre-wait waits for the level the edge E it prepares leaves behind first. If E may
+        already be visible since the last event, the level is gone: the wait sees it again only
+        after the next opposite edge, and the edge wait then catches the E after that."""
+        E = self.ev(opposite(self.base(w.event)))
+        lim, used = self.ms(last[0], E)
+        e = last[1] + lim
+        if used and e <= t:
+            self.record_miss(Miss(ins, t - e, lim, self.events[E], self.events[last[0]], used, where,
+                                  kind="pre"))
+
+    def check_tie(self, ins, w, E, where):
+        """A change alternate and the wait's own edge seen in the same cycle: the own condition
+        wins and the change is never seen (the next wait compares with the new level). A rule
+        between the two events keeps them apart."""
+        A_ = self.ev(w.abort.event)
+        if not (self.ms(E, A_)[0] >= 1 or self.ms(A_, E)[0] >= 1):
+            self.record_miss(Miss(ins, 0, 0, w.abort.event, self.events[E], [], where, alt=True,
+                                  kind="tie"))
+
+    def abort_lost(self, ins, t, abort, where):
+        """A pending abort must reach its state through waits that carry the alternate (they end
+        at once while its level holds). A pull or push does the next frame's host work, a wait
+        without the alternate blocks with the abort level there, and a path longer than the
+        horizon goes round a loop: the abort is lost."""
+        what = None
+        w = ins.wait
+        if ins.op == "PULL" or ins.op == "PUSH":
+            what = f"a {ins.op}"
+        elif ins.op == "WAIT" and w is not None and w.kind in ("edge", "pre", "pull") \
+                and not ins.a.get("alt"):
+            what = "a wait without the alternate"
+        elif t - abort[0] > self.clamp:
+            what = "a loop"
+        if what is None:
+            return False
+        self.record_miss(Miss(ins, t - abort[0], 0, self.events[abort[1]], what, [], where,
+                              alt=True, kind="lost"))
+        return True
+
+    def other_event(self, ins):
+        """The change a checked abort's alternate saw when the pin check says it was not the
+        abort event: the opposite edge of the checked wire, under the abort's guard, named as
+        the spec names it where it can (a START where a STOP aborts)."""
+        ab = ins.wait.abort
+        if ab is None or ab.check_level is None:
+            return None
+        other = A.Event("fall" if ab.check_level else "rise", A.Ident(ab.check_wire))
+        if getattr(ab, "guard_wire", None) is not None:
+            for name, d in self.sym.events.items():
+                g = level_guard(self.sym, d.guard)
+                if d.event.kind == other.kind and d.event.name.text == ab.check_wire \
+                        and g == {ab.guard_wire: ab.guard_level}:
+                    return self.ev(A.Event("named", A.Ident(name), None, []))
+        return self.ev(other)
 
     def rewait_check(self, ins, t, change, where):
         """After a change that was not the abort event (a start where a stop aborts), the wait

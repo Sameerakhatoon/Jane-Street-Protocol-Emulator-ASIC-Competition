@@ -20,10 +20,11 @@ die() { echo "FAIL e2e-spi-$ROLE: $*"; exit 1; }
 
 case "$ROLE" in
     target)
-        SPEC=spi_target_mode0_css114; OPTS=()
+        # back-to-back bytes need SCK <= 1.99 MHz and the first rise 117 ns after CS (R314)
+        SPEC=spi_target_mode0_css114; OPTS=(-D t_css=117e-9 -D f_sck=1.875e6); DEMO=(--half 16)
         JUDGE=(--map cs=ui_in4 --map clk=ui_in5 --map mosi=ui_in6 --map miso=uo_out1) ;;
     controller)
-        SPEC=spi_controller_mode0; OPTS=(--pad-skew 0)
+        SPEC=spi_controller_mode0; OPTS=(--pad-skew 0); DEMO=()
         JUDGE=(--map cs=uio_out4 --map clk=uio_out5 --map mosi=uio_out6 --map miso=ui_in7) ;;
     *) die "role must be target or controller" ;;
 esac
@@ -40,7 +41,7 @@ grep -E "^RESULT" "$OUT/tsec.log"
 VCD="$OUT/spi.vcd"
 step "load, run, one SPI exchange"
 python3 "$HERE/spi_demo.py" --sim "$SIM --pin-server --vcd $VCD --vcd-hold" --tsec "$OUT/tsec" "$SPEC" \
-    --role "$ROLE" >"$OUT/demo.log" 2>&1 || true
+    --role "$ROLE" "${DEMO[@]}" >"$OUT/demo.log" 2>&1 || true
 grep -v "^tse_sim:" "$OUT/demo.log"
 grep -q "^PASS host" "$OUT/demo.log" || die "host side"
 

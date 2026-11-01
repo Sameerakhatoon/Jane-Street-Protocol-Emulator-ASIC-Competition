@@ -66,7 +66,7 @@ def test_spi_lowering_shape():
     sym = front(SPI)
     prog, labels = layout(Fsm(sym, sym.roles[0], FCLK, "rolled").lower())
     ops = [(i.op, i.a.get("cond") or i.a.get("dst") or i.a.get("src")) for i in prog]
-    assert ("PULL", None) in ops and ("JMP", "YDEC") in ops and ("JMP", "TOUT") in ops
+    assert ("PULL", None) in ops and ("JMP", "YDEC") in ops and ("JMP", "PIN") in ops
     waits = [i for i in prog if i.op == "WAIT"]
     assert sum(1 for w in waits if w.a.get("alt")) == 3        # the level before the loop and two edges
     loop = next(i for name, i in labels.items() if name.startswith("loop"))
@@ -77,15 +77,15 @@ def test_spi_lowering_shape():
 def test_spi_first_bit_numbers_and_fix():
     sym = front(SPI)
     att, tried = Scheduler(sym, sym.roles[0], 0, FCLK, FetchModel(), (0, 25)).compile()
-    assert att is not None and att.fsm.rule is not None    # the first bit comes from rule 0 (hold)
-    first = next(v for v in tried[1].violations if v.span.line == 50)   # the sequencer alone
+    assert att is None                  # rejected for the byte gap at 4 MHz (test_14)
+    first = next(v for t in tried for v in t.violations if v.span.line == 50)  # the sequencer alone
     fields = dict(first.fields)
     assert fields["late by"] == "13.3 ns"          # the reaction is buffered on every path
     assert fields["fix"] == "t_css >= 114 ns,\nor pads characterised at or below 11.7 ns"
 
 
 def test_spi_relaxed_is_accepted():
-    sym = front(SPI, t_css="170e-9", f_sck="3.8e6")
+    sym = front(SPI, t_css="170e-9", f_sck="1.875e6")
     att, _ = Scheduler(sym, sym.roles[0], 0, FCLK, FetchModel(), (0, 25)).compile()
     assert att is not None and att.mode == "rolled" and len(att.prog) == 20
 

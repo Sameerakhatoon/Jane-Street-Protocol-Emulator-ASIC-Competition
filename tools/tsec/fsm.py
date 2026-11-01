@@ -367,10 +367,12 @@ class Fsm:
             facts.levels.pop(wire, None)
         else:
             lvl = 1 if base.kind == "rise" else 0
-            own = lvl == 1 and guard is None and not force_pre and wire in self.released
+            mine = guard is None and not force_pre and wire in self.released
+            own = lvl == 1 and mine
             if not own and (force_pre or guard is not None or facts.levels.get(wire) != 1 - lvl):
-                self.wait_ins(1 - lvl, self.vin(wire), Wait("pre", A.Event(
-                    "fall" if lvl else "rise", base.name), wire, 1 - lvl), ctx)
+                pre = Wait("pre", A.Event("fall" if lvl else "rise", base.name), wire, 1 - lvl)
+                pre.own = mine and lvl == 0     # the high level follows our own release
+                self.wait_ins(1 - lvl, self.vin(wire), pre, ctx)
             wait = Wait("edge", ev, wire, lvl)
             wait.own = own              # the rise follows our own release: no low level to see
             self.wait_ins(lvl, self.vin(wire), wait, ctx)
@@ -916,6 +918,8 @@ class Fsm:
             if e.guard is not None:         # not enabled yet: wait again (the word stays there)
                 self.test(e.guard, fail, hf)
             self.wait_for(e.event, hf, None)
+            pull = next(i for i in reversed(self.prog) if i.op == "PULL")
+            pull.wait.ready = True          # the alternate saw the word: the pull ends at once
             self.block(e.body or [], hf, Ctx(fail=self.init.name.text))
             self.goto(e.target.text, hf)
             if fail is not None:
@@ -976,12 +980,27 @@ class Fsm:
             self.stmt(s, facts, ctx)
             if ab is not None and ab.mode == "level" and has_wait(self, s) and \
                     (k + 1 == len(body) or not starts_with_wait(self, body[k + 1])):
-                self.jump(ab.target, "TOUT").note = f"abort on {printer.event(ab.event)}"
+                self.level_exit(ab)
                 self.exits.append((ab.target, self.abort_facts()))
         self.chains = {}
         self.goto(e.target.text, facts)
         self.flush_deferred()
         self.seq_dirty = None
+
+    def level_exit(self, ab):
+        """Leave for the abort state after a waiting statement. A WAIT ends on its own condition
+        before its alternate, so once the abort level is there a wait whose own level also holds
+        ends with AFLAG clear and JMP TOUT falls through. JMP PIN tests the abort level itself,
+        and costs the same, where the lane's pin jump is free (it is taken on a high level)."""
+        base, _ = base_event(self.sym, ab.event)
+        wire = base.name.text
+        note = f"abort on {printer.event(ab.event)}"
+        if base.kind == "rise" and self.jmp_pin in (None, wire):
+            self.jmp_pin = wire
+            j = self.jump(ab.target, "PIN")
+            j.note, j.abort_pin = note + f" (test {wire} == 1)", True
+        else:
+            self.jump(ab.target, "TOUT").note = note
 
     def pure(self, s):
         """A timed statement of a paced chain, or a counted loop of only such statements."""
@@ -1081,7 +1100,8 @@ class Fsm:
             else:
                 back = self.label("rewait")
                 self.pin_test(ab.check_wire, ab.check_level, True, back, None).abort_check = True
-                self.jump(ab.target).note = f"abort on {printer.event(ab.event)}"
+                j = self.jump(ab.target)
+                j.note, j.abort_jump = f"abort on {printer.event(ab.event)}", True
                 self.place(back)
                 again = Ins(ins.op, dict(ins.a), wait=ins.wait, note="wait again: not the abort event")
                 again.rewait = True
@@ -1163,6 +1183,8 @@ class Fsm:
             if s.pull:
                 self.wait_for(A.Event("named", A.Ident("host"), A.Ident("pull"), [A.Ref(s.var)]),
                               facts, ctx)
+                pull = next(i for i in reversed(self.prog) if i.op == "PULL")
+                pull.wait.inline = True     # a statement: the environment does not wait for it
                 ctx.anchor = None
             else:
                 v = s.var.text

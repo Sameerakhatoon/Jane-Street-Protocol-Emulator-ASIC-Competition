@@ -39,6 +39,7 @@ RTL = ["tse_isa_pkg.sv", "tse_regs_pkg.sv", "tse_seq.sv", "tse_dpll.sv", "tse_cr
        "tse_resp_rule.sv", "tse_stuffer.sv", "tse_codec.sv", "tse_nco.sv", "tse_timer.sv",
        "tse_lane.sv"]
 BASE = {"out": 3, "in": 0}
+SYNC = 2                        # the harness's two-flop synchronizer on the pins
 
 
 def window_bounds(lo, hi, d_min=0, d_max=0, kind="in", extra=0):
@@ -54,6 +55,7 @@ class Ob:
         self.name, self.line, self.kind, self.lo, self.hi = name, line, kind, lo, hi
         self.act, self.extra, self.pin, self.val, self.waits, self.quiet = \
             act, extra, pin, val, waits, quiet
+        self.path = None            # pcs from the waits to act; leaving them abandons the check
 
 
 def extra_cycles(ins, lane, fm):
@@ -97,13 +99,150 @@ def fsm_obs(sym, role, lane, att, fm, fclk):
                  and state_of(p) == state_of(k)
                  and ((w.wait.kind == "edge" and w.wait.level in (val, None))
                       or (w.wait.kind == "pre" and w.wait.level == 1 - val))]
+        direct, path = act_path(att.prog, att.labels, waits, k)
         if not waits:
             continue
+        waits = direct or waits     # without a direct path the check stays as strict as before
         sep, _ = min_separation(sym, role, opposite(base), base, fclk)
         out.append(Ob(f"{ob.name} after {base.kind}({wire})", ob.span.line, ob.kind, ob.lo, ob.hi, k,
                       extra_cycles(ins, lane, fm), att.fsm.vin(wire), val,
                       waits, max(1, math.floor(sep))))
+        out[-1].path = path
     return out
+
+
+def cover_depth(prog, labels, lane, fm, obs):
+    """Cycles from RUN within which every checker can first respond: the shortest run to each
+    acting instruction, counted loops run their full count. A fixed depth is too shallow for a
+    protocol whose first window comes after many bit times (I2C: a START and eight address
+    bits). The harness pins are free, so an edge wait costs only the synchronizer, except at a
+    wait some checker is armed at: its trigger needs QUIET stable cycles first (the checker's
+    own assumption). Every instruction costs a dispatch plus a slot frame of fetch stall."""
+    import heapq
+    quiet = {}
+    for ob in obs:
+        for p in ob.waits:
+            quiet[p] = max(quiet.get(p, 0), ob.quiet)
+
+    def cost(pc):
+        ins = prog[pc]
+        c = 1 + fm.S
+        if ins.op == "WAIT" and ins.wait is not None and ins.wait.kind in ("edge", "pre"):
+            c += max(SYNC, quiet.get(pc, 0))
+        return c
+
+    def succ(pc, x, y):
+        ins, a = prog[pc], prog[pc].a
+        if ins.op == "JMP":
+            tgt, c = labels[a["target"]], a["cond"]
+            if c == "ALWAYS":
+                return [(tgt, x, y)]
+            if c in ("XDEC", "YDEC"):
+                v = x if c == "XDEC" else y
+                if v is None:           # a count from data: any number of passes
+                    return [(tgt, x, y), (pc + 1, x, y)]
+                n = (v - 1) & 0xFFFF
+                nxt = tgt if v != 0 else pc + 1
+                return [(nxt, n, y) if c == "XDEC" else (nxt, x, n)]
+            return [(tgt, x, y), (pc + 1, x, y)]
+        if ins.op == "SET" and a.get("dst") in ("X", "Y"):
+            return [(pc + 1, a["imm"], y) if a["dst"] == "X" else (pc + 1, x, a["imm"])]
+        if (ins.op in ("OUT", "MOV") and a.get("dst") in ("X", "Y")) or \
+                (ins.op == "SET" and a.get("dst") == "XH"):
+            return [(pc + 1, None, y) if a["dst"] in ("X", "XH") else (pc + 1, x, None)]
+        if ins.op == "CSRR":
+            return [(pc + 1, None, None)]
+        return [(pc + 1, x, y)]
+    start = (0, None, None)
+    dist, best, todo = {start: cycles.start_cycle(lane, fm)}, {}, [(cycles.start_cycle(lane, fm), start)]
+    while todo:
+        d, st = heapq.heappop(todo)
+        if d > dist[st]:
+            continue
+        pc = st[0]
+        best[pc] = min(best.get(pc, d), d)
+        for n in succ(*st):
+            if n[0] >= len(prog):
+                continue
+            nd = d + cost(pc)
+            if nd < dist.get(n, nd + 1):
+                dist[n] = nd
+                heapq.heappush(todo, (nd, n))
+    reach = [best[ob.act] + math.ceil(ob.hi) + 2 for ob in obs if ob.act in best]
+    return max([40] + [r + 30 for r in reach])
+
+
+def abandon(ob):
+    """The checker's abandon input: the lane is off every path from the waits to the act."""
+    if ob.path is None:
+        return "1'b0"
+    return "!(" + " || ".join(f"pc_q == 8'd{p}" for p in sorted(ob.path)) + ")"
+
+
+def act_path(prog, labels, waits, act):
+    """(the waits act follows directly, the pcs from them to act): paths that wait for nothing
+    else on the way, except that a pre-wait passes on to the edge wait it prepares. A trigger
+    seen at any other wait is answered later, after another one; leaving the path means a
+    guard chose another branch or an abort came. (None, None) when no wait leads to act."""
+    def succ(pc):
+        ins = prog[pc]
+        out = [] if ins.op == "JMP" and ins.a["cond"] == "ALWAYS" else [pc + 1]
+        if ins.op == "JMP":
+            out.append(labels[ins.a["target"]])
+        return [p for p in out if p < len(prog)]
+
+    def blocks(n):
+        w = prog[n].wait
+        return (w is not None and w.kind in ("edge", "pre", "pull")) or \
+            (prog[n].op == "PULL" and prog[n].a.get("blk"))
+    direct, path = [], set()
+    for w0 in waits:
+        pre = prog[w0].wait.kind == "pre"
+        start = (w0, not pre)               # (pc, the edge wait is behind us)
+        seen, todo = {start}, [start]
+        while todo:
+            p, done = todo.pop()
+            if p == act:
+                continue
+            for n in succ(p):
+                nxt = (n, done)
+                if n != act and blocks(n):
+                    if done or n not in waits or prog[n].wait.kind != "edge":
+                        continue
+                    nxt = (n, True)
+                if nxt not in seen:
+                    seen.add(nxt)
+                    todo.append(nxt)
+        if not any(p == act for p, _ in seen):
+            continue
+        back, changed = {(p, d) for p, d in seen if p == act}, True
+        while changed:
+            changed = False
+            for s in seen - back:
+                p, d = s
+                nd = [(n, d) for n in succ(p)] + [(n, True) for n in succ(p)]
+                if any(x in back for x in nd):
+                    back.add(s)
+                    changed = True
+        direct.append(w0)
+        path |= {p for p, _ in back}
+    return (direct, path) if direct else (None, None)
+
+
+def only(k, en):
+    """Checker k's enable under the top's ONLY parameter. A checker that never arms has no
+    assumption and no assertion left, so proving one obligation alone drops the others'
+    environment assumptions: a weaker hypothesis, so a pass is at least as strong."""
+    return f"(ONLY < 0 || ONLY == {k}) && {en}"
+
+
+def ob_tasks(n, group=None):
+    """sby task lines: one task per obligation, below the "--" line so a plain run skips them."""
+    return ["--"] + [f"ob{k}" + (f" {group}" if group else "") for k in range(n)]
+
+
+def ob_params(n):
+    return [f"ob{k}: chparam -set ONLY {k} top" for k in range(n)]
 
 
 def harness(role, lane, obs, regs, words, window, pads):
@@ -111,14 +250,15 @@ def harness(role, lane, obs, regs, words, window, pads):
     rows = [(ob, *window_bounds(ob.lo, ob.hi, pads[0], pads[1], ob.kind, ob.extra)) for ob in obs]
     lines = top_lines(role, lane, regs, words, window, "one checker per OB-WIN obligation")
     for k, (ob, lo, hi) in enumerate(rows):
-        en = "stay >= 3'd5 && (" + " || ".join(f"pc_q == 8'd{p}" for p in ob.waits) + ")"
+        en = only(k, "stay >= 3'd5 && (" + " || ".join(f"pc_q == 8'd{p}" for p in ob.waits) + ")")
         lines += [
             f"  // line {ob.line}: {ob.name} within [{float(ob.lo):.2f}, {float(ob.hi):.2f}] ticks "
             f"(instruction {ob.act}, {ob.extra} extra cycles)",
             f"  tse_window_check #(.LO({lo}), .HI({hi}), .QUIET({ob.quiet}), "
             f".W({max(hi, ob.quiet, 2).bit_length() + 1})) ob{k} (",
             f"    .clk, .rst(init), .en({en}), .trig_in(sync[{ob.pin}]), .trig_val(1'b{ob.val}),",
-            f"    .resp_out(pc_q == 8'd{ob.act} && pc != 8'd{ob.act}), .resp_val(1'b1));",
+            f"    .resp_out(pc_q == 8'd{ob.act} && pc != 8'd{ob.act}), .resp_val(1'b1),",
+            f"    .abandon({abandon(ob)}));",
         ]
     lines.append("endmodule")
     return "\n".join(lines) + "\n", rows
@@ -131,8 +271,9 @@ def top_lines(role, lane, regs, words, window, what):
     lines = [
         f"// top_{role.name.text}.sv: generated by tsec, do not edit.",
         f"// Role {role.name.text} on lane {lane}, the real tse_lane; {what}.",
-        "module top (input logic clk, input logic [3:0] pin_in, input logic h_tx_we,",
-        "            input logic [31:0] h_tx_data, input logic h_rx_re);",
+        "// ONLY >= 0 arms checker ONLY alone (a smaller proof per obligation); -1 arms them all.",
+        "module top #(parameter int ONLY = -1) (input logic clk, input logic [3:0] pin_in,",
+        "            input logic h_tx_we, input logic [31:0] h_tx_data, input logic h_rx_re);",
         "  logic init = 1'b1;",
         "  always_ff @(posedge clk) init <= 1'b0;",
         "  logic rst_n, run;",
@@ -204,25 +345,27 @@ def top_lines(role, lane, regs, words, window, what):
     return lines
 
 
-def sby_text(role_name, depth=40, bounded=False):
+def sby_text(role_name, depth=40, bounded=False, n=0):
     """Prove with abc pdr, or (bounded) check every run of depth cycles from RUN with smtbmc:
-    a paced frame's long delay loops keep pdr from converging in reasonable time."""
+    a paced frame's long delay loops keep pdr from converging in reasonable time. Tasks ob0 to
+    ob<n-1> prove one obligation each the same way."""
     files = [os.path.join(SRC, f) for f in RTL]
     reads = " ".join(os.path.basename(f) for f in files)
     prv = ["prv: mode bmc", f"prv: depth {depth}"] if bounded else ["prv: mode prove"]
     return "\n".join([
-        "[tasks]", "prove prv", "cover cvr", "",
+        "[tasks]", "prove prv", "cover cvr", *ob_tasks(n, "prv"), "",
         "[options]", *prv, "cvr: mode cover", f"cvr: depth {depth}", "",
         "[engines]", "prv: " + ("smtbmc boolector" if bounded else "abc pdr"), "cvr: smtbmc boolector", "",
         "[script]", f"read_verilog -formal -sv {reads} tse_window_check.sv top_{role_name}.sv",
-        "prep -top top", "flatten", "memory_map", "opt -fast", "techmap", "opt -fast",
+        *ob_params(n), "prep -top top", "flatten", "memory_map", "opt -fast", "techmap", "opt -fast",
         "setundef -undriven -anyseq", "setundef -zero", "opt -full", "opt_dff -sat", "opt_clean", "",
         "[files]", *files, "tse_window_check.sv", f"top_{role_name}.sv",
     ]) + "\n"
 
 
-def write(outdir, role, lane, obs, regs, words, window, pads, bounded=False):
-    """Write the harness of one role; returns the checker rows (empty: nothing observable)."""
+def write(outdir, role, lane, obs, regs, words, window, pads, bounded=False, depth=40):
+    """Write the harness of one role; returns the checker rows (empty: nothing observable).
+    depth: the cover depth (cover_depth for a state machine)."""
     os.makedirs(outdir, exist_ok=True)
     shutil.copy(os.path.join(TEMPLATES, "tse_window_check.sv"), outdir)
     top, rows = harness(role, lane, obs, regs, words, window, pads)
@@ -230,8 +373,9 @@ def write(outdir, role, lane, obs, regs, words, window, pads, bounded=False):
     with open(os.path.join(outdir, f"top_{name}.sv"), "w") as fh:
         fh.write(top)
     with open(os.path.join(outdir, f"{name}.sby"), "w") as fh:
-        depth = max(40, max(hi for _, _, hi in rows) + 30) if bounded else 40
-        fh.write(sby_text(name, depth, bounded))
+        if bounded:
+            depth = max(depth, max(hi for _, _, hi in rows) + 30)
+        fh.write(sby_text(name, depth, bounded, len(rows)))
     with open(os.path.join(outdir, f"{name}.hex"), "w") as fh:
         fh.write("".join(f"{w:04x}\n" for w in words))
     return rows
@@ -331,23 +475,27 @@ def frame_harness(role, lane, checks, regs, words, window, host_ready=False):
         lines.append(f"  // line {c.line}: {c.name} ({c.what})")
         lines += [f"  tse_window_check #(.LO({c.lo}), .HI({c.hi}), .QUIET(1), "
                   f".W({max(c.hi, 2).bit_length() + 1})) ob{k} ("]
-        lines += [f"    .clk, .rst(init), .en({c.en}), .trig_in({c.trig}), .trig_val(1'b{c.tval}),",
-                  f"    .resp_out({c.resp}), .resp_val(1'b{c.rval}));"]
+        lines += [f"    .clk, .rst(init), .en({only(k, '(' + c.en + ')')}), .trig_in({c.trig}),"
+                  f" .trig_val(1'b{c.tval}),",
+                  f"    .resp_out({c.resp}), .resp_val(1'b{c.rval})"
+                  ", .abandon(1'b0));"]
     lines.append("endmodule")
     return "\n".join(lines) + "\n"
 
 
-def frame_sby(role_name):
-    """Prove every checker with abc pdr. No cover task: the first frame's events come a few
-    hundred cycles after RUN, too deep for a bounded cover; a checker whose window is tightened
-    failing (a counterexample) shows its trigger and response are reached."""
+def frame_sby(role_name, n=0):
+    """Prove every checker with abc pdr (task prove), or one checker alone (tasks ob0 to
+    ob<n-1>): all together pdr did not converge in 50 minutes. No cover task: the first frame's
+    events come a few hundred cycles after RUN, too deep for a bounded cover; a checker whose
+    window is tightened failing (a counterexample) shows its trigger and response are reached."""
     files = [os.path.join(SRC, f) for f in RTL]
     reads = " ".join(os.path.basename(f) for f in files)
     return "\n".join([
+        "[tasks]", "prove", *ob_tasks(n), "",
         "[options]", "mode prove", "",
         "[engines]", "abc pdr", "",
         "[script]", f"read_verilog -formal -sv {reads} {' '.join(CHECKERS)} top_{role_name}.sv",
-        "prep -top top", "flatten", "memory_map", "opt -fast", "techmap", "opt -fast",
+        *ob_params(n), "prep -top top", "flatten", "memory_map", "opt -fast", "techmap", "opt -fast",
         "setundef -undriven -anyseq", "setundef -zero", "opt -full", "opt_dff -sat", "opt_clean", "",
         "[files]", *files, *CHECKERS, f"top_{role_name}.sv",
     ]) + "\n"
@@ -362,6 +510,6 @@ def write_frames(outdir, role, lane, checks, regs, words, window, host_ready=Fal
     with open(os.path.join(outdir, f"top_{name}.sv"), "w") as fh:
         fh.write(frame_harness(role, lane, checks, regs, words, window, host_ready))
     with open(os.path.join(outdir, f"{name}.sby"), "w") as fh:
-        fh.write(frame_sby(name))
+        fh.write(frame_sby(name, len(checks)))
     with open(os.path.join(outdir, f"{name}.hex"), "w") as fh:
         fh.write("".join(f"{w:04x}\n" for w in words))

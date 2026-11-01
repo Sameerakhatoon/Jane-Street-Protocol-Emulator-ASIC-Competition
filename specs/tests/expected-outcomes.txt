@@ -19,30 +19,41 @@ spi_controller_mode0.tse|--pad-skew 0|0|-|-
 spi_controller_mode1.tse|--pad-skew 0|0|-|-
 spi_controller_mode2.tse|--pad-skew 0|0|-|-
 spi_controller_mode3.tse|--pad-skew 0|0|-|-
-# SPI targets. The strict t_css = 100 ns files (modes 0 and 2) build: the sequencer alone needs
-# t_css >= 114 ns for the first MISO bit after the CS fall, so response rule 0 drives that bit
-# (pin-edge mode with hold), 33.3 to 75.0 ns against 95 ns. At 50 MHz the css114 file now stops
-# at the first MOSI sample (late by a few ns) instead of the first bit.
-spi_target.tse|-|0|-|-
-spi_target.tse|-D t_css=114e-9|0|-|-
-spi_target.tse|-D t_css=130e-9 -D f_sck=3.5e6 --fclk 50e6|0|-|-
-spi_target_mode0_css114.tse|-|0|-|-
-spi_target_mode0_css114.tse|-D t_css=130e-9 -D f_sck=3.5e6 --fclk 50e6|0|-|-
-spi_target_mode0_css114.tse|--fclk 50e6|2|R311|response window not met in role 'tgt': shift mosi late
-spi_target_mode2.tse|-|0|-|-
-spi_target_mode2.tse|-D t_css=114e-9|0|-|-
-spi_target_mode2.tse|-D t_css=130e-9 -D f_sck=3.5e6 --fclk 50e6|0|-|-
-# Modes 1 and 3: the first edge's wait can be armed late; a slower SCK gives it room.
+# SPI targets. Between two bytes the lane pushes and waits for the SCK level before the next
+# first edge again; at 4 MHz (3.5 MHz at 50 MHz) it gets there after that edge and the first bit
+# of the next byte is lost, so these are R314 (fix f_sck <= 1.99 MHz). The sequencer reference
+# model loses that bit in every slot phase at 4 MHz and 3 MHz. With bytes back to back the first
+# edge after CS also needs t_css >= 117 ns (the lane drives MISO and sets its counter first).
+spi_target.tse|-|2|R314|re-arm too late in role 'tgt': the wait for rise(sck) first waits for the level fall(sck) leaves, but starts 7 cycles after rise(sck) may already be visible, so it misses that rise(sck) and acts on the next one
+spi_target.tse|-D t_css=114e-9|2|R314|re-arm too late in role 'tgt': the wait for rise(sck) first waits for the level fall(sck) leaves, but starts 7 cycles after rise(sck) may already be visible, so it misses that rise(sck) and acts on the next one
+spi_target.tse|-D t_css=130e-9 -D f_sck=3.5e6 --fclk 50e6|2|R314|re-arm too late in role 'tgt': the wait for rise(sck) first waits for the level fall(sck) leaves, but starts 7 cycles after rise(sck) may already be visible, so it misses that rise(sck) and acts on the next one
+spi_target_mode0_css114.tse|-|2|R314|re-arm too late in role 'tgt': the wait for rise(sck) first waits for the level fall(sck) leaves, but starts 7 cycles after rise(sck) may already be visible, so it misses that rise(sck) and acts on the next one
+spi_target_mode0_css114.tse|-D t_css=130e-9 -D f_sck=3.5e6 --fclk 50e6|2|R314|re-arm too late in role 'tgt': the wait for rise(sck) first waits for the level fall(sck) leaves, but starts 7 cycles after rise(sck) may already be visible, so it misses that rise(sck) and acts on the next one
+spi_target_mode0_css114.tse|--fclk 50e6|2|R314|re-arm too late in role 'tgt': the wait for rise(sck) first waits for the level fall(sck) leaves, but starts 8 cycles after rise(sck) may already be visible, so it misses that rise(sck) and acts on the next one
+spi_target_mode2.tse|-|2|R314|re-arm too late in role 'tgt': the wait for fall(sck) first waits for the level rise(sck) leaves, but starts 7 cycles after fall(sck) may already be visible, so it misses that fall(sck) and acts on the next one
+spi_target_mode2.tse|-D t_css=114e-9|2|R314|re-arm too late in role 'tgt': the wait for fall(sck) first waits for the level rise(sck) leaves, but starts 7 cycles after fall(sck) may already be visible, so it misses that fall(sck) and acts on the next one
+spi_target.tse|-D t_css=117e-9 -D f_sck=1.875e6|0|-|-
+spi_target_mode0_css114.tse|-D t_css=117e-9 -D f_sck=1.875e6|0|-|-
+spi_target_mode2.tse|-D t_css=117e-9 -D f_sck=1.875e6|0|-|-
+spi_target_mode2.tse|-D t_css=130e-9 -D f_sck=3.5e6 --fclk 50e6|2|R314|re-arm too late in role 'tgt': the wait for fall(sck) first waits for the level rise(sck) leaves, but starts 7 cycles after fall(sck) may already be visible, so it misses that fall(sck) and acts on the next one
+# Modes 1 and 3: the first edge's wait can be armed late, and at 3 MHz (2.5 MHz at 50 MHz) the
+# byte gap loses a bit as in mode 0; 1.9 MHz builds.
 spi_target_mode1.tse|-|2|R311|response window not met in role 'tgt': shift miso late
-spi_target_mode1.tse|-D f_sck=3e6|0|-|-
-spi_target_mode1.tse|-D f_sck=2.5e6 --fclk 50e6|0|-|-
+spi_target_mode1.tse|-D f_sck=3e6|2|R314|re-arm too late in role 'tgt': the wait for rise(sck) first waits for the level fall(sck) leaves, but starts 3 cycles after rise(sck) may already be visible, so it misses that rise(sck) and acts on the next one
+spi_target_mode1.tse|-D f_sck=2.5e6 --fclk 50e6|2|R314|re-arm too late in role 'tgt': the wait for rise(sck) first waits for the level fall(sck) leaves, but starts 3 cycles after rise(sck) may already be visible, so it misses that rise(sck) and acts on the next one
+spi_target_mode1.tse|-D f_sck=1.9e6|0|-|-
 spi_target_mode3.tse|-|2|R311|response window not met in role 'tgt': shift miso late
-spi_target_mode3.tse|-D f_sck=3e6|0|-|-
-spi_target_mode3.tse|-D f_sck=2.5e6 --fclk 50e6|0|-|-
-# Flash personality: proven at 3 MHz (60 MHz) and 2.5 MHz (50 MHz); 4 MHz misses the MISO window.
+spi_target_mode3.tse|-D f_sck=1.9e6|0|-|-
+spi_target_mode3.tse|-D f_sck=3e6|2|R314|re-arm too late in role 'tgt': the wait for fall(sck) first waits for the level rise(sck) leaves, but starts 3 cycles after fall(sck) may already be visible, so it misses that fall(sck) and acts on the next one
+spi_target_mode3.tse|-D f_sck=2.5e6 --fclk 50e6|2|R314|re-arm too late in role 'tgt': the wait for fall(sck) first waits for the level rise(sck) leaves, but starts 3 cycles after fall(sck) may already be visible, so it misses that fall(sck) and acts on the next one
+# Flash personality: 500 kHz with t_css 200 ns at 60 and 50 MHz, up to 714 kHz at 60 MHz. Faster
+# SCK misses the fall after the opcode (the decode, push and pull take up to 33 cycles after the
+# rise), so 2.5 MHz at 50 MHz is R314; 4 MHz also misses the MISO window.
 spi_flash_target.tse|-|0|-|-
-spi_flash_target.tse|-D f_sck=2.5e6 --fclk 50e6|0|-|-
-spi_flash_target.tse|-D f_sck=4e6|2|R311|response window not met in role 'flash': shift mosi late
+spi_flash_target.tse|--fclk 50e6|0|-|-
+spi_flash_target.tse|-D f_sck=7e5|0|-|-
+spi_flash_target.tse|-D f_sck=2.5e6 --fclk 50e6|2|R314|re-arm too late in role 'flash': the wait for fall(sck) first waits for the level rise(sck) leaves, but starts 23 cycles after fall(sck) may already be visible, so it misses that fall(sck) and acts on the next one
+spi_flash_target.tse|-D f_sck=4e6|2|R311|response window not met in role 'flash': shift miso late
 i2c_target.tse|-|2|R314|re-arm too late in role 'tgt': the wait that detects stop (abort) starts 12 cycles after stop may already be visible
 # I2C target with repeated START, host-paced writes and the START and STOP bounds of the standard.
 i2c_target_fm.tse|-|0|-|-

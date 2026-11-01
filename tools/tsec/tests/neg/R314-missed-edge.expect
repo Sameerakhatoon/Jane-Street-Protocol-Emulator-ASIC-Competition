@@ -5,6 +5,13 @@ tools/tsec/tests/neg/R314-missed-edge.tse:13:10: error: re-arm too late in role 
   required   : waiting for fall(clk) within 2 cycles of its earliest arrival
   achieved   : dispatched up to 3 cycles late (worst at phase 1), after rise(clk)
   fix        : rule lo at least 66.7 ns (now 50 ns)
+tools/tsec/tests/neg/R314-missed-edge.tse:13:15: error: re-arm too late in role 'r': the wait for fall(clk) first waits for the level rise(clk) leaves, but starts 17 cycles after fall(clk) may already be visible, so it misses that fall(clk) and acts on the next one [R314]
+ 13 |       on fall(clk) do { drive ack = 1 within [200 ns, 300 ns] after fall(clk); } -> b;
+    |               ^~~
+  obligation : OB-REARM wait for fall(clk), role r, lane 0
+  required   : reaching the wait before the earliest fall(clk) after rise(clk)
+  achieved   : reached up to 17 cycles after it (worst at phase 1)
+  fix        : rule hi at least 350.0 ns (now 50 ns)
 tools/tsec/tests/neg/R314-missed-edge.tse:17:15: error: re-arm too late in role 'r': the wait for rise(clk) starts 10 cycles after rise(clk) may be visible, and fall(clk) can follow 3 cycles after it, so the edge can be missed [R314]
  17 |         await rise(clk);
     |               ^~~~
@@ -12,4 +19,4 @@ tools/tsec/tests/neg/R314-missed-edge.tse:17:15: error: re-arm too late in role 
   required   : waiting for rise(clk) within 2 cycles of its earliest arrival
   achieved   : dispatched up to 10 cycles late (worst at phase 3), after fall(clk)
   fix        : rule hi at least 183.3 ns (now 50 ns)
-2 obligation(s) or limit(s) not met; no image written (rule R1)
+3 obligation(s) or limit(s) not met; no image written (rule R1)

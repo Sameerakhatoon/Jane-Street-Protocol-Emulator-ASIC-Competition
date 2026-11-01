@@ -7,4 +7,13 @@ tools/tsec/tests/neg/R314-abort-unbounded.tse:11:18: error: re-arm too late in r
   fix        : add a datasheet rule rise(scl) -> stop >= 283.3 ns (nothing bounds it now), or wait for it sooner
   note: with unrolled loops: fails too
   note: shown for rolled loops
-1 obligation(s) or limit(s) not met; no image written (rule R1)
+tools/tsec/tests/neg/R314-abort-unbounded.tse:11:18: error: re-arm too late in role 'r': the wait that detects stop (abort) starts 17 cycles after stop may already be visible [R314]
+ 11 |         abort on stop -> idle;
+    |                  ^~~~
+  obligation : OB-REARM wait for stop, role r, lane 0
+  required   : armed before the earliest stop after fall(sda)
+  achieved   : dispatched up to 17 cycles late (worst at phase 1), after fall(sda)
+  fix        : add a datasheet rule fall(sda) -> stop >= 300.0 ns (nothing bounds it now), or wait for it sooner
+  note: with unrolled loops: fails too
+  note: shown for rolled loops
+2 obligation(s) or limit(s) not met; no image written (rule R1)

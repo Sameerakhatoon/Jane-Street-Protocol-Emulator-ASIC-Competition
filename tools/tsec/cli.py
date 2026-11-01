@@ -243,17 +243,19 @@ def write_outputs(out, stem, sym, accepted, text, emit, fclk, fm=None, pads=(0, 
                     proofgen.write_frames(os.path.join(out, "proof"), res.role, lane, checks, cfg[0],
                                           [w for _, w, _, _, _ in rows], [], res.chosen.low.host_ready)
                 continue
+            depth = 40
             if res.kind == "fsm":
                 obs = proofgen.fsm_obs(sym, res.role, lane, res.chosen, fm, fclk)
                 window = [(w.addr + k, w.init if k == 0 and w.init is not None else 0)
                           for w in res.chosen.fsm.window.rows() for k in range(w.size)]
+                depth = proofgen.cover_depth(res.chosen.prog, res.chosen.labels, lane, fm, obs)
             else:
                 obs = proofgen.frame_obs(sym, res.role, lane, res.chosen.low, res.chosen.labels, fm)
                 window = []
             if not obs:                 # nothing a response window could check
                 continue
             proofgen.write(os.path.join(out, "proof"), res.role, lane, obs, cfg[0],
-                           [w for _, w, _, _, _ in rows], window, ticks, res.kind != "fsm")
+                           [w for _, w, _, _, _ in rows], window, ticks, res.kind != "fsm", depth)
 
 
 def run(argv):

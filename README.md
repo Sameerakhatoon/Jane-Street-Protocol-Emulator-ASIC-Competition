@@ -30,7 +30,7 @@ The tile holds a UART test design (the datasheet page is `docs/info.md`); the fu
 
 ## What we do differently from PIO and PRU
 
-1. **Timing is checked before a program exists.** With PIO or PRU the programmer counts cycles; here the compiler places every edge and rejects a spec it cannot meet. Example: `specs/spi_target.tse` is rejected (`R311`, first MISO bit late, fix `t_css >= 114 ns`); `specs/spi_target_mode0_css114.tse` states the real requirement and builds.
+1. **Timing is checked before a program exists.** With PIO or PRU the programmer counts cycles; here the compiler places every edge and rejects a spec it cannot meet. Example: `specs/spi_target.tse` at 4 MHz is rejected (`R314`, the lane reaches its wait for the next SCK rise up to 7 cycles late, fix `f_sck <= 1.99 MHz`); with `-D t_css=117e-9 -D f_sck=1.875e6` it builds.
 2. **Protocol assists in every lane.** CRC, bit stuffing, line codes, clock recovery and response rules are hardware, so a lane does not spend instructions per bit on them (PIO has none of these; a PRU does them in software).
 3. **Lanes cannot disturb each other.** Memory access is granted by fixed slots, proven with SymbiYosys for the slot arbiter (`formal/arb/`), and measured end to end in `examples/combo/`.
 
@@ -46,7 +46,7 @@ PIO is much smaller and mature, and a PRU is a full CPU; TSE trades both for tim
 | Every transmit edge lands on the cycle the compiler predicted (worst error 3.48 of 10.18 ticks over 230 edges) | `examples/uart/timing.py` compares the trace with the compiler report | `make e2e-uart` | works |
 | Two lanes run at once and the second does not disturb the first: UART on lane 0 keeps every edge on its predicted cycle while lane 1 runs I2C | `examples/combo/` | `make e2e-combo` | works on the UART side |
 | I2C Fast-mode controller against a simulated target: both transactions decode, every byte acknowledged and read back | `examples/i2c/` | `make e2e-i2c` | runs; the judge flags SCL high time 583 ns against 600 ns, a known compiler bug (a dropped wait), kept as an expected failure in `examples/tests/03-i2c.sh` |
-| The compiler rejects a spec it cannot prove and says why | `specs/spi_target.tse` (rejected, `R311`), `specs/spi_target_mode0_css114.tse` (accepted) | `python3 -m tools.tsec build specs/spi_target.tse` | works |
+| The compiler rejects a spec it cannot prove and says why | `specs/spi_target.tse` at 4 MHz (rejected, `R314`), the same spec with `-D t_css=117e-9 -D f_sck=1.875e6` (accepted) | `python3 -m tools.tsec build specs/spi_target.tse` | works |
 | 25 specs for 9 protocols (UART, SPI, I2C, CAN, SWD, JTAG, PS/2, USB low speed, 10BASE-T); 49 pinned compiler outcomes: which build, which are rejected and for what reason | `specs/`, `specs/tests/expected-outcomes.txt` | `make specs-test` | works; some specs are rejected, each for the reason recorded in that file (the frame-level specs for USB, 10BASE-T and CAN are not lowered yet) |
 | The RTL matches a Python reference model, instruction by instruction, on random programs | lockstep with Hypothesis: `verif/lockstep/` (sequencer), `verif/lane/`, `verif/blocks/` (assists), model in `model/` | `make verif-test` | works |
 | CRC matches the catalogue values (CRC-5 and CRC-16 of USB, CRC-15 of CAN, CRC-32); stuffer, codec and DPLL properties; slot arbiter non-interference and slot ownership | SymbiYosys in `formal/`; every proof must also catch planted bugs, and UNKNOWN counts as a failure | `make formal` | works |

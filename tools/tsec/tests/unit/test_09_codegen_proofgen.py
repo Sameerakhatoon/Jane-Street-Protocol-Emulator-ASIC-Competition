@@ -2,6 +2,8 @@ from fractions import Fraction as Fr
 
 from tools.tsec import proofgen, uppaal
 from tools.tsec.codegen import assemble, image_text, listing_lines
+from tools.tsec.cycles import FetchModel as CyclesFetch
+from tools.tsec.fsmsched import Scheduler
 from tools.tsec.schedule import compile_role
 from tools.tsec.timing import FetchModel
 
@@ -49,6 +51,23 @@ def test_harness_for_the_receiver():
     assert len(chk) == 1 and chk[0][1:] == (210, 312)
     assert ".LO(210), .HI(312)" in top and ".trig_val(1'b0)" in top and "pc_q == 8'd0" in top
     assert "tse_lane #" in top and "cfg[32*tse_regs_pkg::LW_LANE_CFG +: 32]" in top
+
+
+def test_a_check_is_abandoned_off_the_path_to_its_act():
+    # The I2C target answers ACK or NACK after the same waits: a trigger armed for one answer
+    # is abandoned when the address compare takes the other branch.
+    with open("specs/i2c_target_fm.tse") as fh:
+        sym = front(fh.read())
+    att, _ = Scheduler(sym, sym.roles[0], 0, FCLK, CyclesFetch(), (0, 25)).compile()
+    obs = proofgen.fsm_obs(sym, sym.roles[0], 0, att, CyclesFetch(), FCLK)
+    assert obs and all(o.path and o.act in o.path and set(o.waits) <= o.path for o in obs)
+    pairs = [(a, b) for a in obs for b in obs if a is not b and a.waits == b.waits and a.name == b.name]
+    assert pairs and all(b.act not in a.path for a, b in pairs)
+    top, _ = proofgen.harness(sym.roles[0], 0, obs, {"LANE_CFG": 0}, [0], [], (0, 0))
+    assert top.count(".abandon(!(") == len(obs)
+    assert f"(ONLY < 0 || ONLY == {len(obs) - 1}) && stay >= 3'd5" in top
+    sby = proofgen.sby_text("tgt", 100, n=len(obs))
+    assert f"ob{len(obs) - 1} prv" in sby and sby.index("--") < sby.index("ob0 prv")
 
 
 def test_uppaal_bounds():

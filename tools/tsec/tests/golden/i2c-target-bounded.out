@@ -7,7 +7,7 @@ tsec: protocol 'i2c_target', clock 60 MHz, S = 4, fetch buffer 2 word(s), fetch_
   param margin = 2e-07 (time)
 
 == role tgt (target) on lane 0
-strategy: state machine, rolled loops (155787 analysis states)
+strategy: state machine, rolled loops (11320 analysis states)
 addr  word   instruction                    note
   0  4033          SET   PINS, 3, mask=0b0011     idle levels before driving
   1  4133          SET   PINDIRS, 3, mask=0b0011  outputs on (turnaround pins off)
@@ -117,12 +117,12 @@ obligations (worst case over every slot phase, buffer state and legal environmen
   line 47 release sda    after fall(scl)    316.7 to 408.3 ns, window [300.0, 900.0], margins 16.7 and 491.7 ns  ok
   line 50 release sda    after fall(scl)    316.7 to 408.3 ns, window [300.0, 900.0], margins 16.7 and 491.7 ns  ok
   line 57 wait t_su_dat; 8 cycles after our earlier edge, needs at least 6.00 ticks with pad skew  ok
-  line 65 shift sda      after fall(scl)    316.7 to 725.0 ns, window [300.0, 900.0], margins 16.7 and 175.0 ns  ok
-  line 67 release sda    after fall(scl)    316.7 to 675.0 ns, window [300.0, 900.0], margins 16.7 and 225.0 ns  ok
+  line 65 shift sda      after fall(scl)    316.7 to 425.0 ns, window [300.0, 900.0], margins 16.7 and 475.0 ns  ok
+  line 67 release sda    after fall(scl)    316.7 to 425.0 ns, window [300.0, 900.0], margins 16.7 and 475.0 ns  ok
   line 75 drive scl      after fall(scl)    100.0 to 191.7 ns, window [0.0, 1100.0], margins 100.0 and 908.3 ns  ok
   line 88 drive sda      after fall(scl)    316.7 to 358.3 ns, window [300.0, 900.0], margins 16.7 and 541.7 ns  ok
   line 92 release sda    after fall(scl)    316.7 to 358.3 ns, window [300.0, 900.0], margins 16.7 and 541.7 ns  ok
-  abort: reaches the abort state within 12 cycles of the alternate condition being seen (stated bound)
+  abort: reaches the abort state within 20 cycles of the alternate condition being seen (stated bound)
   host contract, pull host out: send the word bit-reversed: OUT shifts bit 0 first, and the spec sends the msb first
   host contract, push host sh: mailbox bits 7 to 0, first bit received highest; higher bits are not defined; the push does not block, so the host must empty the mailbox before the next push
 ACCEPTED: 102 instructions, image 4033 4133 4400 4400 2400 2000 0508 0004 4307 e000 2028 0610 2420 a000 030a 0015 2410 0613 0004 2028 000b 2020 6560 8400 8230 4350 041e e007 4010 001f 0004 2420 2020 6560 8200 4301 0429 4020 e005 4011 002c e005 4011 0050 c300 8000 e006 4022 4306 e000 2420 2028 0640 e00d 8000 0332 2420 2028 0645 e00d 4011 2420 e000 004a 2410 0643 0004 2028 0034 2410 0648 0004 2028 003a 2020 2010 064f 4020 002c 0004 4307 e000 2028 0659 2420 a000 0352 c000 005e 2410 065c 0004 2028 0053 2020 e00e 4010 2420 2020 e00e 4011 0050

@@ -35,5 +35,6 @@ module top (
   logic pin_out;
   demo_dut dut (.clk, .rst(init), .pin_in, .pin_out);
   tse_window_check #(.LO(`LO), .HI(`HI), .QUIET(6)) chk (
-    .clk, .rst(init), .en(1'b1), .trig_in(pin_in), .trig_val(1'b1), .resp_out(pin_out), .resp_val(1'b1));
+    .clk, .rst(init), .en(1'b1), .trig_in(pin_in), .trig_val(1'b1), .resp_out(pin_out), .resp_val(1'b1),
+    .abandon(1'b0));
 endmodule

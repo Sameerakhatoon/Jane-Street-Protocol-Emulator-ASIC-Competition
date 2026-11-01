@@ -4,6 +4,9 @@
 // The two assumptions are the environment side of the contract: the trigger is
 // preceded by QUIET stable cycles and held until the response. A trigger counts
 // only while en holds (the program is at the wait the obligation belongs to).
+// abandon ends an armed check without a response: the program left every path
+// from the wait to the acting instruction (a guard chose another branch, or an
+// abort), so the obligation does not apply to this trigger.
 module tse_window_check #(
   parameter int LO    = 0,
   parameter int HI    = 8,
@@ -16,7 +19,8 @@ module tse_window_check #(
   input logic trig_in,
   input logic trig_val,
   input logic resp_out,
-  input logic resp_val
+  input logic resp_val,
+  input logic abandon
 );
   logic in_q, out_q, armed;
   logic [W-1:0] age, quiet;
@@ -35,6 +39,8 @@ module tse_window_check #(
       armed <= 1'b1;
       age   <= W'(1);
     end else if (armed && resp) begin
+      armed <= 1'b0;
+    end else if (armed && abandon) begin
       armed <= 1'b0;
     end else if (armed) begin
       age <= age + W'(1);

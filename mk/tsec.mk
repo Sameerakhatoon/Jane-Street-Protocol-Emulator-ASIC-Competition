@@ -39,7 +39,7 @@ tsec-proof:
 		[ "$$got" = "$${t#*:}" ] || exit 1; \
 	done
 	$(PY) -m tools.tsec build specs/uart.tse -D baud=921600 --emit proof -o $(TSEC_PROOF)/uart > /dev/null
-	$(PY) -m tools.tsec build specs/spi_target.tse -D t_css=114e-9 --emit proof \
+	$(PY) -m tools.tsec build specs/spi_target.tse -D t_css=117e-9 -D f_sck=1.875e6 --emit proof \
 		-o $(TSEC_PROOF)/spi > /dev/null
 	cd $(TSEC_PROOF)/uart/proof && yosys -q -p "read_verilog -formal -sv \
 		$(addprefix $(CURDIR)/src/,tse_isa_pkg.sv tse_regs_pkg.sv tse_seq.sv tse_dpll.sv tse_crc.sv \

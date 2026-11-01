@@ -43,7 +43,7 @@ CTL=()
 JUDGE=(--map cs=ui_in4 --map clk=ui_in5 --map mosi=ui_in6 --map miso=uo_out1)
 if [ $LANES -eq 1 ]; then
     step "compile specs/spi_controller_mode0.tse at $CTL_HZ Hz SCK, t_rd $CTL_RD s, --pad-skew 0"
-    python3 -m tools.tsec build specs/spi_controller_mode0.tse -D f_sck=$CTL_HZ -D t_rd=$CTL_RD --pad-skew 0 \
+    python3 -m tools.tsec build specs/spi_controller_mode0.tse -D f_sck=$CTL_HZ -D t_rd=$CTL_RD -D t_css=250e-9 --pad-skew 0 \
         --emit img,lst,report,json -o "$OUT/ctl" >"$OUT/tsec-ctl.log" 2>&1 \
         || { cat "$OUT/tsec-ctl.log"; die "tsec build (controller)"; }
     grep -E "^RESULT" "$OUT/tsec-ctl.log"

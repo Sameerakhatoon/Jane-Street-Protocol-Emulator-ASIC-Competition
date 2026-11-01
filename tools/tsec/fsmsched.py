@@ -438,7 +438,30 @@ class Scheduler:
         ins = m.ins
         span = m.event.span if m.alt and m.event.span.line else self.wait_span(ins)
         ev = printer.event(m.event)
+        if m.kind == "lost":
+            return self.lost_error(m, ev)
         prev = printer.event(m.prev) if m.prev is not None else "an unbounded wait"
+        if m.kind == "tie":
+            own = printer.event(ins.wait.event)
+            msg = (f"abort may be lost in role '{self.role.name.text}': {ev} can be seen in the same "
+                   f"cycle as {own}, and the wait's own condition wins, so the alternate never fires")
+            return TseError("R314", msg, span, fields=[
+                ("obligation", f"OB-REARM abort on {ev}, role {self.role.name.text}, lane {self.lane}"),
+                ("required", f"{own} and {ev} never in the same cycle"),
+                ("fix", f"add a datasheet rule {own} -> {ev} >= {ticks_ns(Fr(1), f)} or "
+                        f"{ev} -> {own} >= {ticks_ns(Fr(1), f)}")])
+        if m.kind == "pre":
+            opp = printer.event(_opposite(m.event))
+            msg = (f"re-arm too late in role '{self.role.name.text}': the wait for {ev} first waits "
+                   f"for the level {opp} leaves, but starts {m.lateness} cycles after {ev} may "
+                   f"already be visible, so it misses that {ev} and acts on the next one")
+            fields = [("obligation", f"OB-REARM wait for {ev}, role {self.role.name.text}, lane {self.lane}"),
+                      ("required", f"reaching the wait before the earliest {ev} after {prev}"),
+                      ("achieved", f"reached up to {m.lateness} cycles after it (worst at {m.where})")]
+            fx = self.rule_fix(m.rules, m.prev, m.event, m.limit + m.lateness + 1)
+            if fx:
+                fields.append(("fix", fx))
+            return TseError("R314", msg, self.wait_span(ins), fields=fields)
         if m.alt:
             msg = (f"re-arm too late in role '{self.role.name.text}': the wait that detects {ev} "
                    f"(abort) starts {m.lateness} cycles after {ev} may already be visible")
@@ -462,6 +485,21 @@ class Scheduler:
             fields.append(("fix", fx))
         return TseError("R314", msg, span, fields=fields)
 
+    def lost_error(self, m, ev):
+        """A pending abort that does not reach its state (Miss.prev names what it reaches)."""
+        ins = m.ins
+        what = m.prev + (f" ({ins.note})" if ins.note else "")
+        msg = (f"abort may be lost in role '{self.role.name.text}': after {ev} the lane can reach "
+               f"{what} without leaving for the abort state")
+        return TseError("R314", msg, m.event.span if m.event.span.line else self.role.name.span, fields=[
+            ("obligation", f"OB-REARM abort on {ev}, role {self.role.name.text}, lane {self.lane}"),
+            ("required", "every path after the alternate fires reaches the abort state"),
+            ("achieved", f"{m.lateness} cycles after the alternate it reaches {what} ({m.where}): "
+                         "a WAIT whose own condition also holds ends on it with AFLAG clear, so "
+                         "JMP TOUT falls through"),
+            ("fix", "end the abortable statement on a wait whose own level cannot hold while "
+                    f"the {ev} level does, or abort on a rise, which is tested with JMP PIN")])
+
     def rule_fix(self, rules, a, b, need_ticks):
         need = Fr(need_ticks) / self.f
         if not rules:
@@ -478,8 +516,10 @@ class Scheduler:
         return ",\nor ".join(parts)
 
     def wait_span(self, ins):
-        return ins.wait.event.span if ins.wait is not None and ins.wait.event is not None \
-            else self.role.name.span
+        if ins.wait is None or ins.wait.event is None:
+            return self.role.name.span
+        ev = ins.wait.event             # a pre-wait's event is made by the lowering: use its wire
+        return ev.span if ev.span.line or getattr(ev, "name", None) is None else ev.name.span
 
 
 class RuleFirst:

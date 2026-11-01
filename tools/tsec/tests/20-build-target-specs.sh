@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# With the bounds the rejections name, both targets build: SPI at 3.8 MHz with t_css 170 ns,
+# With the bounds the rejections name, both targets build: SPI at 1.875 MHz with t_css 170 ns,
 # and I2C with a start-to-stop assumption. Reports are golden; images and JSON are written.
 . "$(dirname "$0")/lib.sh"
-golden spi-target-relaxed tsec build specs/spi_target.tse -D t_css=170e-9 -D f_sck=3.8e6 -o "$TMP/spi"
+golden spi-target-relaxed tsec build specs/spi_target.tse -D t_css=170e-9 -D f_sck=1.875e6 -o "$TMP/spi"
 assert_eq 0 "$status" "spi exit status"
 [ -s "$TMP/spi/spi_target.img" ] && [ -s "$TMP/spi/spi_target.json" ] || fail "spi outputs"
 golden i2c-target-bounded tsec build $TESTS/targets/i2c_target_bounded.tse -o "$TMP/i2c" --emit all

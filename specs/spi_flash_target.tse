@@ -23,14 +23,16 @@
 // Written this way the lane needs no flag kept across states.
 //
 // SCK rate. The windows below hold up to 3 MHz, but the first answer bit
-// is a second limit the compiler does not check: after the rise that samples
-// the last opcode bit (or address bit) the lane decodes, pushes, pulls and
-// must reach its wait for SCK high before SCK falls, or it misses that fall
-// and every answer bit comes one SCK period late. Counted with the ISA's
-// cycle model over every slot phase and fetch state, that path takes up to
-// 32 cycles for 0x9F, 40 for 0x05 and 20 for 0x03 at 60 MHz, so half a SCK
-// period must be longer than 40 cycles plus the input synchroniser: the
-// default 500 kHz gives 60 cycles (1 MHz gives 30, too few for 0x05).
+// sets a lower limit: after the rise that samples the last opcode bit (or
+// address bit) the lane decodes, pushes, pulls and must reach its wait for
+// SCK high before SCK falls, or it misses that fall and every answer bit
+// comes one SCK period late. That path takes up to 40 cycles (0x05) at
+// 60 MHz, so the compiler accepts up to 714 kHz (R314 above, fix
+// f_sck <= 714 kHz); the default 500 kHz gives 60 cycles a half period.
+// CS setup. After the CS fall the lane drives MISO low and sets its bit
+// counter before it waits for the first SCK rise; 100 ns (6 cycles) is too
+// short in some slot phases (R314, fix t_css >= 151 ns at 60 MHz, 181 ns at
+// 50 MHz), so the controller must give 200 ns.
 //
 // Frame end. A WAIT ends on its own condition before its alternate, so a
 // bit loop that ends waiting for SCK low (the MISO loops) never sees the CS
@@ -57,7 +59,7 @@
 protocol spi_flash_target {
   param f_sck    : freq = 500 kHz;
   param t_su     : time = 5 ns;            // controller's MISO setup before its sampling edge
-  param t_css    : time = 100 ns;          // controller's CS fall to first SCK rise
+  param t_css    : time = 200 ns;          // controller's CS fall to first SCK rise
   param t_mo     : time = 20 ns;           // controller's MOSI output delay after SCK falls
   unit  half     = 1 / (2 * f_sck);
 

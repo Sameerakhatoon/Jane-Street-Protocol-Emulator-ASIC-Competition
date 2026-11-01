@@ -179,8 +179,14 @@ def test_frame_checks_of_the_buffered_transmitter():
     assert top.count("tse_window_check #") == 5
     assert "assume (h_tx_we)" not in top
     assert "assume (h_tx_we)" in proofgen.frame_harness(res.role, 0, checks, {}, [0], [], True)
-    sby = proofgen.frame_sby("mac_tx")
+    sby = proofgen.frame_sby("mac_tx", len(checks))
     assert "abc pdr" in sby
+    # one task per obligation, not run by default, arming that checker alone
+    tasks = sby[sby.index("[tasks]"):sby.index("[options]")].split()
+    assert tasks == ["[tasks]", "prove", "--"] + [f"ob{k}" for k in range(5)]
+    assert "ob4: chparam -set ONLY 4 top" in sby
+    assert sby.index("chparam") < sby.index("prep -top top")
+    assert f"(ONLY < 0 || ONLY == {checks.index(feeds[0])}) && (" in top
 
 
 # ------------------------------------------------------------------ the receivers and the limits
