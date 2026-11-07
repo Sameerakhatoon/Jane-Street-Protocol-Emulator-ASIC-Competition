@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 `timescale 1ns/1ps
 // Rule chaining: with RULE1_CTL.chain, rule 1 matches only after rule 0 has
 // matched earlier in the frame (two rules then check a 16-bit pattern pair);

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 `timescale 1ns/1ps
 // Manchester transmit on the lane's codec, DPLL bit timer free running:
 //  1. at 6 cycles per bit every line change is 3 or 6 cycles after the

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """SWD judge: Serial Wire Debug packets from SWCLK and SWDIO.
 
 Written from the ARM Debug Interface Architecture Specification (ADIv5),

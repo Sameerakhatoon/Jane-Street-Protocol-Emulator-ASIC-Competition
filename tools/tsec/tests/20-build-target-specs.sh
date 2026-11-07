@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
 # With the bounds the rejections name, both targets build: SPI at 1.875 MHz with t_css 170 ns,
 # and I2C with a start-to-stop assumption. Reports are golden; images and JSON are written.
 . "$(dirname "$0")/lib.sh"

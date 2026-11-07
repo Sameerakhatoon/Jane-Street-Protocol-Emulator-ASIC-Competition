@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """The TSE lane ISA as a Python API, on top of the generated isa_table.
 
 Stable interface for the assembler, the compiler (tools/tsec) and the

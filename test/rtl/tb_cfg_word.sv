@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 `timescale 1ns/1ps
 // Latch and flop versions of tse_cfg_word side by side under random writes
 // that obey the writer contract; both must agree in the middle of every cycle

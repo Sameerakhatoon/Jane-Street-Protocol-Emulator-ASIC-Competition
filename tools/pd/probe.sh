@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
 # tools/pd/probe.sh: short run that stops after global routing, for floorplan and congestion experiments.
 # usage: tools/pd/probe.sh [config.json]   (default src/config_merged.json; run in runs/probe)
 set -euo pipefail

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """The sequencer spec agrees cycle by cycle with the ISA cost model on random legal programs.
 
 Every test runs the spec for lanes 0 to 3 at fetch latency 1 and 2 on one

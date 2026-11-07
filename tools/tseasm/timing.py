@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Exact cycle counts of TSE lane code under the fixed-slot fetch rule.
 
 A path is the list of instruction addresses a lane executes, in order. path()

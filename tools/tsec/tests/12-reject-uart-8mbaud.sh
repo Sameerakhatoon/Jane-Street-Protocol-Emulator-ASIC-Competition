@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
 # At 8 Mbaud no strategy meets the obligations: exit 2, diagnostics, and no image (rule R1).
 . "$(dirname "$0")/lib.sh"
 mkdir -p "$TMP/out"

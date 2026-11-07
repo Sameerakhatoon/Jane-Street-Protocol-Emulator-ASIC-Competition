@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Formal harness for every output of tse_crc, immediate assertions only.
 // All configuration words are free (any width, any left-aligned values,
 // both reflections) and every input is free in every cycle: clear, single

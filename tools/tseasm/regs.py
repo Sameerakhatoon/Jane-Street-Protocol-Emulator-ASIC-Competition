@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """The TSE register maps as a Python API, on top of the generated regs_table.
 
 LANE holds the lane registers (CSRW/CSRR addresses), CHIP the host map.

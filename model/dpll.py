@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """DPLL: bit timing recovered from the edges of one input pin.
 
 Times are in sixteenths of a cycle. The phase ph runs from 0 to period and

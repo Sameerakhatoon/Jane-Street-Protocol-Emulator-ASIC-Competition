@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
 # -o writes the image, listing and report; --emit all adds UPPAAL XML and the proof harness.
 . "$(dirname "$0")/lib.sh"
 tsec build specs/uart.tse -o "$TMP/uart" --emit all > /dev/null || fail "build"

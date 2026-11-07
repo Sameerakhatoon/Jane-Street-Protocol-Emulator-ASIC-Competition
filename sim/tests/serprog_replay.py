@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Replays flashrom's serprog init (programmers/serprog.c), a JEDEC ID and a read.
 
 usage: serprog_replay.py PORT [--id HEX] [--spispeed HZ] [--status] [--timeout S]

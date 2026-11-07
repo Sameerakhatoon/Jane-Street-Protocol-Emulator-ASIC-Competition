@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Formal harness for tse_crc, immediate assertions only.
 //  EQUIV: for every width 5..32, polynomial, initial value and input stream
 //         (single bits or whole bytes in either bit order) the left-aligned

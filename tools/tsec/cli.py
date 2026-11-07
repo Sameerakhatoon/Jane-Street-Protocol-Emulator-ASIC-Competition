@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Driver: `python3 -m tools.tsec COMMAND SPEC [options]`.
 
   lex SPEC        tokens, one per line

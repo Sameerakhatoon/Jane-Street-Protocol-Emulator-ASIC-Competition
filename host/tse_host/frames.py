@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Load-mode command streams for the TSE byte-bus loader.
 
 A stream is a list of (byte, frame) pairs, one per strobe edge: frame = 1

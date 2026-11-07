@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
 # Loader path end to end: the host CLI drives the Verilated full chip through
 # --pin-server. It loads a UART image over the byte bus (BEGIN, BIST, WRB,
 # COMMIT with CRC-32, readback verify), peeks the program words back and

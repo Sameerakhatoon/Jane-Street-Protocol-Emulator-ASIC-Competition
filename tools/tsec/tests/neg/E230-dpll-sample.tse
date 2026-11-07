@@ -3,3 +3,4 @@ protocol p {
   unit bit = 1 / baud;
   assist d : dpll { period = 1 bit; sample = 120 %; }
 }
+// SPDX-License-Identifier: Apache-2.0

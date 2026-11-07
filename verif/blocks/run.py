@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Build each assist block from $RTL_DIR and run its lockstep tests with cocotb 2.1.
 
 SIM=icarus|verilator. BLOCK=name runs one block. Exit status 1 if any test

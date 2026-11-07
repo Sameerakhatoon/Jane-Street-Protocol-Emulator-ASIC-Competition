@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """CPython stand-in for ttboard.mode: the RPMode values of the real SDK."""
 
 

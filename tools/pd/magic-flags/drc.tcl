@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 # tools/pd/magic-flags/drc.tcl: Magic DRC on one clipped window, same style as the flow
 # (drc(full), euclidean). The clip is small, so checking all of it is quick.
 crashbackups disable

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Random legal programs, input waveforms and start configurations for the sequencer spec test."""
 import random
 

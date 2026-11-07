@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """I2C judge: transactions and bus timing from SCL and SDA.
 
 Written from NXP UM10204 (I2C-bus specification). Both lines are open

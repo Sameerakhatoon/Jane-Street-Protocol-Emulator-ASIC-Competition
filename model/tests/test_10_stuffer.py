@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """10: bit stuffing: CAN and USB examples, round trip, run lengths, errors."""
 from hypothesis import assume, given, settings, strategies as st
 

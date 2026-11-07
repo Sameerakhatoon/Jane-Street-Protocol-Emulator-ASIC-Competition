@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Stage 5d, scheduling a state machine: layout, delay solving, rule R1 diagnostics.
 
 For each lowering strategy (rolled loops first, then unrolled), the program

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
 # Planted fault: the same trigger without its stage windows also fires on
 # the near misses (0x10 one byte late, STOP one byte late, a repeated
 # START with a later STOP). The pin judge, whose ground truth comes from

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
 # The Linux kernel answers an ARP request and an ICMP echo request sent by
 # the 10BASE-T transmit lane: eth10_tx_window compiled, loaded into the
 # Verilated full chip, its td pad decoded by tse_sim's TAP bridge into tap0

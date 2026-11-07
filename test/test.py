@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 # Tests of the UART test design through the Tiny Tapeout pins only, so the same file runs
 # on the gate-level netlist. Keep to the cocotb 2.0.1 API: the template CI
 # job pins that version.

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Hypothesis strategies for lane lockstep runs: configuration preambles, bodies, waves.
 
 Each profile adds one lane feature to a core that the RTL implements,

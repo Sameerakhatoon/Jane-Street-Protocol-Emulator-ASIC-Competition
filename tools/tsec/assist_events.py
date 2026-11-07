@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Assist events and the lane resources of a frame role.
 
 An event NAME.WHAT on an assist is a lane signal that a WAIT can watch:

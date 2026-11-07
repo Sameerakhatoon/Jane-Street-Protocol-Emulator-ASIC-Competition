@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Pretty printer: syntax tree back to canonical TSE text.
 
 Used by `tsec fmt` and by the round-trip test parse(print(parse(s))) == parse(s).

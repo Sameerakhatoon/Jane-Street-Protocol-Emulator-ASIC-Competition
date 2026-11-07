@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Command line of the Check-mode analysis.
 
     tse_check report OBLIGATIONS RECORDS [--clock HZ]

@@ -5,3 +5,4 @@ protocol p {
     state f { seq { sample rx expect 0 within [2 us, 1 us] after fall(rx); } -> idle; }
   }
 }
+// SPDX-License-Identifier: Apache-2.0

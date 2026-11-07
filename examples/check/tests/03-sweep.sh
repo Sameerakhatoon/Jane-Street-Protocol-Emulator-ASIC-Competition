@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
 # Margin sweep against the chip: the START hold goes from 245 cycles down by
 # one per step; 241 is the last clean pass, 240 is "possible" (one tick of
 # sampling either side of the limit), 239 and below are certain; the judge,

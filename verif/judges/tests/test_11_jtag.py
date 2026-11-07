@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """11: JTAG judge: TAP state machine, IR and DR scans, IDCODE, broken traces."""
 import os
 import tempfile

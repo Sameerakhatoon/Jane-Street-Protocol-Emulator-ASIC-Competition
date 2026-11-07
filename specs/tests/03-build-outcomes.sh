@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
 # Build every row of expected-outcomes.txt and compare the exit status, the first diagnostic's
 # code and its reason. When the compiler starts lowering a construct, or rejects for a new
 # reason, the row no longer matches and this test fails, so the change is seen and the file

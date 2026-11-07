@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 #ifndef TSE_UART_PTY_H
 #define TSE_UART_PTY_H
 

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
 # tools/pd/precheck.sh: Tiny Tapeout precheck on the last run's GDS, without Nix.
 # usage: tools/pd/precheck.sh [file.gds]   (reports in tt/precheck/reports/)
 # CI runs precheck.py in a Nix shell that only provides KLayout and Magic. The LibreLane

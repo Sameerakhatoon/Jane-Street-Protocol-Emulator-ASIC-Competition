@@ -11,7 +11,7 @@ The chip runs an image in three ways:
 Inside the tile:
 
 - Two lanes. A lane is a small processor with 16-bit instructions and exact cycle timing, plus hardware assists: a CRC of 5 to 32 bits, a bit stuffer, NRZI and Manchester codecs, a clock-recovery DPLL with samples on both clock edges, timers and two response rules that answer inside a bit. The two lanes can run two protocols, or both sides of one, at the same time.
-- One SRAM macro of 512 words of 32 bits holds both programs and a data window. Every lane fetches in its own fixed time slots, so one lane cannot change the other's timing.
+- Two SRAM macros of 512 words of 16 bits, used side by side as one memory of 512 words of 32 bits, hold both programs and a data window. Every lane fetches in its own fixed time slots, so one lane cannot change the other's timing.
 - A pin crossbar connects the four virtual pins of each lane to any pad, with open drain on the `uio` pads and an idle level for every pad, so a UART line is high and an I2C bus is released before any lane runs. A lane can also read pads the other lane drives.
 - An event unit timestamps events from both lanes on one counter, keeps them in a FIFO for the host, and pulses the trigger pin when a sequence of up to three stages matches.
 - A loader writes the SRAM and the configuration, runs an SRAM self-test (March C-) and checks a CRC-32 over the whole image. If the SRAM self-test fails, the host can load a short program into a small fallback store instead.

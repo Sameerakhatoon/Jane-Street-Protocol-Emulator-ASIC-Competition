@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """CPython stand-in for MicroPython's rp2 module, for testing tse_rp2 without a board.
 
 asm_pio assembles the decorated function into real 16-bit PIO opcodes, the

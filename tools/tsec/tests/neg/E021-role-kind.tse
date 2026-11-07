@@ -4,3 +4,4 @@ protocol p {
     state s { on fall(rx) -> s; }
   }
 }
+// SPDX-License-Identifier: Apache-2.0

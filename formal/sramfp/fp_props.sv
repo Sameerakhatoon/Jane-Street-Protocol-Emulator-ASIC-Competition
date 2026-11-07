@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 `default_nettype none
 // Properties on the shared-state product (fp_core, built by product.py from
 // the flattened Tiny Tapeout top). Copies a and b hold the same state and

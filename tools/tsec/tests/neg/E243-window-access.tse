@@ -6,3 +6,4 @@ protocol p {
     state idle { on fall(rx) do { load b from mem[8]; load mem from b[0]; } -> idle; }
   }
 }
+// SPDX-License-Identifier: Apache-2.0

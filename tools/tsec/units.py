@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Quantities with dimensions, and the time-to-tick rounding rules.
 
 A quantity is an exact rational times seconds**dim: dim 1 is a time, -1 a

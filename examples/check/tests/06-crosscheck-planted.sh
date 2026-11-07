@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
 # Planted fault: one SCL fall record of the clean run moved one tick later
 # must make the crosscheck fail (tLOW, tHIGH and tHD;DAT then differ from
 # the judge by a whole tick). Reuses the trace of test 01.

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
 # Map one block onto CMOS5L standard cells with Yosys and print its area:
 # typical corner, before placement, SRAM as a black box, so placement and
 # routing overhead come on top of these numbers.

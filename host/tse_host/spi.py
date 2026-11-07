@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Runtime SPI transactions: encoder, decoder and event-record helpers.
 
 One transaction per CS_N low period, SPI mode 0, MSB first, carrying the

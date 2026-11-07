@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Cycle-exact reference model of one lane sequencer (ISA version 1).
 
 One step() is one clock cycle; cycle 0 is the frame boundary at which RUN took

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
 # The SPI target as written: between two bytes the lane pushes and waits for SCK low again,
 # which at 4 MHz comes after the next rise, so the first bit of the next byte would be lost.
 # The I2C target is rejected for timing only, with the obligation and fix, and no image (R1).

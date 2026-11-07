@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // An I2C controller and a host for the I2C target proof harness (top_tgt.sv), in simulation.
 // The rIC3 runs prove each window check, but a planted bug there needs a trace deeper than
 // an address byte, too deep for the solver. This bench drives legal Fast-mode transactions

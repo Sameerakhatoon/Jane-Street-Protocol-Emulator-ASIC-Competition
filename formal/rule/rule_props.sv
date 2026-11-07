@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Formal harness for tse_resp_rule (two rules, 16-bit patterns), immediate
 // assertions only. Configuration is free and constant: both modes, both
 // edges, any tick delay, pattern, mask, position, offset, length, condition,
@@ -21,6 +22,11 @@
 //          set; rule 1 without chain does not look at it.
 // Environment, as the compiler guarantees it: in pin-edge mode with a tick
 // delay no two counted edges are closer than tick delay + 3 cycles.
+//  DEEP:   for the bounded kill test in formal/mcy/rule only: the REF
+//          hit outputs on runs of 260 counted bits, so the frame bit
+//          counter reaches high positions and its saturation at 255.
+//          Patterns are masked out and conditions always true, which keeps
+//          a deep bounded check small; position is then all a match uses.
 //  HOLD:   with RULE_CLK.hold the drive keeps its last bit after the
 //          response and ends exactly at the clock edge after the sequencer
 //          writes the pin (seq_wr), unless a new match takes over then.
@@ -77,6 +83,12 @@ module rule_props (
   wire  delayed = src && tdly != 8'd0;
   wire  pace = !src ? bit_start : delayed ? (since == {1'b0, tdly}) : edge_now;
   always_comb if (!init && delayed && edge_now) assume (since >= {1'b0, tdly} + 9'd3);
+`ifdef DEEP
+  always_comb begin
+    assume (msk == '0);
+    assume (f_cond(0) == 2'd0 && f_cond(1) == 2'd0);
+  end
+`endif
 
   // history and frame bit counter
   logic [PW-1:0] hist;
@@ -231,6 +243,10 @@ module rule_props (
 `ifdef HOLD
     if (en_q && !drv_en) assert (!hold || wr_q);
     if (hold && wr_q && en_q && !hit_pulse) assert (!drv_en);
+`endif
+`ifdef DEEP
+    assert (hit_flags == flags);
+    assert (hit_pulse == r_hit);
 `endif
 `ifdef CHAIN
     if (hit_flags[1] && !flags1_q && f_chain(1)) assert (flags0_q);

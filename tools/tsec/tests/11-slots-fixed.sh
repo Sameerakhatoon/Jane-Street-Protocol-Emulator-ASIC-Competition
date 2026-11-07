@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
 # The slot period belongs to the ISA table: --slots with any other value is a command-line error.
 . "$(dirname "$0")/lib.sh"
 st=0

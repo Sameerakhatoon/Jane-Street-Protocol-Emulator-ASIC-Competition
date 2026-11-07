@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
 # The UART demo end to end: spec, proof, image, loader, lanes, judge.
 . "$(dirname "$0")/lib.sh"
 

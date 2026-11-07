@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 `timescale 1ns/1ps
 // Lane registers by name: a program writes every class-L register with CSRW
 // and each value lands in the bank word the register package names (masked to

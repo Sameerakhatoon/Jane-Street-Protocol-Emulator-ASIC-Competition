@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
 # Area of the calibration block, the Tiny Tapeout top, every chip block and
 # the whole chip with latch and with flop configuration. File lists are fixed and in a
 # fixed order because ABC's result moves by a few tenths of a percent when

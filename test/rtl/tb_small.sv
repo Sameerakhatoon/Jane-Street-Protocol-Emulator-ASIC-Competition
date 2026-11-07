@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 `timescale 1ns/1ps
 // Quick checks: event unit trigger, log and drops, half-cycle pin delay taps,
 // timer period, cfg bank.

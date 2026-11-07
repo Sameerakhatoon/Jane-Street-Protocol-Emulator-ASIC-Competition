@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """JTAG judge: TAP controller states, IR and DR scans, IDCODE reads.
 
 Written from IEEE 1149.1 (test access port and boundary-scan

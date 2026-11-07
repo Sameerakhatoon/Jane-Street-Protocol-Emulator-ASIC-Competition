@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Build the spec testbench with Verilator once, run a directory of tests, read the traces back."""
 import pathlib
 import shutil

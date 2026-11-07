@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Cycle and pin accurate model of the chip side of the host interface.
 
 What it models, one call of tick() per rising clock edge:

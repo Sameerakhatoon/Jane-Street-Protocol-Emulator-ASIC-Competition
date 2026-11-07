@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
 """Run every proof, then every planted-bug variant, and enforce the verdicts.
 
 Each job copies its harness and the RTL files it needs from RTL_DIR into
@@ -71,6 +72,18 @@ JOBS = {
          "if (left == 4'd0) drv_en <= cfg_hold;", "if (left == 4'd0) drv_en <= 1'b0;"),
         ("hold_never_released", "hold", "tse_resp_rule.sv",
          "if (cfg_hold && seq_wr && !(any && wctl[10])) drv_en <= 1'b0;", ""),
+    ]),
+    "seq": ("seq", ["tse_isa_pkg.sv", "tse_regs_pkg.sv", "tse_seq.sv"], [
+        ("fill_tagged_with_next_request", "fetch", "tse_seq.sv",
+         "e_word[vic] <= imem_rdata; e_tag[vic] <= f_tag;", "e_word[vic] <= imem_rdata; e_tag[vic] <= imem_addr;"),
+        ("ungranted_data_request_dropped", "data", "tse_seq.sv",
+         "if (dacc && !dmem_gnt) begin dpend <= 1'b1;", "if (dacc && !dmem_gnt) begin dpend <= 1'b0;"),
+        ("illegal_word_runs_on", "halt", "tse_seq.sv",
+         "if (avail && !legal) halted <= 1'b1;", ""),
+        ("pins_kept_when_stopped", "stop", "tse_seq.sv",
+         "x <= '0; y <= '0; t <= '0; tc <= '0; osr <= '0; isr <= '0; tflag <= 1'b0; aflag <= 1'b0;\n"
+         "                pin_out <= '0; pin_oe <= '0;",
+         "x <= '0; y <= '0; t <= '0; tc <= '0; osr <= '0; isr <= '0; tflag <= 1'b0; aflag <= 1'b0;"),
     ]),
     "dpll": ("dpll", ["tse_dpll.sv"], [
         ("sample_strobe_repeats", None, "tse_dpll.sv",

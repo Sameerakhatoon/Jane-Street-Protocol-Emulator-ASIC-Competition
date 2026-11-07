@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Both lanes at once: a UART transmitter on lane 0 and the Fast-mode I2C
 controller on lane 1, built from two specs into one image.
 

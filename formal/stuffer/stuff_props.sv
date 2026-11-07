@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Formal harness for tse_stuffer, immediate assertions only. The TX side
 // feeds the RX side of the same instance: rx_step = tx_step, rx_din = tx_dout
 // (inverted when the harness corrupts a stuff bit). For every run length n

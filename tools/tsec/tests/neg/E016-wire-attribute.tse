@@ -1,3 +1,4 @@
 protocol p {
   wire tx : out push_pul;
 }
+// SPDX-License-Identifier: Apache-2.0

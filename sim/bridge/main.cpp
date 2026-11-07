@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // tse_sim: one Verilated top plus the adapters picked on the command line.
 #include <signal.h>
 #include <stdio.h>

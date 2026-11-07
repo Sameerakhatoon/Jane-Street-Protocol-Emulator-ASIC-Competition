@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Board code and the datasheet snippet use only names the real Tiny Tapeout SDK has.
 
 The names come from tests/data/ttboard_sdk_names.txt, extracted from the SDK

@@ -3,3 +3,4 @@ protocol p {
     ack : bit = 1 from nobody;
   }
 }
+// SPDX-License-Identifier: Apache-2.0

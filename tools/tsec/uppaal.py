@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """UPPAAL XML export of one compiled role.
 
 One template per role: a location before each timed action with the spec's

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
 # Both lanes at once (UART on lane 0, I2C on lane 1): the UART judge, the
 # UART timing cross-check and the I2C judge must all pass.
 . "$(dirname "$0")/lib.sh"

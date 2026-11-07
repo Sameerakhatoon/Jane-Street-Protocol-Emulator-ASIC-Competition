@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """The compiled UART on the Verilated chip, reached from a Linux pty.
 
 The simulator runs with its UART pty bridge on the lane pins: the bridge

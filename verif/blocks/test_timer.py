@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """tse_timer (NCO plus down counter) against model.timer."""
 from hypothesis import strategies as st
 

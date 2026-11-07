@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Stage 4, lowering: a frame's obligations to lane instructions.
 
 Supported shape: the initial state has one

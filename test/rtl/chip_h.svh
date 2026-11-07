@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Whole-chip test harness, included inside a testbench module: the chip
 // through its Tiny Tapeout pins at 60 MHz, instruction encoders, the load-mode
 // byte bus (WR, WRB, RDB, STAT) with the running load CRC, the run-mode SPI

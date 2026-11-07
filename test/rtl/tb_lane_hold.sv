@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 `timescale 1ns/1ps
 // Response rule with RULE_CLK.hold, the SPI target first bit: a rule counts
 // CS falling edges (pin-edge mode, tick delay 0, any position) and drives

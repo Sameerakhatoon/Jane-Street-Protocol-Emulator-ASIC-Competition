@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """04: I2C judge: transactions, stretching, NACK and every timing limit."""
 import os
 import tempfile

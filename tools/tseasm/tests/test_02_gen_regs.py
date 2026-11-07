@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Register table and generator: addresses, bank words, worked examples, broken tables fail loudly."""
 import pytest
 import yaml

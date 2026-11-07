@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Gate-level bench top: the routed netlist of tt_um_tse_sk_chip under the tse_chip name the
 // chip tests drive, with the run's SDF annotated (+sdf=<file>). Inputs reach the netlist the
 // SDC input delay after the testbench sets them (base.sdc: 20 % of the 16.67 ns period), so

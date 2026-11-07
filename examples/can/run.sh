@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
 # CAN receive with the ACK in the slot, end to end: specs/can_rx_ack.tse ->
 # tsec build with its timing proof -> TSEI image -> Verilated full chip
 # through the pin pipe -> a CAN transmitter model on a wired-AND bus sends

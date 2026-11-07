@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Stage 6c, lane configuration: the register values an image needs beside its program.
 
 Per lane: the assists' registers (assists.py), LANE_CFG (the pin JMP PIN

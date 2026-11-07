@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
 # 10BASE-T transmit lane (a frame role on the frame engine): three frames staged in the
 # data window, sent at 10 Mbit/s and judged by the 10BASE-T judge on the pins.
 . "$(dirname "$0")/lib.sh"

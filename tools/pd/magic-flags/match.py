@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 # tools/pd/magic-flags/match.py: for each flag, is the same spot flagged on the real layout?
 # REAL means the clip of the real GDS has an error touching the flag; ABSTRACT means it has none.
 import os

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """The chip as lanes sharing one cycle counter, the chip flags and the data window.
 
 Lane k runs SRAM window k (128 words). SIG writes CF at the end of its cycle,

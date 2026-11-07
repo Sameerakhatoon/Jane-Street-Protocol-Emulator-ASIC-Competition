@@ -6,3 +6,4 @@ protocol p {
     state f { seq { shift d lsb 8 -> tx each 1 us; } -> idle; }
   }
 }
+// SPDX-License-Identifier: Apache-2.0

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 # Simulation harness: sim/ has its own plain Makefile and tests.
 .PHONY: sim sim-lint sim-test sim-clean
 sim:

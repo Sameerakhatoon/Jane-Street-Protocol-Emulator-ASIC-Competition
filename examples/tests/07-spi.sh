@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
 # SPI mode 0 target and controller lanes, each judged on the pins.
 . "$(dirname "$0")/lib.sh"
 

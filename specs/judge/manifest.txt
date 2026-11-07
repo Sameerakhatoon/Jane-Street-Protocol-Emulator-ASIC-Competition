@@ -13,7 +13,7 @@ spi_controller_mode2    spi   ../../build/demos/spi_controller_mode2.vcd spi_jed
 spi_controller_mode3    spi   ../../build/demos/spi_controller_mode3.vcd spi_jedec.expect --map clk=sck --map mosi=mosi --map miso=miso --map cs=cs_n --mode 3 --allow-skip
 spi_flash_target        spi   ../../build/demos/spi_flash_target.vcd spi_jedec.expect --map clk=sck --map mosi=mosi --map miso=miso --map cs=cs_n --mode 0 --allow-skip
 spi_target              spi   ../../build/demos/spi_target.vcd spi_target.expect --map clk=sck --map mosi=mosi --map miso=miso --map cs=cs_n --mode 0 --allow-skip
-spi_target_mode0_css114 spi   ../../build/demos/spi_target_mode0_css114.vcd spi_target.expect --map clk=sck --map mosi=mosi --map miso=miso --map cs=cs_n --mode 0 --allow-skip
+spi_target_mode0_css142 spi   ../../build/demos/spi_target_mode0_css142.vcd spi_target.expect --map clk=sck --map mosi=mosi --map miso=miso --map cs=cs_n --mode 0 --allow-skip
 spi_target_mode1        spi   ../../build/demos/spi_target_mode1.vcd spi_target.expect --map clk=sck --map mosi=mosi --map miso=miso --map cs=cs_n --mode 1 --allow-skip
 spi_target_mode2        spi   ../../build/demos/spi_target_mode2.vcd spi_target.expect --map clk=sck --map mosi=mosi --map miso=miso --map cs=cs_n --mode 2 --allow-skip
 spi_target_mode3        spi   ../../build/demos/spi_target_mode3.vcd spi_target.expect --map clk=sck --map mosi=mosi --map miso=miso --map cs=cs_n --mode 3 --allow-skip

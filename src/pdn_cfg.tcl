@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 # src/pdn_cfg.tcl: LibreLane's default power grid, plus Metal4 stripes that
 # reach into the SRAM macros and land on their Metal4 supply columns.
 #

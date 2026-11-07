@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
 # Lint gate: every module in src/ as its own top with verilator -Wall and no
 # waivers, the Tiny Tapeout top and tse_chip (latch and flop configuration)
 # through iverilog too. Prints one line per check, fails on any warning.

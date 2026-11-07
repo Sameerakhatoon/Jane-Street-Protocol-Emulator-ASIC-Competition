@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
 # tools/pd/experiments/cfgbank/run.sh: harden the latch configuration bank alone in a 1x1 tile
 # at 60 MHz and print the three-corner timing table. The bank RTL is src/tse_cfg_bank.sv.
 # It builds a throwaway Tiny Tapeout project in runs/cfgbank/proj from the repository's own

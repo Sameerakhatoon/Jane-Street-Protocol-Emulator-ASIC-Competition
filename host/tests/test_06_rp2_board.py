@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """The MicroPython board code, unchanged, on the CPython shim (simulated PIO, SPI, SDK)."""
 import os
 import random

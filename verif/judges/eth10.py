@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """10BASE-T judge: Ethernet frames at the bit level from the transmit line.
 
 Written from IEEE 802.3: Manchester coding as in the physical signalling

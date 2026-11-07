@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
 # Compliant Standard-mode traffic: every edge reported with one latency, no
 # violation on the chip or in the I2C judge, every interval paired.
 . "$(dirname "$0")/lib.sh"

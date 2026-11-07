@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 `default_nettype none
 // Binds a compiled program to the real tse_lane for the compiler's
 // per-program proofs. The compiler's harness instantiates a placeholder lane

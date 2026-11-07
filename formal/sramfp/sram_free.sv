@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 `default_nettype none
 // Formal stand-in for one 512x16 program SRAM macro, same ports. The program
 // store is two of them (u_macro_lo, u_macro_hi). The read data is a free value

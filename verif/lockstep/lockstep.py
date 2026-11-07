@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Run tse_seq (through seq_harness) and model.seq.Seq side by side, cycle by cycle.
 
 In each cycle the inputs are applied after the clock edge, the RTL is read in

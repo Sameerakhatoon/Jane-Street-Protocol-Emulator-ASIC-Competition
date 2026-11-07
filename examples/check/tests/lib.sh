@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 # Shared helpers for the numbered Check and Trigger tests. Each test runs
 # from the repository root and writes under build/check/tests/.
 set -euo pipefail

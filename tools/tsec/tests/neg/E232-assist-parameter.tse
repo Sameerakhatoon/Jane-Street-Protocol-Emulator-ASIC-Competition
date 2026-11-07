@@ -1,3 +1,4 @@
 protocol p {
   assist stuff : stuffer { run = 6; colour = 1; }
 }
+// SPDX-License-Identifier: Apache-2.0

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """cocotb: tse_prog_mem on its own, with stub lanes and a stub host.
 
 The stubs drive the lane fetch and data ports exactly as the port list in

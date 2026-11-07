@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
 # The I2C controller demo end to end in Fast and Standard mode: host side,
 # all four transactions decoded as expected (two of them end in a NACK the
 # host handles), every timing rule of the speed held (tHIGH and the SCL

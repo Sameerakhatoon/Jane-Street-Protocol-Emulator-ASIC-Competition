@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """verif/glsdf/sdf_for_icarus.py <in.sdf> <out dir>: the run's SDF in a form Icarus can annotate.
 
 Writes <out dir>/icarus.sdf and one <out dir>/sram_<macro>.sdf per SRAM macro.

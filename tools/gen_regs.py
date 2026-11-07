@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
 """Generate the SystemVerilog register package and the Python register table from isa/tse_regs.yaml.
 
 The table is checked before anything is written. It stops with a message on

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Lane test harness, included inside a testbench module: one tse_lane with
 // its configuration bank, a 128-word program store and a 128-word data
 // window behind the fixed slots of the chip (cycle count cnt restarts when

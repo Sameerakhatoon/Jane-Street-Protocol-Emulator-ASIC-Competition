@@ -2,3 +2,4 @@ protocol p {
   wire rx : in;
 }
 wire extra : in;
+// SPDX-License-Identifier: Apache-2.0

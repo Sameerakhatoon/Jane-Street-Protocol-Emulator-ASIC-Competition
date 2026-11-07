@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Command line: decode one protocol from a VCD and print PASS or FAIL.
 
     python3 -m verif.judges uart trace.vcd --map rx=uo_out0 --baud 115200

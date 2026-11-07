@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """The fallback image variant and the boot flow that picks it when the self-test fails."""
 import os
 import subprocess

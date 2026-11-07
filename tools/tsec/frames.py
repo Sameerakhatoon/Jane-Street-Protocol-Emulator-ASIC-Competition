@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Frame layouts: a `frame` declaration as fields with bit counts, constants and CRC ranges.
 
 Rules the lowering relies on:

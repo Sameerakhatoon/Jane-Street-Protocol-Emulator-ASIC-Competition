@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """cocotb: the memories of the whole chip through its pins.
 
 The self-test on the macro's test port with each fault class injected in the

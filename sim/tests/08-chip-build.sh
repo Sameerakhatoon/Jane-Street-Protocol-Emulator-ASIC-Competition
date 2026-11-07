@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
 # The full chip (RTL_DIR) builds behind the same harness and runs.
 # No program is loaded, so this only proves the pin contract and speed.
 . "$(dirname "$0")/lib.sh"

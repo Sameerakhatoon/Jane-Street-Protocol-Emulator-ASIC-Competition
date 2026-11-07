@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """The model against the chip: RUN at the end of the 16-cycle frame, the one
 write-only configuration bank, the data window, the fallback store and the
 refusals around the self-test."""

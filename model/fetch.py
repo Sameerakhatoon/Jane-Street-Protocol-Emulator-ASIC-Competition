@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Fixed-slot fetch and the two-word buffer of one lane.
 
 Lane k owns the SRAM in every cycle s with s % S == k. The buffer keeps the

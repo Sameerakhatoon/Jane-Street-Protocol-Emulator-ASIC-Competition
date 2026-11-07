@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Disassembler for TSE lane programs, the inverse of asm.py, driven by the same table.
 
 Every word comes back as text that reassembles to the same word. A word the

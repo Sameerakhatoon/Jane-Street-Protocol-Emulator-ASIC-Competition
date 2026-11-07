@@ -1,18 +1,23 @@
+# SPDX-License-Identifier: Apache-2.0
 [tasks]
 ref    REF
 timing TIMING
 once   ONCE
 chain  CHAIN
 hold   HOLD
+deep   DEEP
 
 [options]
-mode bmc
-depth 16
-timeout 120
+~deep: mode bmc
+~deep: depth 16
+deep: mode prove
+~deep: timeout 120
+deep: timeout 900
 expect pass,fail
 
 [engines]
-smtbmc yices
+~deep: smtbmc yices
+deep: abc pdr
 
 [script]
 verilog_defines -DBUGRUN
@@ -21,6 +26,7 @@ TIMING: verilog_defines -DTIMING
 ONCE: verilog_defines -DONCE
 CHAIN: verilog_defines -DCHAIN
 HOLD: verilog_defines -DHOLD
+DEEP: verilog_defines -DDEEP
 read_rtlil mutated.il
 read -formal rule_props.sv
 prep -top rule_props

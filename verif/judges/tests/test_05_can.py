@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """05: CAN judge: frames, destuffing, CRC, ACK slot, form and rate errors."""
 import os
 import tempfile

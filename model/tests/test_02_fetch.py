@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """02: fetch slots and the two-word buffer: the published UART and square-wave timings."""
 import pytest
 

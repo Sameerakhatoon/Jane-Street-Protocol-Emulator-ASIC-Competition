@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
 # The I2C controller on a bus that rises in the same clock SCL is released:
 # the wait for the rise after our own release must not first wait for a low
 # level the bus never shows again (it used to hang there).

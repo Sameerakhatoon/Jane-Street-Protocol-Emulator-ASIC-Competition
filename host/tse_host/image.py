@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """TSEI images: what the board stores so it needs no compiler.
 
 Format version 1, every field most significant byte first:

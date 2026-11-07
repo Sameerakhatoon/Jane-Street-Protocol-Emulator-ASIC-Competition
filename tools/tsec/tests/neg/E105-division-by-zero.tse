@@ -1,3 +1,4 @@
 protocol p {
   param x : ratio = 1 / 0;
 }
+// SPDX-License-Identifier: Apache-2.0

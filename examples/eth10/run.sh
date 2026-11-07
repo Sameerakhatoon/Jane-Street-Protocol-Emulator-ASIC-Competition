@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
 # 10BASE-T transmit lane end to end: tools/tsec/tests/targets/eth10_tx_window.tse
 # compiled, loaded into the Verilated full chip, the frames of frames.expect
 # staged in the data window and sent, then judged by the 10BASE-T judge from the pins.

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Stimulus strategies shared by the block lockstep tests."""
 import os
 import warnings

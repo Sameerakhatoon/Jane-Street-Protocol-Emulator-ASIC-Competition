@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Diagnostics: one error type for every stage and the gcc-style printer.
 
 Every stage raises or collects TseError. The driver prints them as

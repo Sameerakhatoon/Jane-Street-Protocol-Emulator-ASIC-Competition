@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """06: response rules in bit mode and pin-edge mode."""
 from model.rules import Rule, Rules
 

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """`tsec selftest`: the ISA tables and the cycle model against the published ISA numbers.
 
 It pins the seam in isa.py: a swap to

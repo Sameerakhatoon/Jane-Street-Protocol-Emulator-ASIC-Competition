@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """A SPI NOR flash compiled from spi_flash_target.tse, read over serprog.
 
 The flash lane listens on ui_in[4] (CS#), ui_in[5] (SCK) and ui_in[6]

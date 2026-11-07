@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
 # Unmodified OpenOCD reads a JTAG IDCODE through the chip's JTAG probe lane:
 # specs/jtag_probe.tse -> tsec build (--pad-skew 0, R310 without it) -> TSEI
 # image -> Verilated full chip -> OpenOCD remote_bitbang into jtag_demo.py,

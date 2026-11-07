@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 #ifndef TSE_VCD_PINS_H
 #define TSE_VCD_PINS_H
 

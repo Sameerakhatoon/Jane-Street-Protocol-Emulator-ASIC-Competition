@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """The on-board assembler gives the PC assembler's words on every vector."""
 import os
 import random

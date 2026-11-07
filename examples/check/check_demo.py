@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Check mode on the Verilated chip: two monitor lanes watch an I2C bus.
 
 Lane 0 runs i2c_edges.s (SCL edges, SDA changes while SCL is low), lane 1

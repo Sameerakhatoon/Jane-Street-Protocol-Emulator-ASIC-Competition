@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Margin sweep: rerun a capture at stepped timing offsets, find the failing edge.
 
 capture(offset) runs one capture with the swept parameter moved by offset

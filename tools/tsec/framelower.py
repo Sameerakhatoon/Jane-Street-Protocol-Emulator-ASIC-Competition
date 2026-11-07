@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Stage 4c, lowering of frame roles: `send`, `recv`, response rules and assist events.
 
 A frame role hands the bit work to the lane's engines (TX and RX shift

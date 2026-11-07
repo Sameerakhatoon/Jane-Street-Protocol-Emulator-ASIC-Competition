@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
 # Frame roles on the frame engine: the 10BASE-T transmitter streamed from the host and
 # buffered in the data window, their proof harnesses, and the frame specs the lane cannot
 # take, each with its reason.

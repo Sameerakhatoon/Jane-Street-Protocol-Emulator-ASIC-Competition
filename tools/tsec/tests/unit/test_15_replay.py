@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """The timing analysis against the sequencer reference model, on the shipped SPI target specs.
 
 For every accepted build of the SPI targets in specs/tests/expected-outcomes.txt the compiled
@@ -37,7 +38,7 @@ PAD = 25e-9                        # the compiler's default pad delay range, 0 t
 # whole bytes: true for the targets whose only loop is the byte loop)
 BUILDS = [
     ("spi_target", {"t_css": "142e-9", "f_sck": "1.875e6"}, 60e6, 3, True),
-    ("spi_target_mode0_css114", {"t_css": "142e-9", "f_sck": "1.875e6"}, 60e6, 3, True),
+    ("spi_target_mode0_css142", {"t_css": "142e-9", "f_sck": "1.875e6"}, 60e6, 3, True),
     ("spi_target_mode2", {"t_css": "142e-9", "f_sck": "1.875e6"}, 60e6, 3, True),
     ("spi_target_mode1", {"t_css": "109e-9", "f_sck": "1.9e6"}, 60e6, 3, True),
     ("spi_target_mode3", {"t_css": "109e-9", "f_sck": "1.9e6"}, 60e6, 3, True),

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """15: behaviour pinned to the standards' text where a reading could differ.
 
 CAN: stuffing covers SOF through the end of the CRC sequence, so five

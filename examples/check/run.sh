@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
 # Check mode end to end: two hand-written monitor lanes on the Verilated
 # chip watch an I2C bus driven by a stand-in controller, the host pops the
 # event records over SPI, host/tse_check reports every Standard-mode rule,

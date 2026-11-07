@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 # Gate-level simulation: tse_chip mapped onto CMOS5L standard cells by Yosys
 # (typical corner Liberty, SRAM macro as a black box), then one whole-chip
 # cocotb test on that netlist with the PDK's cell models and the SRAM model.

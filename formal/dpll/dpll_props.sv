@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Formal harness for tse_dpll, immediate assertions only. For every legal
 // configuration (2 to 31 cycles per bit in sixteenths, sample point inside
 // the bit, SJW at most a quarter bit, any edge options) and every input:

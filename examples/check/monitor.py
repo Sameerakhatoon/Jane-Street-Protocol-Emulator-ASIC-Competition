@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Monitor lanes on the Verilated chip: shared code of the Check and Trigger demos.
 
 The chip only watches here: SCL and SDA come from the stand-in waveform on

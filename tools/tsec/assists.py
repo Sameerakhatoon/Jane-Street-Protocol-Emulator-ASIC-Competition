@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Stage 6b, assist configuration: `assist` items to lane register values.
 
 One function per assist kind turns the declaration into register values

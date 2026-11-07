@@ -8,3 +8,4 @@ protocol p {
     state two { on fall(rx) do { shift rx -> c msb 1; push host b; } -> idle; }
   }
 }
+// SPDX-License-Identifier: Apache-2.0

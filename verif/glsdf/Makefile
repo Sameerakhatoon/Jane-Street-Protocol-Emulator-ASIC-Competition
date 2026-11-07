@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 # Gate-level simulation with SDF: the routed netlist of a full-chip run (final/nl), the run's
 # SDF for one corner, the PDK's cell models and IHP's own 512x16 SRAM model (both with specify
 # blocks, so cells, macros and wires get their signoff delays), driven by the chip tests.

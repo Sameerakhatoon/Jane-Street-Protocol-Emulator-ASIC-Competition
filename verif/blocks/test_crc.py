@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """tse_crc against model.crc on random configurations and input streams."""
 from hypothesis import strategies as st
 

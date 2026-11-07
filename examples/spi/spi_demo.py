@@ -1,6 +1,7 @@
+# SPDX-License-Identifier: Apache-2.0
 """SPI target and SPI controller lanes on the Verilated chip, mode 0.
 
---role target: the lane runs spi_target_mode0_css114 on ui_in[4] (CS#),
+--role target: the lane runs spi_target_mode0_css142 on ui_in[4] (CS#),
 ui_in[5] (SCK), ui_in[6] (MOSI) and drives MISO on uo_out[1]. The host
 loads 12 34 as the answer, a stand-in controller on the input pins sends
 A5 5A in one chip-select frame (CS falls one SCK period before the first

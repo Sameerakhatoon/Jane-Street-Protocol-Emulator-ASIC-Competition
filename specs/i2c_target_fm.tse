@@ -163,3 +163,4 @@ protocol i2c_target_fm {
     }
   }
 }
+// SPDX-License-Identifier: Apache-2.0

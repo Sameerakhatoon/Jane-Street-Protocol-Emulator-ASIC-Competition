@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 `default_nettype none
 // Stand-in SWD debug port for the remote_bitbang bridge. Not chip RTL and
 // not a full SW-DP: DP registers only, no AP, no WAIT or FAULT.

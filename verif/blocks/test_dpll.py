@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """tse_dpll against model.dpll on legal configurations and jittery lines."""
 from hypothesis import strategies as st
 

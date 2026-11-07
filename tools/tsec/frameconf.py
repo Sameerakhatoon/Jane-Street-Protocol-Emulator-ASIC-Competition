@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Stage 6d, configuration of frame roles: the lane registers beside the program.
 
 On top of the assist values (assists.py) a frame role needs:

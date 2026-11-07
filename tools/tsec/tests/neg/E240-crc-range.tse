@@ -6,3 +6,4 @@ protocol p {
     crc  : bits[15] crc c15 over data..sof;
   }
 }
+// SPDX-License-Identifier: Apache-2.0

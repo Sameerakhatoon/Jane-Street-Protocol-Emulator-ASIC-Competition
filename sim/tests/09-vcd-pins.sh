@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
 # Pins-only VCD: decode both UART directions from the file alone, the
 # way sigrok's uart decoder will, and check the bytes.
 . "$(dirname "$0")/lib.sh"

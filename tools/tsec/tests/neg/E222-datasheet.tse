@@ -8,3 +8,4 @@ protocol p {
     state f { seq { drive scl = 0 for 1 us; release scl for 1 us; } -> idle; }
   }
 }
+// SPDX-License-Identifier: Apache-2.0

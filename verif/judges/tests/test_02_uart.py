@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """02: UART judge on bit-banged characters, good and deliberately broken."""
 import os
 import tempfile

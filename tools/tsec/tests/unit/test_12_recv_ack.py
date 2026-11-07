@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """A `recv` with a byte count whose own answer field comes after the CRC and a
 delimiter (a CAN ACK): layout check, the RX bookkeeping between frames, the
 quiet tail in the rearm deadline and the pin keys the loader reads."""

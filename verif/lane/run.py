@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Build lane_harness with the RTL in $RTL_DIR and run test_lane with cocotb 2.1.
 
 SIM=icarus|verilator. TESTCASE=name runs one test.

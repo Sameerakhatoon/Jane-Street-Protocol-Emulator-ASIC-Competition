@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Cross-check the compiler's timing claim against the pins.
 
 tsec reports, for the transmitter, the cycle at which each edge of a frame

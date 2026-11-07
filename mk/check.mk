@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 # Check and Trigger mode on the Verilated chip: hand-written monitor lanes
 # watch an I2C bus, host/tse_check reports the timing rules, the judges
 # confirm from the pins-only trace.

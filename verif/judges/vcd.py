@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Streaming VCD reader for the judges.
 
 The file is read once, token by token, and only the signals asked for are

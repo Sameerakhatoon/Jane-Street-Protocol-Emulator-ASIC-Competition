@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Run tse_lane (through lane_harness) and model.lane.Lane side by side.
 
 A program is a configuration preamble followed by a body. The preamble

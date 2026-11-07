@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Waveform writer and bit-bangers for the judge tests.
 
 Independent of the judges: nothing here imports the reader or a decoder.

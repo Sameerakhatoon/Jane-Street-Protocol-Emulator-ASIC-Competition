@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
 # parse(print(parse(s))) == parse(s) for every spec and positive test (spans aside),
 # and printing is stable: fmt(fmt(s)) == fmt(s).
 . "$(dirname "$0")/lib.sh"

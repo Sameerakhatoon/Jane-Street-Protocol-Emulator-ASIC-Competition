@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """One bus watched by two lanes: pairing across lanes and cancel codes."""
 import json
 

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """State machines: environment separations, lowering, analysis, fixes, assists."""
 from fractions import Fraction as Fr
 

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """The lane cycle model seam: the one place tsec asks how long instructions take.
 
 Every analysis in tsec (the frame analysis in timing.py, the state-machine

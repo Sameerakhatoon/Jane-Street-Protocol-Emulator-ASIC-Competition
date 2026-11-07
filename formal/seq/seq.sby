@@ -1,0 +1,37 @@
+# SPDX-License-Identifier: Apache-2.0
+[tasks]
+fetch FETCH
+data  DATA
+halt  HALT
+stop  STOP
+cov   COV
+
+[options]
+~cov: mode prove
+cov: mode cover
+cov: depth 12
+
+[engines]
+~cov: abc pdr
+cov: smtbmc yices
+
+[script]
+FETCH: verilog_defines -DFETCH
+DATA: verilog_defines -DDATA
+HALT: verilog_defines -DHALT
+STOP: verilog_defines -DSTOP
+read -formal -sv tse_isa_pkg.sv tse_regs_pkg.sv tse_seq.sv seq_props.sv
+prep -top seq_props
+flatten
+connect -set p_avail dut.avail
+connect -set p_legal dut.legal
+connect -set p_word dut.word
+# abc pdr takes no x bits: part selects ($shiftx) pad with x, made free here
+techmap t:$shiftx
+setundef -anyseq
+
+[files]
+tse_isa_pkg.sv
+tse_regs_pkg.sv
+tse_seq.sv
+seq_props.sv

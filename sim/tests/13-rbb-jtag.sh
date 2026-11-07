@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
 # OpenOCD remote_bitbang, JTAG: replay the driver's byte stream for a TAP
 # reset, an IDCODE scan, an IR scan of BYPASS and a bypass data scan against
 # the stand-in TAP on ui2..ui4 / uo3, in lockstep over TCP.

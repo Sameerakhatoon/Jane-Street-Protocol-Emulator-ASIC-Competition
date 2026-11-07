@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
 # CAN: the bit-level helpers pass their unit checks, then two bridge nodes
 # share the wired-AND bus with the stand-in's CAN pins (TX uio7 released,
 # RX ui6) through the harness: frames cross with stuffing and CRC-15, every

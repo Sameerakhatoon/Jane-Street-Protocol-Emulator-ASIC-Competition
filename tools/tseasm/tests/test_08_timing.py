@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Timing API: the UART and square-wave figures of the fetch-rule model, the phase lemma, errors."""
 import pathlib
 

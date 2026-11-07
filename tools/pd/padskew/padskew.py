@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """tools/pd/padskew/padskew.py <corner report>...: tile-internal pin delays from paths.tcl output.
 
 Both are measured from the clock edge at the tile's clk pin, in ns:

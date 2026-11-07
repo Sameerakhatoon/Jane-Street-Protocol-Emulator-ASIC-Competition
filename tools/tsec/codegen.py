@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Stage 6, code generation: scheduled instructions to words, listing and loader image.
 
 Every word is decoded again and disassembled; a mismatch with what was

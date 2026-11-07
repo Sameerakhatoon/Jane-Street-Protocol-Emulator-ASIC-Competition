@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """UART judge: asynchronous serial characters on one or two lines.
 
 Written from the definition of an asynchronous character: the line idles

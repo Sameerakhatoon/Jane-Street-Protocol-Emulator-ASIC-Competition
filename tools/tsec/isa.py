@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """ISA version 1 for the compiler: tables, encoder, decoder, disassembler.
 
 THE SEAM. This is the only module of tsec that knows instruction encodings

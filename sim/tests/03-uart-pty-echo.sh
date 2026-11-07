@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
 # UART pty bridge, both directions, on the stand-in top:
 # pty -> 8N1 on ui_in[0] -> chip upper-cases -> 8N1 on uo_out[0] -> pty.
 . "$(dirname "$0")/lib.sh"

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
 # Unmodified OpenOCD reads an SWD DPIDR through the chip's SWD probe lane:
 # swd_probe_driven.tse (specs/swd_probe.tse with SWDIO driven and released
 # explicitly; as shipped its image never drives SWDIO) -> tsec build at SWCLK

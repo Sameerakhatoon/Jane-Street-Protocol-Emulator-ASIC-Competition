@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
 # bridge/pins_gen.h matches the pinout tables in info.yaml and info_chip.yaml,
 # and the WiredAnd resolver and pin names pass their unit checks.
 . "$(dirname "$0")/lib.sh"

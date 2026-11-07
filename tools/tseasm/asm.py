@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Assembler for TSE lane programs.
 
 One instruction per line, pioasm-like:

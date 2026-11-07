@@ -4,3 +4,4 @@ protocol p {
     banana;
   }
 }
+// SPDX-License-Identifier: Apache-2.0

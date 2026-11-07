@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
 # Trigger mode end to end: lane 0 decodes I2C bytes, lane 1 reports START
 # and STOP, the 3-stage trigger fires on "write to 0x50, register 0x10,
 # STOP" across both lanes; the TRIG records come back over SPI, the I2C

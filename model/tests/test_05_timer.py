@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """05: the lane timer, its NCO and the sticky TIMER flag."""
 from model.timer import Timer
 

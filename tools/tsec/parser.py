@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Stage 2, parser: tokens to syntax tree.
 
 Recursive descent, one method per grammar rule, named after the rule. The

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """UART both ways on the Verilated chip, driven like a board would drive it.
 
 Turns the tsec build of the UART spec into a TSEI image file, loads that

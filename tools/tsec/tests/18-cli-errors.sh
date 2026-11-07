@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
 # Command-line mistakes: overriding a const, an unknown param, a non-number, a missing file.
 . "$(dirname "$0")/lib.sh"
 st=0

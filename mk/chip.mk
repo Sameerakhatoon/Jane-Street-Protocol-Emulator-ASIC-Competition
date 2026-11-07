@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 # Chip integration: the full-chip top and its source list, the chip cocotb tests.
 CHIP_SRC := $(addprefix src/,$(shell sed -n '/^ *source_files:/,/^[^ ]/s/^ *- *"\([^"]*\)".*/\1/p' info_chip.yaml))
 CHIP_TOP := $(shell sed -n 's/^ *top_module: *"\([^"]*\)".*/\1/p' info_chip.yaml)

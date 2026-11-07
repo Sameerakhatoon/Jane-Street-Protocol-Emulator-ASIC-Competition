@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
 # The lexer gives line:col, kind and text per token; numbers, units and symbols split right.
 . "$(dirname "$0")/lib.sh"
 out="$(tsec lex specs/uart.tse)"

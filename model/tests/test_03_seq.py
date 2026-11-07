@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """03: instruction effects and costs."""
 from model.isa import encode as E
 from model.tests.helpers import SeqCfg, SeqIn, dispatch_cycles, parked, run_seq

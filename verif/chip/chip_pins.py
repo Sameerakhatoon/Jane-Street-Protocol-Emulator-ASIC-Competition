@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Pin drivers for the chip under cocotb, with the host library's timing.
 
 The byte bus is driven exactly as host/tse_host/link.py's PinLink drives it

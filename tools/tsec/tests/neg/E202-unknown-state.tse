@@ -5,3 +5,4 @@ protocol p {
     state idle { on host.pull(b) -> frame; }
   }
 }
+// SPDX-License-Identifier: Apache-2.0

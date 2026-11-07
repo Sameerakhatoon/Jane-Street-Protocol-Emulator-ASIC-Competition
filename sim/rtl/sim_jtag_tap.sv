@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 `default_nettype none
 // Stand-in IEEE 1149.1 TAP for the remote_bitbang bridge. Not chip RTL.
 // TCK, TMS and TDI are pins sampled with the system clock (two flops), the

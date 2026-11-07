@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Judge the trigger-out pin from the pins-only VCD.
 
 Ground truth comes from the trace, not from the chip: the I2C judge decodes

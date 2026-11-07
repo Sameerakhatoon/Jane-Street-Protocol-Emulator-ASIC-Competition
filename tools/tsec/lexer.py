@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Stage 1, lexer: characters to tokens with line and column.
 
 Hand-written, one character of lookahead, like the C lexer it is modelled on.

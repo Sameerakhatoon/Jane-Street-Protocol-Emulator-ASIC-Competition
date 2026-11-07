@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
 # Real SocketCAN: node A on vcan0, node B on a can_frame socket. A frame sent
 # with a raw AF_CAN socket on vcan0 crosses the simulated bus to B, and B's
 # frame comes back on vcan0. Needs the vcan module and an interface that is

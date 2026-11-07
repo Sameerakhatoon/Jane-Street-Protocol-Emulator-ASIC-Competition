@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // The SRAM macros for timing proofs: their read data is free in every cycle.
 // The synthesis view of tse_sram_512x32 uses two 512x16 macros; the SIM view
 // keeps one 512x32.

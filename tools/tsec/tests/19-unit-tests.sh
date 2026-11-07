@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
 # The per-stage unit tests (pytest, with Hypothesis fuzzing) pass.
 . "$(dirname "$0")/lib.sh"
 out="$(HYPOTHESIS_STORAGE_DIRECTORY="$TMP/hyp" "$PY" -m pytest -q -p no:cacheprovider $TESTS/unit 2>&1)" \

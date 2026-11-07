@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Random images through the byte bus with random strobe spacing, and random damage."""
 import random
 

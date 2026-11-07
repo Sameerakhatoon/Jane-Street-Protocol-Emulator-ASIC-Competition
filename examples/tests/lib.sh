@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 # Shared helpers for the numbered example tests. Each test runs from the
 # repository root and writes under build/e2e/.
 set -euo pipefail

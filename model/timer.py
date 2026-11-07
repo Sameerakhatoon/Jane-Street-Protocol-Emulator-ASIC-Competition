@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Lane timer: 24-bit NCO tick plus a 16-bit down counter, and the sticky TIMER flag.
 
 TIMER_INC [23:0] inc; TIMER_CTL reload [15:0], on_tick [16], en [17],

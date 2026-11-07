@@ -93,3 +93,4 @@ protocol i2c_target {
     }
   }
 }
+// SPDX-License-Identifier: Apache-2.0

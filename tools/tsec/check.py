@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Stage 3b, semantic checks: a grammatical spec can still be meaningless.
 
 Walks every role with the symbol table from resolve and collects all errors,

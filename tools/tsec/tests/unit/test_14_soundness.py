@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Soundness of the state-machine timing analysis against the sequencer: host pulls that end at
 once keep the environment, a pre-wait must come before the edge it prepares, a WAIT's own
 condition beats its alternate, and a checked abort keeps its state until the wait again. Where

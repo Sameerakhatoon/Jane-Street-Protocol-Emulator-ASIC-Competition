@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Line codec: NRZ, NRZI and Manchester, encoder and decoder.
 
 CODEC_CFG: mode [1:0] (0 NRZ, 1 NRZI, 2 Manchester), inv [2] (NRZ polarity,

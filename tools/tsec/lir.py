@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Lane IR: lane instructions before addresses, with labels, tunable delays and tags.
 
 An Ins is one ISA instruction (mnemonic and fields) whose jump target is

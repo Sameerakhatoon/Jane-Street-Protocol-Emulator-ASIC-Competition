@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """cocotb: the stream generator against the chip's loader (src/tse_loader.sv inside the
 whole chip, driven through the pins with PinLink's timing).
 

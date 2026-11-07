@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Trigger mode on the Verilated chip: a 3-stage trigger on decoded I2C events.
 
 Lane 0 decodes bytes (i2c_bytes.s: ADDR, DATA with the byte as data), lane 1

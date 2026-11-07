@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 # Verification: Python reference model, RTL-versus-model lockstep (sequencer,
 # lane, assist blocks), formal proofs with planted bugs, mutation coverage.
 RTL_DIR ?= src
@@ -26,7 +27,9 @@ verif-lint:
 	verilator --lint-only -Wall --top-module lane_harness $(LANE_SV) verif/lane/lane_harness.sv
 	verilator --lint-only -Wall -Wno-PROCASSINIT -Wno-SYNCASYNCNET --top-module crc_props -DCAT $(RTL_DIR)/tse_crc.sv formal/crc/crc_props.sv
 	verilator --lint-only -Wall -Wno-UNUSEDSIGNAL -Wno-UNDRIVEN --top-module prog_lane $(LANE_SV) formal/prog/prog_lane.sv
-	verilator --lint-only -Wall -Wno-PROCASSINIT -Wno-UNDRIVEN -DREF -DTIMING -DONCE -DCHAIN -DHOLD --top-module rule_props $(RTL_DIR)/tse_resp_rule.sv formal/rule/rule_props.sv
+	verilator --lint-only -Wall -Wno-PROCASSINIT -Wno-UNDRIVEN -DREF -DTIMING -DONCE -DCHAIN -DHOLD -DDEEP --top-module rule_props $(RTL_DIR)/tse_resp_rule.sv formal/rule/rule_props.sv
+	verilator --lint-only -Wall -Wno-UNUSEDSIGNAL -Wno-UNDRIVEN -Wno-PROCASSINIT -DFETCH -DDATA -DHALT -DSTOP --top-module seq_props \
+	  $(RTL_DIR)/tse_isa_pkg.sv $(RTL_DIR)/tse_regs_pkg.sv $(RTL_DIR)/tse_seq.sv formal/seq/seq_props.sv
 
 verif-test: model-test lockstep lane-lockstep block-lockstep
 

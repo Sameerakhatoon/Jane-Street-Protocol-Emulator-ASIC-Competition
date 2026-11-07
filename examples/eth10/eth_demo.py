@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """10BASE-T transmit lane on the Verilated chip.
 
 The lane runs eth10_tx_window (the transmitter of specs/eth10_tx.tse with the

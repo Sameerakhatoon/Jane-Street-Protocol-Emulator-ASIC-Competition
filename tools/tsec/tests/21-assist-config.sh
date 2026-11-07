@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
 # Assist declarations become register values in the image JSON, packed by the register table:
 # CRC-16/USB, a DPLL at 115,200 baud, and the I2C ACK rule in pin-edge mode.
 . "$(dirname "$0")/lib.sh"

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 # Simulation harness: one tse_sim binary per Verilated top.
 #   make                 TOP=echo (stand-in), build/echo/tse_sim
 #   make TOP=uart        UART test Tiny Tapeout top from RTL_DIR

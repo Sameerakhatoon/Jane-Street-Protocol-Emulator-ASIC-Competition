@@ -1,3 +1,4 @@
 protocol p {
   assist a : blender { speed = 3; }
 }
+// SPDX-License-Identifier: Apache-2.0

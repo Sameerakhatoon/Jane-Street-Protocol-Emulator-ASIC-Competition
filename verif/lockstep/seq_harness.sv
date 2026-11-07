@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 `default_nettype none
 // Lockstep harness for one tse_seq: a 128-word program store written while
 // stopped, the fetch grant of tse_prog_mem but with the slot counter aligned

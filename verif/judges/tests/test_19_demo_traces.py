@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """19: the stand-in demos recorded with real OpenOCD and Linux ping, judged.
 
 Runs demos/record.sh into a temporary folder and the stand_in.txt manifest

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
 # Build every harness top that has RTL available. Usage: ./build.sh [clean]
 set -euo pipefail
 

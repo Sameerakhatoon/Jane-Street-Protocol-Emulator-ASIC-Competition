@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 # CI helpers: the structural check of .github/ and the regression steps as the
 # JSON job matrix of the verify workflow, so the step list lives in regress.mk.
 # The Check and Trigger demo joins as its own job until regress.mk has it.

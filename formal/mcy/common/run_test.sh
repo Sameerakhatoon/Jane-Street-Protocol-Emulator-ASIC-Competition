@@ -1,4 +1,5 @@
 #!/bin/bash
+# SPDX-License-Identifier: Apache-2.0
 # MCY test step: build the mutant (with the mutsel input for the miter),
 # run <test>.sby on it and record PASS or FAIL. abc pdr sometimes cannot
 # replay its counterexample into a trace (sby then says ERROR); the

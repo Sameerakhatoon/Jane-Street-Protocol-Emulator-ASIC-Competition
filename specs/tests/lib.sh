@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 # Shared helpers for the numbered spec tests. Source this from each test; tests run from the repo root.
 set -euo pipefail
 

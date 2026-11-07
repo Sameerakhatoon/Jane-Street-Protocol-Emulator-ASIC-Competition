@@ -31,3 +31,4 @@ protocol uart_rx_assists {
     }
   }
 }
+// SPDX-License-Identifier: Apache-2.0

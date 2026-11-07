@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Two SocketCAN-style clients for tse_sim --can unix:A --can unix:B.
 
 usage: can_client.py SOCK_A SOCK_B

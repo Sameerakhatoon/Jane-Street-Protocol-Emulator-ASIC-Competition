@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Formal harness for tse_prog_mem (two lanes, flop build of the fallback
 // store), immediate assertions only. The SRAM macro is a black box: its read
 // data is free, which is all a timing proof needs.

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Timing compliance: verdicts, the I2C start-hold example, clean traffic, report text."""
 import pytest
 from hypothesis import given, strategies as st

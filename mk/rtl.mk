@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 # RTL: lint gate, the template cocotb test, SystemVerilog testbenches, area.
 # make area needs LIB or LIB_SRC (see tools/pd/area.sh); CAL_CRC is optional.
 .PHONY: rtl-lint rtl-test rtl-sim area

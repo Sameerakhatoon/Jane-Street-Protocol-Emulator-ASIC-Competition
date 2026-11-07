@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """04: WAIT with its own condition, the alternate condition and the timeout."""
 import pytest
 

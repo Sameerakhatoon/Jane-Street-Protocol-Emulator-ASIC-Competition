@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """The Linux kernel answers frames sent by the 10BASE-T transmit lane.
 
 Runs inside a user and network namespace (run_ping.sh) where tap0 is the

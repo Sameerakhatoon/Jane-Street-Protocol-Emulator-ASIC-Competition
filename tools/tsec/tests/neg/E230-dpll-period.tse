@@ -2,3 +2,4 @@
 protocol p {
   assist d : dpll { period = 2 ms; }
 }
+// SPDX-License-Identifier: Apache-2.0

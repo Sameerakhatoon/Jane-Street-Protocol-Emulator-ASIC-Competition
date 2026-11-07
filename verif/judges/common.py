@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Frames, timing violations and the small helpers every decoder shares.
 
 A decoder returns a Result: the frames it decoded, each with a canonical

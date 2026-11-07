@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
 """Stage and run one MCY project: build/formal/mcy_<block>/.
 
 The project gets formal/mcy/<block>/*, the shared test step, the block's

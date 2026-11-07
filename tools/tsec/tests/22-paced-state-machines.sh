@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
 # Paced sequences in state machines: the JTAG probe (two shifted-out pins, TCK on side-set,
 # samples issued after the next launch) places every action within its tolerance once the
 # pads are characterised; with the default pad budget the skew between pins is rejected.

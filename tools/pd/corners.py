@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
 """tools/pd/corners.py: three-corner timing table from a LibreLane metrics.json.
 
 usage: corners.py runs/wokwi/final/metrics.json [--require typ,slow,fast] [--period 16.67]

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Small builders shared by the unit tests."""
 from fractions import Fraction as Fr
 

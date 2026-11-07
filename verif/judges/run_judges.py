@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Run a manifest of judge cases and print one summary table.
 
     python3 -m verif.judges.run_judges demos.txt

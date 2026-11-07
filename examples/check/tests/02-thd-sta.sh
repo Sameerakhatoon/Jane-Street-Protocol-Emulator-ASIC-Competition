@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
 # START hold of 188 cycles: the chip flags every START as a certain tHD;STA
 # violation measured at 3.133 us against 4.000 us, the judge flags the
 # same ones, and nothing else is flagged.

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """09: judge a real simulator VCD: the chip's UART transmitter under Icarus.
 
 Skips when iverilog or the RTL is missing. RTL_DIR overrides the source folder.

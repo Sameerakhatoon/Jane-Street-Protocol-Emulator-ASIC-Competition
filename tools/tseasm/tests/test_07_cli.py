@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Command line: assemble, listing, SRAM words, disassemble, error exit."""
 import subprocess
 import sys

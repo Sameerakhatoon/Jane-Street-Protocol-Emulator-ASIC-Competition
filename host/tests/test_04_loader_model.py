@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """The loader model driven by the stream generator: the load path and its error paths."""
 import random
 

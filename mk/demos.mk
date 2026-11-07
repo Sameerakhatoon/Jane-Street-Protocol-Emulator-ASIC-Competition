@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 # Real host software against the Verilated full chip (tse_chip, two lanes), each
 # lane running a program compiled from specs/ by tools.tsec, judged on the pins.
 #   demo-jtag      OpenOCD reads the IDCODE through the JTAG probe lane

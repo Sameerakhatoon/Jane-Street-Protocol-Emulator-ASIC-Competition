@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
 # Optional FST tracing: a windowed waveform of one echoed byte.
 . "$(dirname "$0")/lib.sh"
 

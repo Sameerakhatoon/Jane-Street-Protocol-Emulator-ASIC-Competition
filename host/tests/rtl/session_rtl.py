@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """cocotb: the host library itself (Session over PinLink, the code the model tests
 and the board run) against the whole chip.
 

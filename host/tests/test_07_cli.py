@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """The command line against the model, with a state file, and over the pin pipe."""
 import os
 import subprocess

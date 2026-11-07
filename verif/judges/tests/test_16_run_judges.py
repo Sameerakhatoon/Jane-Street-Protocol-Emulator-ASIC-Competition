@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """16: the manifest runner, with every new protocol through the command line."""
 import io
 import os

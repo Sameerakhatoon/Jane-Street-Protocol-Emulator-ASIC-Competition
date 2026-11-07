@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
 # Walk every numbered Check and Trigger test in lexical order.
 set -u
 cd "$(dirname "$0")"

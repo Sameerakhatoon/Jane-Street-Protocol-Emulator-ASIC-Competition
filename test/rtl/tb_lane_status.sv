@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 `timescale 1ns/1ps
 // Lane STATUS in the register-table layout, read by the program (CSRR into
 // {Y, X}) and by the host: the eight EV levels, TFLAG, AFLAG, running, the

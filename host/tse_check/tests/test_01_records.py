@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Record layout from the tables, encode and decode, epochs and wrap."""
 import pytest
 from hypothesis import given, strategies as st

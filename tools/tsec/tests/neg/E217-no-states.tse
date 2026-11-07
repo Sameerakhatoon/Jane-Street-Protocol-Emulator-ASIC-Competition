@@ -4,3 +4,4 @@ protocol p {
     var b : bits[8];
   }
 }
+// SPDX-License-Identifier: Apache-2.0

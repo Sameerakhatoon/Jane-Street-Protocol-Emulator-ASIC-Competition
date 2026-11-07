@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Timing compliance of decoded events against obligations.
 
 An interval obligation reads "after event A, event B follows no sooner than

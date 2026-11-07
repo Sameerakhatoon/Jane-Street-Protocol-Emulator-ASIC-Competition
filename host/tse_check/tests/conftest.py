@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Test paths and a synthetic monitor that turns true edge times into records."""
 import math
 import os

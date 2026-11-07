@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """I2C controller (Fast or Standard mode, the image decides) on the
 Verilated chip, writing to and reading from a simulated target.
 

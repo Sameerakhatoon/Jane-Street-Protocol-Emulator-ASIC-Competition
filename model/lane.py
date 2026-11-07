@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """One lane: sequencer, timer, response rules and the class L configuration bank.
 
 The assists not modelled yet (CRC, stuffer, codec, DPLL, TX and RX engines)

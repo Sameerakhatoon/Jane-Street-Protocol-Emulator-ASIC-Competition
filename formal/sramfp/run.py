@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
 """SRAM read data never steers the SRAM inputs in the same cycle.
 
 The program SRAM is two 512x16 macros (u_macro_lo, u_macro_hi). Their

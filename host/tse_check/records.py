@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Event FIFO records: decode, encode, and full 32-bit timestamps.
 
 A record popped from EV_POP is one word, high bits first:

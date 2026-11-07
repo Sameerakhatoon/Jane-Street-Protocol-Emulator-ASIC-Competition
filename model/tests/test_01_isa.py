@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """01: the ISA transcription: legal word count, round trip, published encodings."""
 import pytest
 

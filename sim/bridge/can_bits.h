@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 #ifndef TSE_CAN_BITS_H
 #define TSE_CAN_BITS_H
 

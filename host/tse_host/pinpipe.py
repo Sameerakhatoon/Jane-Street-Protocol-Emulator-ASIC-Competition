@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """A pin bus over a pipe, so a session can drive a chip simulated in another process.
 
 Line protocol, client to server, numbers in hex:

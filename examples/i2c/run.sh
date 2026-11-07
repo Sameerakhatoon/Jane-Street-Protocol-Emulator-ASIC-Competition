@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
 # I2C end to end, either role, Fast or Standard mode: spec -> tsec build ->
 # TSEI image -> Verilated full chip through the pin pipe -> pins-only VCD ->
 # I2C judge with the timing limits of the speed and the expected frames.

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // MCY miter: the original tse_codec (mutsel = 0) against the mutant
 // (mutsel = 1), same inputs, every output. Legal modes only (0 to 2), as
 // in the kill test, constant during a run; strobes and line_set are free here.

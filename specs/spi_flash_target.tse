@@ -168,3 +168,4 @@ protocol spi_flash_target {
     state ignore { on rise(cs_n) -> idle; }        // until CS rises
   }
 }
+// SPDX-License-Identifier: Apache-2.0

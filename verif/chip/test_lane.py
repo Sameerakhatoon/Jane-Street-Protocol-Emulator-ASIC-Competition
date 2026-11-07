@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """cocotb: a compiled program on a lane in run mode, driving a protocol on the
 pins, judged from the pins alone. The same steps as the UART end-to-end demo
 (examples/uart/run.sh) on the cocotb bench, so they also run on the routed

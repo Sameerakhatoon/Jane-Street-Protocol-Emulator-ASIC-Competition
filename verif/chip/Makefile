@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 # cocotb tests (Icarus, cocotb 2.1), two benches:
 #   TB=chip  the whole chip through its pins: loader byte streams, the run-mode
 #            SPI target, self-test with injected SRAM faults, fallback store, data

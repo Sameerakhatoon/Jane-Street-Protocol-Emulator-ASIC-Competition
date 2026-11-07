@@ -1,3 +1,4 @@
 protocol p {
   widget w;
 }
+// SPDX-License-Identifier: Apache-2.0

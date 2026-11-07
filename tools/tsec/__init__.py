@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """tsec: the TSE timed-spec compiler.
 
 Pipeline, one module per stage:

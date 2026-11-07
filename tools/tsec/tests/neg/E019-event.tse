@@ -4,3 +4,4 @@ protocol p {
     state s { on 5 -> s; }
   }
 }
+// SPDX-License-Identifier: Apache-2.0

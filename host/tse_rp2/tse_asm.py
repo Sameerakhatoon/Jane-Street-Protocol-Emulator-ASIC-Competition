@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """A lane assembler small enough for the board's REPL (MicroPython and CPython).
 
 Same syntax and same words as the PC assembler, driven by the generated

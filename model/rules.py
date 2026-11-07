@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Response rules 0 and 1 of one lane.
 
 Both rules share a 16-bit history and an 8-bit frame bit counter that

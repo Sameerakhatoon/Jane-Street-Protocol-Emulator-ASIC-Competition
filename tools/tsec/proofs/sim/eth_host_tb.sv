@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // A host and random pins for the 10BASE-T transmitter proof harness (top_mac_tx.sv), in
 // simulation. rIC3 proves ob1 to ob3; the planted bugs (late<k>) did not fail within an hour,
 // so this bench shows each checker armed and answered, and with LATE = k checker k must fail.

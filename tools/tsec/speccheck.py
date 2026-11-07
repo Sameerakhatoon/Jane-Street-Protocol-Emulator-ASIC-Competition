@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Stage 3c, spec-level checks: mistakes visible only across edges, rules and items.
 
   W220 two edges of a state fire on the same event without disjoint guards

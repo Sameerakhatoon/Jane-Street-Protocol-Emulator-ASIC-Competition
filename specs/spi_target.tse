@@ -61,3 +61,4 @@ protocol spi_target_mode0 {
     }
   }
 }
+// SPDX-License-Identifier: Apache-2.0

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 `default_nettype none
 // Timing experiment top: an 8-word latch configuration bank in a 1x1 tile.
 // uio_in[1:0] picks the command on each clock:

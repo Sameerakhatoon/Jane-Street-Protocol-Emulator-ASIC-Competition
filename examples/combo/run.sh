@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
 # Both lanes at once: specs/uart_tx.tse on lane 0 (banner on uo_out[0]) and
 # specs/i2c_controller_fm.tse on lane 1 (write and read back a register
 # target on uio[2], uio[3]), one image, one run. Judged per line; the UART

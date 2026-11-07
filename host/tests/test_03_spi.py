@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Runtime SPI transactions and event records."""
 import pytest
 from hypothesis import given, strategies as st

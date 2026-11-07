@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Obligation files and the command line."""
 import json
 import os

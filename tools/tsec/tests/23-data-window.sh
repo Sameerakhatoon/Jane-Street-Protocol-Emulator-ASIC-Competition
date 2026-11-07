@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
 # The data window: an array indexed from data (LDW X, STW X), a variable that outlives its
 # shift register (stored and loaded again), a mode param choosing events at item level,
 # a constant wider than an immediate, parity, and a loop count from data.

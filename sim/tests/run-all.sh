@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
 # Walk every numbered test in lexical order. Exit 77 from a test means
 # skipped (a missing prerequisite such as user namespaces), not failed.
 set -u

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
 # Linux ping through the chip: tap0 -> Manchester on ui_in[1] -> stand-in
 # wire -> uo_out[1] -> FCS check -> ARP/ICMP host model -> back the same
 # way -> tap0. Runs in an unprivileged user+net namespace; skipped when

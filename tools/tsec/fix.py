@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """The "fix" line of a rejection: solve a failing bound for the params it depends on.
 
 A window bound or a datasheet bound is an expression over params (t_css -

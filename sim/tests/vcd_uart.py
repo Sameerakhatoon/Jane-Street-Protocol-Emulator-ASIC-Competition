@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Decode 8N1 bytes on one 1-bit wire of a pins-only VCD. Prints them as hex.
 
 usage: vcd_uart.py FILE WIRE BAUD

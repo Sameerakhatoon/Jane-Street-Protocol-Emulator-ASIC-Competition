@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
 # LDW and STW: exact data-slot durations in all 16 phases, lanes 0 and 1.
 . "$(dirname "$0")/lib.sh"
 fail=0

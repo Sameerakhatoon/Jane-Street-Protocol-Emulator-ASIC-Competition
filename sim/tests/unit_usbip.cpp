@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // USB/IP framing: replay what `usbip list -r` and `usbip attach` send, then
 // the first URBs of enumeration, fed in awkward splits, against a
 // behavioural low-speed device that answers GET_DESCRIPTOR(device).

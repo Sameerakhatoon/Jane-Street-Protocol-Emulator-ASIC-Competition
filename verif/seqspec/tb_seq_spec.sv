@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 `default_nettype none
 // Runs tse_seq_spec for lanes 0 to 3 at fetch latency 1 and 2 (eight copies)
 // on the same program and inputs, and writes one trace line per copy and

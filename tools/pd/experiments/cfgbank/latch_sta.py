@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
 """Write OpenSTA scripts that time the latch bank of a finished run three ways.
 
 usage: latch_sta.py <run dir> <out dir>    (writes <out dir>/<corner>-<mode>.tcl)

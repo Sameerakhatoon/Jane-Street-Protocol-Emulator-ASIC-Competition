@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Stage 5b, timing: the phase-exhaustive analysis of a paced frame.
 
 The analysis runs the expected path of a lowered frame from its anchor for

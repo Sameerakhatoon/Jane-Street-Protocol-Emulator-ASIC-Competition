@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Unmodified OpenOCD reads an SWD DPIDR through the chip's SWD probe lane.
 
 Lane 0 runs swd_probe_driven.tse (specs/swd_probe.tse with SWDIO driven and

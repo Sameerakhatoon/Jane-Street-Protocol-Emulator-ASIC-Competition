@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // MCY miter: the original tse_resp_rule (mutsel = 0) against the mutant
 // (mutsel = 1), same inputs, every output. The configuration is free and
 // constant during a run, as the kill test has it.

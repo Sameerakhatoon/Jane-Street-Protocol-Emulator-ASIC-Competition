@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
 # The UART roles build, and the compiler's report agrees with the hand-computed numbers
 # in the comments of uart_tx.tse and uart_rx.tse at both clocks and both rates.
 . "$(dirname "$0")/lib.sh"

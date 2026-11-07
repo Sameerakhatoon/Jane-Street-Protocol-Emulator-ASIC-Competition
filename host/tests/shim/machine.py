@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """CPython stand-in for MicroPython's machine module (Pin, SPI, freq), wired to rp2.WORLD."""
 from rp2 import WORLD, SimError
 

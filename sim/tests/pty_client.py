@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Serial-port client for the UART pty bridge, standing in for picocom.
 
 usage: pty_client.py SEND_HEX EXPECT_HEX -- SIM_BINARY [SIM_ARGS...]

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Loader command streams: CRC, byte order, coverage and burst splitting."""
 import zlib
 

@@ -5,3 +5,4 @@ protocol p {
   }
   trigger t { match mon.a then mon.a then mon.a then mon.a action emit hit; }
 }
+// SPDX-License-Identifier: Apache-2.0

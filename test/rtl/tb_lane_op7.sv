@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 `timescale 1ns/1ps
 // Opcode 7: DLY d lasts 1 + d (9-bit d), TMR lasts 1 + delay, SIG drives the
 // chip-flag write (mask, val) in its own cycle and lasts 1, EMIT lasts

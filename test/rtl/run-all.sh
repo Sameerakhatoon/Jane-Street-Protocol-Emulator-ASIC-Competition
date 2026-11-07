@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
 # Walk every numbered SystemVerilog test in lexical order. Print a pass/fail summary.
 set -u
 cd "$(dirname "$0")"

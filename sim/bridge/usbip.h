@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 #ifndef TSE_USBIP_H
 #define TSE_USBIP_H
 

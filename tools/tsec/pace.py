@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Paced timelines inside a state machine: `for`, `each` and `~` outside the one-frame shape.
 
 A seq body is a chain of timed actions (rule S4): each action has an ideal

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """CAN receiver with in-bit ACK on the Verilated chip, against a CAN
 transmitter model on a wired-AND bus.
 

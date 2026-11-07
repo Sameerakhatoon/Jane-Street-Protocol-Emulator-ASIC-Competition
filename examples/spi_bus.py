@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """SPI pieces of the SPI demos: stand-ins on the pins, the flash lane's
 host, the controller lane's host and a serprog server.
 

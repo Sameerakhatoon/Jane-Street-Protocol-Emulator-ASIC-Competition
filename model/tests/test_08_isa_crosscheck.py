@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """08: the model's hand transcription against the decoder generated from isa/tse_isa.yaml.
 
 Two independent readings of the same table must agree on every word: which are

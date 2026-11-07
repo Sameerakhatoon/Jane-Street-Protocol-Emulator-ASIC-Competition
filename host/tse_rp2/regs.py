@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Runtime register access over the RP2350's hardware SPI0 (MicroPython).
 
 CS_N = GPIO17 (ui_in[0]), SCK = GPIO18 (ui_in[1]), MOSI = GPIO19 (ui_in[2]),

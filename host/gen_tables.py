@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Export the ISA and register tables into the two portable modules the host side needs.
 
     python3 host/gen_tables.py

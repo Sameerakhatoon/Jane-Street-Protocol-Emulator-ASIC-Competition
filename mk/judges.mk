@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 # Independent protocol judges: verif/judges (Python standard library only).
 # JUDGES_HYP_EXAMPLES sets the Hypothesis examples per property test.
 PY ?= python3

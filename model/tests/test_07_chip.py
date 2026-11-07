@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """07: lanes composed into a chip: chip flags, data window, events, config writes."""
 from model.chip import Chip
 from model.isa import encode as E

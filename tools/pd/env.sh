@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 # tools/pd/env.sh: sourced by the pd scripts. Puts the tt-support-tools venv first on PATH
 # without "activate", whose deactivate() clashes with the OSS CAD Suite's, and drops the
 # cocotb PYTHONPATH so the venv's own packages win.

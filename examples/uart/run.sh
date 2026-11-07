@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
 # UART end to end: timed spec -> tsec build with its timing proof -> TSEI
 # image -> loaded over the byte bus into the Verilated full chip through
 # the pin pipe -> lanes run from SRAM -> host traffic over SPI, RX frames on

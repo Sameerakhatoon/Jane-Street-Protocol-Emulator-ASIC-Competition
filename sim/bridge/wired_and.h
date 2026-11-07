@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 #ifndef TSE_WIRED_AND_H
 #define TSE_WIRED_AND_H
 

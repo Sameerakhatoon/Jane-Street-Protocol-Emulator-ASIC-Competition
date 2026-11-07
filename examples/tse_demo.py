@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Shared pieces of the end-to-end examples.
 
 A demo goes: tsec output (NAME.img, NAME.json) -> image blocks with the pin

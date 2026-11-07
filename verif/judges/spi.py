@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """SPI judge: words on MOSI and MISO framed by chip select.
 
 Written from the Motorola SPI definition. CPOL is the clock level while

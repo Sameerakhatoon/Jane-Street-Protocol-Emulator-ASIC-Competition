@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
 # A serial NOR flash compiled from a timed spec, read over flashrom's serprog
 # protocol. The flash runs on a lane; the SPI controller is either a stand-in
 # made of input pins or (--lanes) a second compiled lane, so both sides of

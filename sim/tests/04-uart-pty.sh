@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
 # UART pty bridge on the real UART test RTL (RTL_DIR): bytes from the pty
 # go onto the ui_in byte bus with a uio_in[0] strobe, the chip's own
 # transmitter sends them on uo_out[0], the adapter decodes them back.

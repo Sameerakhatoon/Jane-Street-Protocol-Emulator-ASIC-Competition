@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 `timescale 1ns/1ps
 // Chip-level bring-up test through the real TT pins, as the RP2350 drives them.
 // Load mode: loaded clear on entry, BEGIN, BIST, program, lane and chip

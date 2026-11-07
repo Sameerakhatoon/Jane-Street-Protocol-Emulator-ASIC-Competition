@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Shared helpers for the model tests: assemble, run, and read pin waveforms."""
 from model.isa import encode as E, pack
 from model.seq import Seq, SeqCfg, SeqIn

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """12: USB low-speed judge: NRZI, stuffing, PID, CRC5, CRC16, EOP, broken packets."""
 import os
 import tempfile

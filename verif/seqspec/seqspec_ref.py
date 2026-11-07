@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Reference trace of one lane, built from the ISA cost model instead of cycle counters.
 
 Dispatch times come from tools.tseasm.isa: cost() for the static part,

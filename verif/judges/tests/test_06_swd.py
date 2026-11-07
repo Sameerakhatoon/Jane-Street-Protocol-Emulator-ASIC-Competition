@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """06: SWD judge: line reset, select sequence, reads, writes and faults."""
 import os
 import tempfile

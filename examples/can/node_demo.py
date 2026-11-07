@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """CAN receiver lane against the simulator's bit-level CAN node, fed with
 struct can_frame records as a raw SocketCAN socket carries them.
 

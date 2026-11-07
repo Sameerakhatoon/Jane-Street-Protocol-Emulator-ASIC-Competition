@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
 # CAN receiver lane against the simulator's bit-level CAN node: specs/can_rx_ack.tse
 # at 500 kbit/s (1 Mbit/s is R311) -> tsec build -> Verilated full chip -> tse_sim
 # --can unix:PATH at 120 clocks per bit, fed struct can_frame records as a raw

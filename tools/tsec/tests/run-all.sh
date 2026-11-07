@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
 # Run every numbered tsec test and report pass and fail totals.
 set -uo pipefail
 

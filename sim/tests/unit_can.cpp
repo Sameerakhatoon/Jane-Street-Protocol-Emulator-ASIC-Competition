@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // CAN bit-level helpers: CRC-15, stuffing, frame build and parse.
 #include <stdio.h>
 #include <string.h>

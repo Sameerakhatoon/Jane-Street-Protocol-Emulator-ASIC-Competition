@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 # Shared test helpers. Source from each test. Each test runs in sim/.
 set -euo pipefail
 

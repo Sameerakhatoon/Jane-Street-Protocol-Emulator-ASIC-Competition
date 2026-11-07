@@ -1,3 +1,4 @@
 protocol p {
   enum k : bits[2] { a = 0, b = 4 }
 }
+// SPDX-License-Identifier: Apache-2.0

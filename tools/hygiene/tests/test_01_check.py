@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Hygiene rules on crafted text, a scratch repository and commit messages.
 
 Bad inputs are assembled at run time so this file passes the check itself.

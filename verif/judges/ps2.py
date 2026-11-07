@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """PS/2 judge: device-to-host and host-to-device frames from CLK and DATA.
 
 Written from the IBM PS/2 keyboard and auxiliary device interface

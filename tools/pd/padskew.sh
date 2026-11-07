@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
 # tools/pd/padskew.sh: tile-internal pin delays and pad skew of a finished full-chip run, for
 # tsec build --pad-min, --pad-max and --pad-skew. OpenSTA on the run's final netlist, SDC and
 # SPEF at each signoff corner; definitions in tools/pd/padskew/padskew.py.

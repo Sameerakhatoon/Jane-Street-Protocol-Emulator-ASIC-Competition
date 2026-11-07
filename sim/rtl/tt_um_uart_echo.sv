@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 `default_nettype none
 // Harness stand-in with the Tiny Tapeout pin list, for tests of the harness
 // and its bridges without the lanes. Not chip RTL.

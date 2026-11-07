@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
 # Nightly speed record: one machine-readable BENCH line per top and a floor
 # on CPU-time cycles per second (steadier than wall time on a busy machine).
 # Floors are set well under the measured speed so only a real regression

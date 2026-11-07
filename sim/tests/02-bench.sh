@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
 # Build the stand-in top and measure raw harness speed (--bench).
 # The UART demo needs well under 1 M cycles/s; the bar here only
 # catches a harness that got accidentally slow.

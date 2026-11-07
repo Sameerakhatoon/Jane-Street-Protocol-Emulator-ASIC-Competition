@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """07: PS/2 judge: device and host frames, parity, ACK and clock timing."""
 import os
 import tempfile

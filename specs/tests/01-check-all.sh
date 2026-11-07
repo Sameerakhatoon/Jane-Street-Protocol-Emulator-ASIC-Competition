@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
 # Every spec in specs/ passes the front end (parse, resolve, check) with zero errors.
 . "$(dirname "$0")/lib.sh"
 n=0

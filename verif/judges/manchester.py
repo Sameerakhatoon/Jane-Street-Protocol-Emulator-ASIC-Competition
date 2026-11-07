@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Manchester judge: bit streams from one line, IEEE 802.3 or G.E. Thomas.
 
 Every bit cell has a transition in its middle; that transition carries

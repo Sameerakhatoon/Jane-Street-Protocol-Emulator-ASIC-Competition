@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """The generated SystemVerilog packages agree with the Python tables (Icarus): decoder on all
 65,536 words, lane register class and word on all 256 addresses, chip bank and word on the host map."""
 import shutil

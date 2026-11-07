@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
 """Build the shared-state product of the flattened chip.
 
 Input: the RTLIL of the flattened chip after clk2fflogic: every flop, latch

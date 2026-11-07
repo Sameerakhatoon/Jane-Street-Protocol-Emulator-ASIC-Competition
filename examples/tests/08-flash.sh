@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
 # SPI flash lane read over serprog: stand-in controller, then a controller
 # lane; JEDEC ID, 16-byte read and status register, judged on the pins.
 . "$(dirname "$0")/lib.sh"

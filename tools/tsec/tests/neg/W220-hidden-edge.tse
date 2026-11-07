@@ -11,3 +11,4 @@ protocol p {
     state b { on rise(clk) -> idle; }
   }
 }
+// SPDX-License-Identifier: Apache-2.0

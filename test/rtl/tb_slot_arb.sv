@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 `timescale 1ns/1ps
 // Non-interference: two arbiters see the same lane-0 requests and different
 // random traffic from every other lane and the host. Lane 0's grants, valid

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Build the whole chip with Icarus and run the cocotb tests in loader_rtl.py and
 session_rtl.py, with the lane count of the host model.
 

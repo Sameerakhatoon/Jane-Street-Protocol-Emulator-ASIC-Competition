@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
 # OpenOCD remote_bitbang, SWD: line reset, JTAG-to-SWD, read DPIDR, write
 # SELECT and CTRL/STAT, read them back, against the stand-in SW-DP on
 # SWCLK ui5 and SWDIO uio2 (an open-drain WiredAnd bus with the chip).

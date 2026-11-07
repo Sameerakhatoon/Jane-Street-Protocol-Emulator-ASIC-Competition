@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """09: the CRC unit against the catalogue and against the textbook definition."""
 from hypothesis import given, settings, strategies as st
 

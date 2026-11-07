@@ -1,3 +1,4 @@
 protocol p {
   frame f { }
 }
+// SPDX-License-Identifier: Apache-2.0

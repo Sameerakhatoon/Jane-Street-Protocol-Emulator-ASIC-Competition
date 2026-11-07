@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """python3 host/tse_check ... or python3 -m tse_check ... with host/ on the path."""
 import os
 import sys

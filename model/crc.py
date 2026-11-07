@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Lane CRC unit and a textbook CRC for the catalogue.
 
 The register is left-aligned: the feedback tap is bit 31 for every width, so

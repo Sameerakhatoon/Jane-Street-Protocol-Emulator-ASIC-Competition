@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Margin sweep against devices with hidden thresholds."""
 from hypothesis import given, settings, strategies as st
 

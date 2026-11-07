@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
 # The images are word for word the ones the first prototype compiler produced for the same runs,
 # after the transmitter's two-word output prologue (idle level, pad on) the prototype lacked:
 # drop it and move the jump targets (opcode 0, target in the low byte) back by two.

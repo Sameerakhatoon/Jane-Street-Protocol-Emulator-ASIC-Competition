@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Generates bridge/pins_gen.h from the pinout tables of the Tiny Tapeout yaml files.
 
 usage: python3 gen_pins.py [-o OUT] [--root DIR]

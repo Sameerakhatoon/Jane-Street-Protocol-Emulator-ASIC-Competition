@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
 """Per-program proofs: the compiler's generated harness on the real lane RTL.
 
 For one spec this script runs the compiler (tools.tsec build --emit proof),

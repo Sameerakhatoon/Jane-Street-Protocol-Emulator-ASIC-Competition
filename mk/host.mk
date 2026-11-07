@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 # Host and loader: host/ (portable host library, RP2350 code, command line).
 PY ?= python3
 HOST_TABLES := host/tse_host/regs_map.py host/tse_rp2/tse_asm_table.py

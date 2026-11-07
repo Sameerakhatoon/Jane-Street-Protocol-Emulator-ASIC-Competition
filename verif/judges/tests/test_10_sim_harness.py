@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """10: judge the simulation harness's pins-only VCD of a UART round trip.
 
 Uses build/echo/tse_sim and tests/pty_client.py under sim/ (TSE_SIM_DIR

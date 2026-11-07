@@ -1,4 +1,4 @@
-// spi_target_mode0_css114.tse: SPI target, mode 0, restated for the CS setup time
+// spi_target_mode0_css142.tse: SPI target, mode 0, restated for the CS setup time
 // the lane really needs.
 //
 // spi_target.tse states a controller whose CS falls only t_css = 100 ns before
@@ -38,7 +38,7 @@
 // by several ticks, but MISO would then show data while the target is not
 // selected. Controllers that hold CS for a whole SCK period before the first
 // edge (250 ns at 2 MHz) meet 142 ns easily.
-protocol spi_target_mode0_css114 {
+protocol spi_target_mode0_css142 {
   param f_sck : freq = 2 MHz;          // fastest SCK the controller will use
   param t_su  : time = 5 ns;           // controller's MISO setup before its sampling edge
   param t_css : time = 142 ns;         // controller's CS fall to first SCK rise
@@ -76,3 +76,4 @@ protocol spi_target_mode0_css114 {
     }
   }
 }
+// SPDX-License-Identifier: Apache-2.0

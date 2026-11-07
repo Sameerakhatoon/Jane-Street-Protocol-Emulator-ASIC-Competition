@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 # src/tse.sdc: LibreLane's default constraints plus the TSE rules.
 read_sdc $::env(SCRIPTS_DIR)/base.sdc
 

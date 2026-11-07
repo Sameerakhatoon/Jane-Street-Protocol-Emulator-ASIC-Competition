@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Command line: python3 -m tools.tseasm prog.s -o prog.hex [-l prog.lst] [-w]
                 python3 -m tools.tseasm -d prog.hex [-o prog.s]
 

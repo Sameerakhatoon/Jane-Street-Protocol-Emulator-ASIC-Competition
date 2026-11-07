@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
 # Runs as uid 0 inside: unshare --user --map-root-user --net
 # usage: tap_inner.sh SIM_BINARY PCAP_FILE
 set -e

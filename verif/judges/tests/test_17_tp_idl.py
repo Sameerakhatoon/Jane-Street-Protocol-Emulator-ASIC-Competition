@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """17: 10BASE-T end of frame: TP_IDL accepted, broken ones flagged."""
 import os
 import tempfile

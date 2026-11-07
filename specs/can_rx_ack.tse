@@ -76,3 +76,4 @@ protocol can_rx_ack {
     state deliver { seq { push host f; } -> idle; }
   }
 }
+// SPDX-License-Identifier: Apache-2.0

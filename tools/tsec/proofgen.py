@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Stage 7, proof generation: a SymbiYosys harness per compiled role, on the real lane RTL.
 
 The harness top instantiates src/tse_lane.sv with what the chip gives it:

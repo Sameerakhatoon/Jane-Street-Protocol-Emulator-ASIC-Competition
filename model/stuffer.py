@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Bit stuffer (TX) and destuffer (RX).
 
 STUFF_CFG: n [3:0] (0 disables), count runs of ones [4], of zeros [5]. After

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 `timescale 1ns/1ps
 // RUN starts from a clean programmer's model without a reset in between: a
 // program leaves X, Y, T, ISR, OSR, PINS, PINDIRS and TFLAG nonzero, the lane

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Structural check of the GitHub workflow and local action files.
 
     python3 .github/check_workflows.py [repo root]

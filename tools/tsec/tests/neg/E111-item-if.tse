@@ -5,3 +5,4 @@ protocol p {
     state idle { on fall(rx) -> idle; }
   }
 }
+// SPDX-License-Identifier: Apache-2.0

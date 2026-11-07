@@ -117,3 +117,4 @@ protocol usb_ls_device {
     state sent      { seq { emit report_sent; } -> idle; }
   }
 }
+// SPDX-License-Identifier: Apache-2.0

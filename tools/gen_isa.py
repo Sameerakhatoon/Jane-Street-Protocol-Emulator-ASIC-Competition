@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
 """Generate the SystemVerilog ISA package and the Python ISA table from isa/tse_isa.yaml.
 
 The table is checked before anything is written. It stops with a message on a

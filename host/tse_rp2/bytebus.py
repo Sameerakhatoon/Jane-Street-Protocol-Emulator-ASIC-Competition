@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """PIO programs for the load-mode byte bus (MicroPython on the RP2350B).
 
 One 16-bit entry per byte, two entries per TX FIFO word, low half first:

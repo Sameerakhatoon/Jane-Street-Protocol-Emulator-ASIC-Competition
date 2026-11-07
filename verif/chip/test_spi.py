@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """cocotb: the run-mode SPI target of the whole chip: register reads and writes on
 the host map, bursts, STAT, the data window alias, and the refusals while a lane
 runs (BEGIN, lane configuration, a running lane's program window).

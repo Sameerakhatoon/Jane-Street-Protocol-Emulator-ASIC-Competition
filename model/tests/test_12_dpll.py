@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """12: DPLL: free-running strobes, fractional periods, hard sync, lock and drift."""
 import random
 

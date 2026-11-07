@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 `timescale 1ns/1ps
 // Clock C and guards: C counts cycles from RUN; TMR cclr makes C read 0 in the
 // next cycle; "TMR cclr, gsel=1 in cycle c, then WAIT 1, FLAG, GUARD" ends the

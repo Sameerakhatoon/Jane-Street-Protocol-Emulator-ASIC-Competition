@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """tools.tseasm.timing agrees with the sequencer spec on random straight-line blocks and loops.
 
 Each case places a random block (or a loop body closed by JMP ALWAYS) at a

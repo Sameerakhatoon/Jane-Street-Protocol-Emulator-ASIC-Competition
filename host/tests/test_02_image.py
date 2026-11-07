@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """TSEI images: round trip, every corruption detected, built from assembled programs."""
 import os
 

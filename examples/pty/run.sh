@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
 # The compiled UART reached from a Linux pty: tsec build of the UART spec,
 # image loaded into the Verilated chip, the simulator's pty bridge on the
 # lane pins, a serial client on the pty, the host echoing RX lane to TX

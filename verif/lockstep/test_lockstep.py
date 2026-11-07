@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Lockstep tests: tse_seq against the reference model on Hypothesis programs.
 
 expect_fail marks a known difference between the RTL and the ISA; the

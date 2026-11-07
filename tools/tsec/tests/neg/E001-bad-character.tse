@@ -1,3 +1,4 @@
 protocol p {
   param baud : freq = 115200 Hz $;
 }
+// SPDX-License-Identifier: Apache-2.0

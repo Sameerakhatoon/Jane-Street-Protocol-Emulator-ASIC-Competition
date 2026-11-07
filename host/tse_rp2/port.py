@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """MicroPython time functions, or the test shim's simulated time under CPython."""
 import time
 

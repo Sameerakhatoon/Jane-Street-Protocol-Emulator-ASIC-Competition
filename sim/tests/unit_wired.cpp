@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // WiredAnd resolver and pin names. Prints one line per check, exit 1 on a failure.
 #include <stdio.h>
 #include <string.h>

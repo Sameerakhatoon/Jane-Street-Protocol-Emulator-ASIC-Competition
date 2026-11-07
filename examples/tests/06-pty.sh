@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
 # A line typed on the simulator's UART pty comes back through the compiled
 # receive and transmit lanes; both lines are judged.
 . "$(dirname "$0")/lib.sh"

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """TSE host command line.
 
     python3 host/tse_cli.py [--target T] [--state FILE] CMD [ARGS] [+ CMD [ARGS] ...]

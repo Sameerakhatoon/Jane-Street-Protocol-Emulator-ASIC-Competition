@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """The build report: listing, obligation table and verdict per role.
 
 The golden runs in tests/golden pin this text line for line.

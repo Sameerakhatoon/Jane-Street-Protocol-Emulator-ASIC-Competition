@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """The chip's measurements against the I2C judge's on the same trace.
 
 The judge (verif.judges.i2c) reads SCL and SDA from the pins-only VCD and

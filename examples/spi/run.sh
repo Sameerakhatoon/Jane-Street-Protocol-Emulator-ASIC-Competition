@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# SPI mode 0 lanes end to end. target: spi_target_mode0_css114 against a
+# SPDX-License-Identifier: Apache-2.0
+# SPI mode 0 lanes end to end. target: spi_target_mode0_css142 against a
 # stand-in controller on the input pins. controller: spi_controller_mode0,
 # built with --pad-skew 0 (its SCK and MOSI edges share an instant, so the
 # default skew between two pads breaks the edge budget), against a stand-in
@@ -22,7 +23,7 @@ case "$ROLE" in
     target)
         # back-to-back bytes need SCK <= 1.99 MHz and the first rise 142 ns after CS (R314,
         # 117 ns for the lane plus 25 ns of pad skew between CS and SCK)
-        SPEC=spi_target_mode0_css114; OPTS=(-D t_css=142e-9 -D f_sck=1.875e6); DEMO=(--half 16)
+        SPEC=spi_target_mode0_css142; OPTS=(-D t_css=142e-9 -D f_sck=1.875e6); DEMO=(--half 16)
         JUDGE=(--map cs=ui_in4 --map clk=ui_in5 --map mosi=ui_in6 --map miso=uo_out1) ;;
     controller)
         SPEC=spi_controller_mode0; OPTS=(--pad-skew 0); DEMO=()

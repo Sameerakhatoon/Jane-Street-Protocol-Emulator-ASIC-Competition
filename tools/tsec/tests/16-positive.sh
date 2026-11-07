@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
 # Every file in pos/ passes the front end; those whose first line is `// build` also build.
 . "$(dirname "$0")/lib.sh"
 for f in $TESTS/pos/*.tse; do

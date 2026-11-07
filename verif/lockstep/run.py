@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Build seq_harness with the RTL in $RTL_DIR and run test_lockstep with cocotb 2.1.
 
 SIM=icarus|verilator. TESTCASE=name runs one test. Exit status 1 if any test

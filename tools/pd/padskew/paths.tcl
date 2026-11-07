@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 # tools/pd/padskew/paths.tcl: OpenSTA on one corner of a finished run (LIBS, NETLIST, SDC,
 # SPEF from padskew.sh). Prints the worst rise and fall path of every lane pin for max and
 # min delay: outputs from the clock to the port, inputs from the port to the capturing flop.

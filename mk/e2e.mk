@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 # End-to-end examples: a spec compiled, loaded into the Verilated full chip
 # through the host library, run, and judged from the pins-only trace.
 .PHONY: e2e-lint e2e-uart e2e-i2c e2e-combo e2e-flash e2e-test

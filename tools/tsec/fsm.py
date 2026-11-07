@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Stage 4b, state-machine lowering: any role's states and edges to lane IR.
 
 The paced-frame lowering (lower.py) handles one shape exactly and finds

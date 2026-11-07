@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
 # tools/pd/harden.sh: one local hardening run, the same LibreLane command the Tiny Tapeout GDS action runs.
 # usage: tools/pd/harden.sh [tag]   (log in harden-<tag>.log, finished run copied to runs/keep/<tag>)
 # LibreLane is called directly: tt_tool.py --harden builds the same command line but stops on a

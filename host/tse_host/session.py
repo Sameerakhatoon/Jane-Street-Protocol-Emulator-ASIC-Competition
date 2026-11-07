@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """The load sequence and runtime access, written once for every link.
 
 load(): enter load mode (rst_n high, then low: loaded clears), BEGIN, BIST,

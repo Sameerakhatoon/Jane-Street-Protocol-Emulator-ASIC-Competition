@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 # Mutation coverage of tse_codec. test_eq: does the mutant change any output
 # (original and mutant side by side, legal configurations, every input)?
 # test_fm: the kill test, the round-trip proof on the mutant.

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Stage 5c, timing of state machines: an explicit-state search over every timing.
 
 The state of the search is the lane (pc, slot phase, the two buffer tags,

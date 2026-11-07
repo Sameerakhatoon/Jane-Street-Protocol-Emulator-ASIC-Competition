@@ -202,3 +202,4 @@ protocol i2c_controller_sm {
     }
   }
 }
+// SPDX-License-Identifier: Apache-2.0

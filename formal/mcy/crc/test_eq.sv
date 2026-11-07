@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // MCY miter: the original tse_crc (mutsel = 0) against the mutant
 // (mutsel = 1) on the same inputs, every output. The configuration is free
 // but constant during a run, as configuration words are.

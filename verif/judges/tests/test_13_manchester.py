@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """13: Manchester judge: both conventions, burst framing, missing transitions."""
 import os
 import tempfile

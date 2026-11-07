@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """The data window plan: which words of the shared data window a role uses.
 
 The data window is shared by the two lanes and the host: 128 words of 32

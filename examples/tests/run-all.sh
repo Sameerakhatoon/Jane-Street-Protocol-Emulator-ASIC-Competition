@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
 # Walk every numbered example test in lexical order. Exit 77 means skipped.
 set -u
 cd "$(dirname "$0")"

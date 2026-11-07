@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 # SRAM output paths: proof that the program SRAM's read data never steers the
 # SRAM's own inputs in the same cycle (the layout constraints exempt those
 # paths from timing on that ground), with planted bugs that must fail.

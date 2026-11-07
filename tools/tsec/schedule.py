@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Stage 5a, scheduling: labels, the delay solver and the pacing strategy search.
 
 Issue times are monotone in each delay, so coordinate descent works: for each

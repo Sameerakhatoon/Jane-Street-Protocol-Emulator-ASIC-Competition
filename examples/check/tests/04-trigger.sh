@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
 # Trigger mode: two matching writes among seven transactions; each fires
 # once, its TRIG record carries the cycle of the STOP that completed the
 # sequence, and the trigger-out pin rises a fixed delay after that STOP.

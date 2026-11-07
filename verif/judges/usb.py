@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """USB low-speed judge: packets from D+ and D-.
 
 Written from the USB 2.0 specification, chapter 7 (electrical: line

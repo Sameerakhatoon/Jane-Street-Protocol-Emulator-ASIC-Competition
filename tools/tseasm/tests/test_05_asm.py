@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Assembler: the UART TX example, directives, and errors with line numbers."""
 from pathlib import Path
 

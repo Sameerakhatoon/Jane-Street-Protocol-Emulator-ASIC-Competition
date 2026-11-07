@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """tse_codec against model.codec."""
 from hypothesis import strategies as st
 

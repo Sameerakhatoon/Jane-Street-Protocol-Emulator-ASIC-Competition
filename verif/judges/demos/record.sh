@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
 # Record the pins-only traces of the stand-in demos for stand_in.txt:
 # real OpenOCD over remote_bitbang (JTAG IDCODE, SWD DPIDR and CTRL/STAT)
 # and Linux ping through a TAP device (no root, a user namespace).

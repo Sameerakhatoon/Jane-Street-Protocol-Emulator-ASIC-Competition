@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
 # Time ownership: with no busy adapter the harness sleeps (no cycles);
 # with --free-run it runs; --cycles ends the run on its own.
 . "$(dirname "$0")/lib.sh"

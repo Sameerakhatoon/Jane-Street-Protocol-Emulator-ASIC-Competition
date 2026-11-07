@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // MCY miter: the original tse_stuffer (mutsel = 0) against the mutant
 // (mutsel = 1), same inputs, every output. Legal configurations only, the
 // same ones the kill test assumes: n from 1 to 15, at least one polarity,

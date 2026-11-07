@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Stage 3a, resolve: the symbol table and constant evaluation.
 
 Walks the items in source order (no forward references), applies -D

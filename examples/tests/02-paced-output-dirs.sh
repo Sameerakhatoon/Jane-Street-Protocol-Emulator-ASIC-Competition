@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
 # The paced-frame lowering sets the output pins to their idle level and turns
 # their pads on before the anchor, so the UART transmitter image needs no
 # prologue from the host: the demo helper finds SET PINDIRS and starts at 0.

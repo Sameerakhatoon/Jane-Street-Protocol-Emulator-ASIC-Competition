@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Check the judge cases in manifest.txt before any demo trace exists.
 
 Every case is named after a spec in specs/. For every case: the expect file

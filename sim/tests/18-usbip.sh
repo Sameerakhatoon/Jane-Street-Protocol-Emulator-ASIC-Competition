@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
 # USB/IP framing skeleton: device list, import, URB submit and unlink replays.
 . "$(dirname "$0")/lib.sh"
 

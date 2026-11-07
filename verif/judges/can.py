@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """CAN judge: data and remote frames from the logical bus level.
 
 Written from the Bosch CAN 2.0 specification (ISO 11898-1 frame layer).

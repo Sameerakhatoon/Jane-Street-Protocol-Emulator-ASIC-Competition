@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 # Shared helper for the numbered SystemVerilog tests: compile one testbench
 # against every file in src/ with the SRAM simulation model, run it, and pass
 # only if it prints "PASS <tb>" and no FAIL line.

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """The executable semantics: what a spec promises, in exact ticks.
 
 This module turns the timing statements of a frame into obligations, the

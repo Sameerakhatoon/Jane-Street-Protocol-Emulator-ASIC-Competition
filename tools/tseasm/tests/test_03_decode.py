@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Decoder over all 65,536 words, illegal words, costs and data-slot durations."""
 from collections import Counter
 

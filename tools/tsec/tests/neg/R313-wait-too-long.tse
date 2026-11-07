@@ -9,3 +9,4 @@ protocol p {
     state t { seq { drive a = 0; drive b = 0; } -> idle; }
   }
 }
+// SPDX-License-Identifier: Apache-2.0

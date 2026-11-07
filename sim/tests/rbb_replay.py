@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Replays OpenOCD remote_bitbang traffic against tse_sim --rbb.
 
 usage: rbb_replay.py PORT jtag|swd

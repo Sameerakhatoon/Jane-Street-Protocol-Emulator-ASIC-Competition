@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """08: the command line: verdict line, expect mode and exit status."""
 import io
 import os

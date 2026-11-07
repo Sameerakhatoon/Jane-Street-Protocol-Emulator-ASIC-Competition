@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Stage 5e, timing of frame roles: layout, delay solving, the proof of every obligation.
 
 The search runs over (pc, slot phase, the fetch buffer, the flag JMP TOUT

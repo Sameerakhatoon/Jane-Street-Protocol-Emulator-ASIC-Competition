@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Links: how a session reaches the chip pins.
 
 A link has five operations, and the session needs nothing else:

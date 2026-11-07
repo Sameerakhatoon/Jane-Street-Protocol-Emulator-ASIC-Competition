@@ -3,3 +3,4 @@ protocol p {
     eof : bits[7] = 0xFF;
   }
 }
+// SPDX-License-Identifier: Apache-2.0

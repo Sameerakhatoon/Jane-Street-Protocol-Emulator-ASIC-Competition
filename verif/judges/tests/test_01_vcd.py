@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """01: the streaming VCD reader: header forms, names, vectors, levels, size."""
 import time
 

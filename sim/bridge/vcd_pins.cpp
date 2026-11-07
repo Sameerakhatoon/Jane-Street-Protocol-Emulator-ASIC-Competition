@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 #include "vcd_pins.h"
 
 // Five 8-bit buses then rst_n, then three wires per open-drain bus. VCD

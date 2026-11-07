@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 # tools/pd/magic-flags/clip.py: one flattened GDS per Magic flag, a window of MARGIN um around
 # the flag. Run by magic-flags.sh inside the LibreLane image (klayout -b -r).
 import os

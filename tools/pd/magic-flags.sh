@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
 # tools/pd/magic-flags.sh: check every Magic DRC flag of a run against the real layout.
 # The flow's Magic DRC reads the SRAM as an abstract (MAGIC_DRC_MAGLEFS), so a flag can come
 # from the abstract alone. This clips a window around each flag out of the run's real GDS

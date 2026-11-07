@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Formal harness for tse_slot_arb, immediate assertions only.
 //  NI:    two copies of the arbiter share the frame sync and lane K's
 //         requests; every other lane and the host request anything at all,

@@ -1,3 +1,4 @@
 protocol p {
   param mask : count = 0b102;
 }
+// SPDX-License-Identifier: Apache-2.0

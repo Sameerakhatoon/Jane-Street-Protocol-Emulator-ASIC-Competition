@@ -1,0 +1,15 @@
+TSE: Timed Spec Engine
+Copyright 2026 Sameera Khatoon
+
+Licensed under the Apache License, Version 2.0 (see LICENSE).
+
+This repository started from the Tiny Tapeout IHP CMOS5L Verilog template
+(ttihp-verilog-template), Copyright Tiny Tapeout, licensed under the Apache
+License, Version 2.0. The template's files that this project did not change
+carry no SPDX line of their own (tools/spdx.py leaves them out).
+
+Not included, used from their own installations: the IHP SG13CMOS5L process
+design kit (cell, IO and SRAM models; Apache License, Version 2.0) and the
+open source tools named in the README (Yosys, SymbiYosys, Icarus Verilog,
+Verilator, cocotb, LibreLane, OpenOCD and others), each under its own
+license.

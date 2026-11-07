@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Repository hygiene check.
 
     python3 tools/hygiene/check.py             check the files

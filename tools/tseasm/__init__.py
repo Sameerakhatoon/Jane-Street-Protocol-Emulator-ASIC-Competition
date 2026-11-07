@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """tseasm: TSE lane assembler, disassembler and the ISA and register tables.
 
     from tools.tseasm import isa, regs          # tables and encode/decode/cost

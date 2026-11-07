@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
 # tools/pd/harden-variant.sh: harden another top (for example the full chip) without touching
 # the committed default. Builds a throwaway Tiny Tapeout project in runs/<tag>/proj from the
 # given info.yaml and config, with a copy of src/, and runs LibreLane there.

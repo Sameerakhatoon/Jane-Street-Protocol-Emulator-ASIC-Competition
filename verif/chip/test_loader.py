@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """cocotb: the load-mode byte bus of the whole chip, driven with the host
 library's streams (host/tse_host/frames.py): random images load and read
 back, the COMMIT CRC, bad CRC, a corrupted byte, a truncated frame,

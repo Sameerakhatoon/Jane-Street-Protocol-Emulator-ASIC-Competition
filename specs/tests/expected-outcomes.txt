@@ -42,18 +42,18 @@ spi_controller_mode0.tse|--pad-skew 0 --fclk 50e6|2|R310|output placement outsid
 spi_target.tse|-|2|R314|re-arm too late in role 'tgt': the wait for rise(sck) first waits for the level fall(sck) leaves, but starts 7 cycles after rise(sck) may already be visible, so it misses that rise(sck) and acts on the next one
 spi_target.tse|-D t_css=114e-9|2|R314|re-arm too late in role 'tgt': the wait for rise(sck) first waits for the level fall(sck) leaves, but starts 7 cycles after rise(sck) may already be visible, so it misses that rise(sck) and acts on the next one
 spi_target.tse|-D t_css=130e-9 -D f_sck=3.5e6 --fclk 50e6|2|R314|re-arm too late in role 'tgt': the wait for rise(sck) first waits for the level fall(sck) leaves, but starts 7 cycles after rise(sck) may already be visible, so it misses that rise(sck) and acts on the next one
-spi_target_mode0_css114.tse|-|0|-|-
-spi_target_mode0_css114.tse|-D t_css=130e-9 -D f_sck=3.5e6 --fclk 50e6|2|R314|re-arm too late in role 'tgt': the wait for rise(sck) first waits for the level fall(sck) leaves, but starts 7 cycles after rise(sck) may already be visible, so it misses that rise(sck) and acts on the next one
-spi_target_mode0_css114.tse|--fclk 50e6|2|R314|re-arm too late in role 'tgt': the wait for rise(sck) first waits for the level fall(sck) leaves, but starts 1 cycles after rise(sck) may already be visible, so it misses that rise(sck) and acts on the next one
+spi_target_mode0_css142.tse|-|0|-|-
+spi_target_mode0_css142.tse|-D t_css=130e-9 -D f_sck=3.5e6 --fclk 50e6|2|R314|re-arm too late in role 'tgt': the wait for rise(sck) first waits for the level fall(sck) leaves, but starts 7 cycles after rise(sck) may already be visible, so it misses that rise(sck) and acts on the next one
+spi_target_mode0_css142.tse|--fclk 50e6|2|R314|re-arm too late in role 'tgt': the wait for rise(sck) first waits for the level fall(sck) leaves, but starts 1 cycles after rise(sck) may already be visible, so it misses that rise(sck) and acts on the next one
 spi_target_mode2.tse|-|2|R314|re-arm too late in role 'tgt': the wait for fall(sck) first waits for the level rise(sck) leaves, but starts 7 cycles after fall(sck) may already be visible, so it misses that fall(sck) and acts on the next one
 spi_target_mode2.tse|-D t_css=114e-9|2|R314|re-arm too late in role 'tgt': the wait for fall(sck) first waits for the level rise(sck) leaves, but starts 7 cycles after fall(sck) may already be visible, so it misses that fall(sck) and acts on the next one
 spi_target.tse|-D t_css=117e-9 -D f_sck=1.875e6|2|R314|re-arm too late in role 'tgt': the wait for rise(sck) first waits for the level fall(sck) leaves, but starts 1 cycles after rise(sck) may already be visible, so it misses that rise(sck) and acts on the next one
-spi_target_mode0_css114.tse|-D t_css=117e-9 -D f_sck=1.875e6|2|R314|re-arm too late in role 'tgt': the wait for rise(sck) first waits for the level fall(sck) leaves, but starts 1 cycles after rise(sck) may already be visible, so it misses that rise(sck) and acts on the next one
+spi_target_mode0_css142.tse|-D t_css=117e-9 -D f_sck=1.875e6|2|R314|re-arm too late in role 'tgt': the wait for rise(sck) first waits for the level fall(sck) leaves, but starts 1 cycles after rise(sck) may already be visible, so it misses that rise(sck) and acts on the next one
 spi_target_mode2.tse|-D t_css=117e-9 -D f_sck=1.875e6|2|R314|re-arm too late in role 'tgt': the wait for fall(sck) first waits for the level rise(sck) leaves, but starts 1 cycles after fall(sck) may already be visible, so it misses that fall(sck) and acts on the next one
 spi_target.tse|-D t_css=142e-9 -D f_sck=1.875e6|0|-|-
-spi_target_mode0_css114.tse|-D t_css=142e-9 -D f_sck=1.875e6|0|-|-
-spi_target_mode0_css114.tse|-D t_css=121e-9 --pad-min 0 --pad-max 21 --pad-skew 3.5|0|-|-
-spi_target_mode0_css114.tse|-D t_css=120e-9 --pad-min 0 --pad-max 21 --pad-skew 3.5|2|R314|re-arm too late in role 'tgt': the wait for rise(sck) first waits for the level fall(sck) leaves, but starts 0 cycles after rise(sck) may already be visible, so it misses that rise(sck) and acts on the next one
+spi_target_mode0_css142.tse|-D t_css=142e-9 -D f_sck=1.875e6|0|-|-
+spi_target_mode0_css142.tse|-D t_css=121e-9 --pad-min 0 --pad-max 21 --pad-skew 3.5|0|-|-
+spi_target_mode0_css142.tse|-D t_css=120e-9 --pad-min 0 --pad-max 21 --pad-skew 3.5|2|R314|re-arm too late in role 'tgt': the wait for rise(sck) first waits for the level fall(sck) leaves, but starts 0 cycles after rise(sck) may already be visible, so it misses that rise(sck) and acts on the next one
 spi_target_mode2.tse|-D t_css=142e-9 -D f_sck=1.875e6|0|-|-
 spi_target_mode2.tse|-D t_css=130e-9 -D f_sck=3.5e6 --fclk 50e6|2|R314|re-arm too late in role 'tgt': the wait for fall(sck) first waits for the level rise(sck) leaves, but starts 7 cycles after fall(sck) may already be visible, so it misses that fall(sck) and acts on the next one
 # Modes 1 and 3: the first edge's wait can be armed late, and at 3 MHz (2.5 MHz at 50 MHz) the

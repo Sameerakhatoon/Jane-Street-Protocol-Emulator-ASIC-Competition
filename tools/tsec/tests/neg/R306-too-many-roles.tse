@@ -18,3 +18,4 @@ protocol p {
     state f { seq { sample rx expect 0 for 1 us; } -> idle; }
   }
 }
+// SPDX-License-Identifier: Apache-2.0

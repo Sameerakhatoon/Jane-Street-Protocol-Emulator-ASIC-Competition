@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 `timescale 1ns/1ps
 // LDW and STW on the data window. For every phase of the dispatch cycle c
 // against the 16-cycle data frame: STW lasts s + 1 - c and LDW s + 2 - c,

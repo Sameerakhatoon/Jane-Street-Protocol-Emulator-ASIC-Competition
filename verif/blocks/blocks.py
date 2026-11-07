@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Block-level lockstep: one RTL assist against its model, cycle by cycle.
 
 Each cycle the inputs are applied after the clock edge, the RTL outputs are

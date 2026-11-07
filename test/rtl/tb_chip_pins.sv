@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 `timescale 1ns/1ps
 // Pin-level timing of the chip side through the Tiny Tapeout pins:
 //   LANE_IN sample delay in half cycles (1, 2 and 3, one inverted) for an input

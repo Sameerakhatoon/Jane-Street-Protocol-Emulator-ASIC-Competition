@@ -39,3 +39,4 @@ protocol full {
 
   trigger first { match node.sent then rise(rx) within 10 us action emit late; }
 }
+// SPDX-License-Identifier: Apache-2.0

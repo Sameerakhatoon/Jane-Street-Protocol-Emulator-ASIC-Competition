@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """11: line codes: USB NRZI, Manchester conventions, decode of encode, violations."""
 from hypothesis import given, settings, strategies as st
 

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """The code that must run on MicroPython stays inside its subset; generated tables are current."""
 import ast
 import os

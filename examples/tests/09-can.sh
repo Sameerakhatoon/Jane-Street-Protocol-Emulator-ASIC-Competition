@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
 # CAN receive with the ACK in the slot at 500 and 125 kbit/s, judged on the bus;
 # 250 kbit/s is built with its timing proof.
 . "$(dirname "$0")/lib.sh"

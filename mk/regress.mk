@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 # Whole-repository regression: every area's targets, one step after the
 # other with one make job, a log per step in build/regress/ and a summary
 # table at the end. A step is name=target[,target...];

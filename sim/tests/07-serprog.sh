@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
 # serprog framing: replay flashrom's init sequence, a JEDEC ID and a read
 # against the behavioural flash, with model time advancing per job.
 . "$(dirname "$0")/lib.sh"

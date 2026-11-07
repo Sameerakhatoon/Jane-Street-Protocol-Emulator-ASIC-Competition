@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
 # The I2C target lane in Fast and Standard mode, answering a simulated
 # controller: writes, a read with a repeated START and clock stretching
 # while the host answers, a NACK for another address and a host-decided

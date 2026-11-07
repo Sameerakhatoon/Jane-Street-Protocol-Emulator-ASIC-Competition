@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Frame roles: lowering, timing, configuration, proof checks and every rejection reason."""
 import pytest
 from hypothesis import given, settings

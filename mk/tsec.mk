@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 # Compiler: tsec in tools/tsec, specs in specs/.
 PY ?= python3
 TSEC_SRC := $(shell find tools/tsec -name '*.py' -o -name '*.sh') $(wildcard specs/*.tse)

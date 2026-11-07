@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """03: SPI judge in all four modes, with framing and setup/hold faults."""
 import os
 import tempfile

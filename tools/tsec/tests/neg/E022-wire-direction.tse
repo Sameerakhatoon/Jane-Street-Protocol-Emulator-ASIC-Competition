@@ -1,3 +1,4 @@
 protocol p {
   wire x : sideways;
 }
+// SPDX-License-Identifier: Apache-2.0

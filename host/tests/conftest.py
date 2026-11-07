@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Test paths: host/ for tse_host and tse_rp2, the repository root for tools.tseasm."""
 import os
 import sys

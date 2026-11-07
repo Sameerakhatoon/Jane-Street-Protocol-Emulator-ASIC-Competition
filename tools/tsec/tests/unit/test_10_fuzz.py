@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """The front end never crashes: any input gives a tree or a diagnostic, never a Python exception.
 
 TSEC_FUZZ_EXAMPLES sets the examples per test (default 1000; make tsec-fuzz runs 2500 for each

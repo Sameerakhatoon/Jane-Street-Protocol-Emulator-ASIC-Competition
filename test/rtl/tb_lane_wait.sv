@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 `timescale 1ns/1ps
 // WAIT: PIN indices 4 to 7 end on any change of the pin after dispatch (either
 // direction, in the cycle the change is visible); the alternate condition can

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """tse_stuffer against model.stuffer."""
 from hypothesis import strategies as st
 

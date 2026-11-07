@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """tse_resp_rule (K = 2, 16-bit patterns) against model.rules, both clock modes."""
 from hypothesis import strategies as st
 

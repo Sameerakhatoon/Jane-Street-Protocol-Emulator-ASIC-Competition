@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Select, self-test, load, verify and run TSE on the Tiny Tapeout demo board.
 
 The stock Tiny Tapeout SDK selects the project, sets the clock and drives

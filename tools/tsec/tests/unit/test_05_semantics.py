@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """The executable semantics, rule by rule (S1 to S7 in semantics.py)."""
 from fractions import Fraction as Fr
 

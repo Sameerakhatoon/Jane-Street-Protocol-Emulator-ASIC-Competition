@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """14: 10BASE-T judge: preamble, SFD, MAC frame, FCS, size, rate."""
 import os
 import tempfile

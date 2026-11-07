@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Syntax tree for TSE.
 
 Plain dataclasses, one per grammar rule. Every node carries a source span

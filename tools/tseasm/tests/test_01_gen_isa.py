@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """ISA table and generator: the table loads, gives the reference encodings, and broken tables fail loudly."""
 import copy
 

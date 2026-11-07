@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 # Protocol specs: specs/*.tse, their judge cases in specs/judge and their tests in specs/tests.
 SPECS_SRC := $(wildcard specs/*.tse) $(wildcard specs/tests/*.sh) $(wildcard specs/tests/*.txt) \
              $(wildcard specs/judge/*.txt specs/judge/*.expect specs/judge/*.py)

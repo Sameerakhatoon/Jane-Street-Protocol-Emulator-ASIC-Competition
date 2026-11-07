@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
 # Every spec has a judge case, every case's expect file and options agree with its spec
 # (checked on traces written from the expected frames), and the manifest runs: a case
 # without its demo trace is an allowed skip.

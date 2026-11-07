@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Stand-in for a lane answering an edge: 2-flop synchronizer, WAIT retires in
 // the cycle the synchronized value changes, the reacting instruction issues one
 // cycle later (D = 1), and the output flop shows it one cycle after that.

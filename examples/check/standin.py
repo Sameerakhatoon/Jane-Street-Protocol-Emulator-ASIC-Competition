@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """An outside I2C controller and its target as one scheduled waveform.
 
 Check mode watches a bus the chip does not drive, so the bus here is a

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """CPython stand-in for the Tiny Tapeout SDK DemoBoard, wired to rp2.WORLD.
 
 Every object the board code reaches through the SDK (the board, a project,

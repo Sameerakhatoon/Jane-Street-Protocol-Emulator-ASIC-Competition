@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """ISA version 1 of the TSE lane: field layout, decode, encode, illegal words.
 
 Hand transcription of the ISA, kept independent of the generated decoder in

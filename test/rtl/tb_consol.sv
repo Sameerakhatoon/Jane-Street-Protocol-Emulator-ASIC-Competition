@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 `timescale 1ns/1ps
 // Sequencer and response rule checks: two-entry fetch buffer, WAIT alternate
 // condition, CSRW config cost, response rules in pin-edge mode with a tick

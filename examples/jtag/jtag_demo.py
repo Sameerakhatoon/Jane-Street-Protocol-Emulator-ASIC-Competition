@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Unmodified OpenOCD reads a JTAG IDCODE through the chip's JTAG probe lane.
 
 Lane 0 runs jtag_probe (specs/jtag_probe.tse): TCK, TMS and TDI on the uio

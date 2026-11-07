@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 # Physical design: local LibreLane runs. Needs the venv and PDK under ~/ttsetup and tt-support-tools in tt/.
 PD_TOP := $(shell sed -n 's/^ *top_module: *"\([^"]*\)".*/\1/p' info.yaml)
 .PHONY: harden harden-probe precheck pd-gl-test pd-lint

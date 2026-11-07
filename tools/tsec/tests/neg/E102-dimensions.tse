@@ -1,3 +1,4 @@
 protocol p {
   param t : time = 4.7 us + 400 kHz;
 }
+// SPDX-License-Identifier: Apache-2.0

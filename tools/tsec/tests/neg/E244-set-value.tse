@@ -6,3 +6,4 @@ protocol p {
     state idle { on fall(rx) do { set b = 16; set w = b; set w = parity(b); } -> idle; }
   }
 }
+// SPDX-License-Identifier: Apache-2.0

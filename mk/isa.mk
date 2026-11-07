@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 # ISA and generators: tables in isa/, generators in tools/, assembler and
 # timing API in tools/tseasm, sequencer spec in src/tse_seq_spec.sv with its
 # test in verif/seqspec.

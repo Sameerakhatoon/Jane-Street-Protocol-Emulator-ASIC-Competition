@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """18: SWD as a probe sees it: turnaround count, select sequences, drivers."""
 import os
 import tempfile

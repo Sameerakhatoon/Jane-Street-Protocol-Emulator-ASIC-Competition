@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Formal harness for tse_codec, immediate assertions only. The encoder's
 // line feeds the decoder of the same instance with ideal strobes: a free
 // input adv moves a bit through its phases, any number of idle cycles apart.
