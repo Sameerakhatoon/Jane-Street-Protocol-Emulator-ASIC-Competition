@@ -8,31 +8,35 @@
 // 108.3 ns after the fall at 60 MHz (80 to 125 ns at 50 MHz), pads 0 to 25 ns
 // included. So that spec is rejected (R311, fix t_css >= 114 ns) and stays
 // rejected until a response rule can drive the first bit (an RTL change: a
-// rule drive that ends on another pin's edge). This file is the same target
-// with the controller requirement stated honestly: CS must fall at least
-// 114 ns before the first SCK rise (130 ns at 50 MHz). Every other obligation
-// is unchanged.
+// rule drive that ends on another pin's edge, which the RTL does not have).
+// This file is the same target with the controller requirement the RTL
+// lane really meets. The name keeps the first estimate, 114 ns, because the
+// demo and the judge manifest refer to it.
 //
-// Compiler results (one tick = 16.67 ns at 60 MHz, 20 ns at 50 MHz):
+// Two limits, the second one binding (one tick = 16.67 ns at 60 MHz, 20 ns at 50 MHz):
 //
-//   obligation          window                   60 MHz, 4 MHz SCK, t_css 114 ns     50 MHz, 3.5 MHz SCK, t_css 130 ns
-//   first_bit  OB-WIN   [0, t_css - t_su]        [0, 109 ns]: 66.7 to 108.3,          [0, 125 ns]: 80 to 125,
-//                                                margin 0.7 ns                        margin 0
-//   mosi       OB-WIN   [0, half - t_mo]         [0, 105 ns]: 16.7 to 91.7,           [0, 122.9 ns]: 20 to 105,
-//                                                margin 13.3 ns                       margin 17.9 ns
-//   miso       OB-WIN   [0, half - t_su]         [0, 120 ns]: 66.7 to 108.3,          [0, 137.9 ns]: 80 to 125,
-//                                                margin 11.7 ns                       margin 12.9 ns
-//   abort on rise(cs_n) stated bound             within 54 cycles (0.9 us)
+//   first_bit  OB-WIN   [0, t_css - t_su]    MISO 67.0 to 86.2 ns after the fall with the
+//                                            tile pads (0.32 to 2.87 ns), 66.7 to 104.3 ns
+//                                            with the full pad path (0 to 21 ns): needs
+//                                            t_css >= 91.2 ns / 109.3 ns
+//   first rise          OB-REARM             after the fall the lane drives MISO and sets
+//                                            its counter before it waits for the first
+//                                            rise: 7 ticks, so t_css >= 116.7 ns at 60 MHz
+//                                            (116.6 ns is rejected), 140 ns at 50 MHz
+//                                            (130 ns is rejected), at any pad setting
+//   byte gap            OB-REARM             push, then wait for the SCK level: f_sck <=
+//                                            2.14 MHz at 60 MHz (1.7 MHz proven at 50 MHz)
 //
-// The first_bit margin is the whole story: 0.7 ns at 60 MHz means 114 ns is
-// the real limit, not a rounded guess. At 50 MHz 4 MHz SCK is rejected
-// (MISO and MOSI windows, fix f_sck <= 3.33 MHz from the solver, which is
-// conservative: 3.5 MHz is proven). Controllers that hold CS for a whole SCK
-// period before the first edge (most do: 250 ns at 4 MHz) meet this easily.
+// So the claim is t_css >= 117 ns and f_sck <= 2 MHz at 60 MHz (140 ns and
+// 1.7 MHz at 50 MHz). Driving the first bit while armed, before CS falls,
+// would lower the re-arm limit to about 84 ns (84 ns builds, 80 ns is
+// rejected, on a variant of this file with the tile pads), but MISO would then show
+// data while the target is not selected. Controllers that hold CS for a
+// whole SCK period before the first edge (250 ns at 2 MHz) meet 117 ns easily.
 protocol spi_target_mode0_css114 {
-  param f_sck : freq = 4 MHz;          // fastest SCK the controller will use
+  param f_sck : freq = 2 MHz;          // fastest SCK the controller will use
   param t_su  : time = 5 ns;           // controller's MISO setup before its sampling edge
-  param t_css : time = 114 ns;         // controller's CS fall to first SCK rise
+  param t_css : time = 117 ns;         // controller's CS fall to first SCK rise
   param t_mo  : time = 20 ns;          // controller's MOSI output delay after SCK falls
   unit  half  = 1 / (2 * f_sck);
 

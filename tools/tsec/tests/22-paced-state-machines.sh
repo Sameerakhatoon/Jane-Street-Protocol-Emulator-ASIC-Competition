@@ -6,7 +6,7 @@
 st=0
 out="$(tsec build specs/jtag_probe.tse --pad-skew 0 -o "$TMP/jtag")" || st=$?
 assert_eq 0 "$st" "jtag exit status with zero skew"
-assert_contains "$out" "shift tdo -> cap lsb 1 for t_rd ~ t_jit  placement error 0.20 of 0.29 ticks  ok" "tdo"
+assert_contains "$out" "shift tdo -> cap lsb 1 for t_rd ~ t_smp  placement error 0.20 of 0.59 ticks  ok" "tdo"
 assert_contains "$(cat "$TMP/jtag/jtag_probe.json")" '"LANE_CFG": "0x00000060"' "side-set on pin 2"
 assert_contains "$(cat "$TMP/jtag/jtag_probe.lst")" "OUT   PINS, 2" "two pins shifted"
 st=0

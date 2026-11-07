@@ -19,6 +19,8 @@
 //
 // Hand-computed obligations at f_tck = 5 MHz (half = 100 ns), t_rd = 20 ns,
 // t_jit = 5 ns (0.30 tick at 60 MHz, 0.25 tick at 50 MHz). Pair period 12 / 10 ticks.
+// t_smp = 10 ns for the TDO sample: it only has to stay inside the valid window (hold
+// margin t_rd - t_smp = 10 ns), so it does not take the TCK edge tolerance.
 //
 //   obligation                         ideal       60 MHz                50 MHz
 //   OB-EDGE TCK fall + TMS, TDI         0           0, error 0            0, error 0
@@ -50,6 +52,7 @@ protocol jtag_probe {
   param f_tck : freq = 5 MHz;
   param t_rd  : time = 20 ns;          // sample TDO this long before the next falling edge
   param t_jit : time = 5 ns;           // placement tolerance of every TCK, TMS and TDI edge
+  param t_smp : time = 10 ns;          // placement tolerance of the TDO sample
   param t_tdo : time = 30 ns;          // target: TDO valid after TCK falls (its datasheet)
   unit  half  = 1 / (2 * f_tck);
 
@@ -68,7 +71,7 @@ protocol jtag_probe {
           drive tck = 0;                                   // shares the instant of the next shift
           shift cmd lsb 2 -> (tms, tdi) for half ~ t_jit;
           drive tck = 1 for half - t_rd ~ t_jit;           // the target samples TMS and TDI
-          shift tdo -> cap lsb 1 for t_rd ~ t_jit;
+          shift tdo -> cap lsb 1 for t_rd ~ t_smp;
         }
         drive tck = 0 for half ~ t_jit;
         push host cap;

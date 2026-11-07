@@ -338,6 +338,7 @@ class Scheduler:
         if err is None:
             return TseError(code, f"obligation unproven in role '{self.role.name.text}': {text}: {where}",
                             st.span)
+        ratio = st.timing.tol is not None and self.sym.eval(st.timing.tol).dim == 0
         return TseError(code, f"{title} in role '{self.role.name.text}': {text}", st.span, fields=[
             ("obligation", f"{'OB-EDGE' if out else 'OB-SAMP'} '{text}', timeline entry {k} of its "
                            f"sequence, role {self.role.name.text}, lane {self.lane}"),
@@ -346,8 +347,11 @@ class Scheduler:
                          f"({ticks_ns(self.skew, self.f)})"),
             ("budget", f"{float(budget):.2f} ticks ({ticks_ns(budget, self.f)}) after {self.ppm} ppm "
                        "of drift"),
-            ("fix", f"pads characterised with a skew at or below {ticks_ns(budget - err + skew, self.f)} "
-                    "between these pins (--pad-skew)" if skew and budget - err + skew >= 0 else
+            ("fix", "a time tolerance (~ t): a ratio tolerance is that fraction of the interval before "
+                    "the action (rule S5), and this action shares its instant with the one before it"
+             if budget <= 0 and ratio else
+             f"pads characterised with a skew at or below {ticks_ns(budget - err + skew, self.f)} "
+             "between these pins (--pad-skew)" if skew and budget - err + skew >= 0 else
              "a wider tolerance; a rolled loop repeats its delays, so a period that is not a whole "
              "number of cycles drifts, and unrolled code places every action")])
 

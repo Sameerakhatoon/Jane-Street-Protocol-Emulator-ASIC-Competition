@@ -30,6 +30,10 @@
 //
 // Hand-computed obligations at f_sck = 5 MHz (half = 100 ns), t_rd = 20 ns,
 // edge tolerance t_jit = 5 ns (60 MHz: 0.30 tick, 50 MHz: 0.25 tick).
+// sample tolerance t_smp = 10 ns: the MISO sample only has to stay inside the bit's valid
+// window (round trip margin above 120 ns, hold margin t_rd - t_smp = 10 ns), so it does not
+// take the SCK edge tolerance; with the full pad path (skew 3.5 ns) the 0.20 tick rounding
+// plus the skew is 6.8 ns.
 //
 //   obligation                ideal in the bit    60 MHz (ticks)   error   50 MHz (ticks)   error
 //   OB-EDGE launch (SCK, MOSI)  0                 0                0       0                0
@@ -42,8 +46,10 @@
 //                              sample at 183.3 ns (60) / 180 ns (50): margin 150.3 ns / 147 ns
 //   MISO hold                   sample 16.7 ns (60) / 20 ns (50) before the next fall; the target
 //                              changes MISO only after that fall, so margin >= 16.7 ns
-//   CS setup                   drive cs_n = 0 for t_css ~ 10 %: held >= 90 ns before the first
+//   CS setup                   drive cs_n = 0 for t_css ~ t_css / 10: held >= 90 ns before the first
 //                              launch, then half more before the first rise: >= 190 ns
+//                              (a time: the CS edge shares the instant of the SCK drive, and
+//                              a ratio is of the interval before an action, here 0, rule S5)
 //   CS high                    held >= t_csd - 10 % = 90 ns >= 50 ns
 //
 //   other rates                60 MHz                              50 MHz
@@ -56,6 +62,7 @@ protocol spi_controller_mode0 {
   param f_sck : freq = 5 MHz;
   param t_rd  : time = 20 ns;          // MISO sample this long before the next launch edge
   param t_jit : time = 5 ns;           // placement tolerance of every SCK and MOSI edge
+  param t_smp : time = 10 ns;          // placement tolerance of the MISO sample
   param t_css : time = 100 ns;         // CS low before the first launch
   param t_csd : time = 100 ns;         // CS high after a command
   unit  half  = 1 / (2 * f_sck);
@@ -83,7 +90,7 @@ protocol spi_controller_mode0 {
     }
 
     state select {
-      seq { drive sck = 0; drive cs_n = 0 for t_css ~ 10 %; } -> idle;
+      seq { drive sck = 0; drive cs_n = 0 for t_css ~ t_css / 10; } -> idle;
     }
 
     state load8  { on host.pull(tx8) -> xfer8; }
@@ -93,7 +100,7 @@ protocol spi_controller_mode0 {
           drive sck = 0;                                   // falling edge, shares the launch instant
           shift tx8 msb 1 -> mosi for half ~ t_jit;
           drive sck = 1 for half - t_rd ~ t_jit;           // the target samples MOSI
-          shift miso -> rx8 msb 1 for t_rd ~ t_jit;
+          shift miso -> rx8 msb 1 for t_rd ~ t_smp;
         }
         drive sck = 0 for half ~ t_jit;                    // back to idle before CS may change
         push host rx8;
@@ -107,7 +114,7 @@ protocol spi_controller_mode0 {
           drive sck = 0;
           shift tx msb 1 -> mosi for half ~ t_jit;
           drive sck = 1 for half - t_rd ~ t_jit;
-          shift miso -> rx msb 1 for t_rd ~ t_jit;
+          shift miso -> rx msb 1 for t_rd ~ t_smp;
         }
         drive sck = 0 for half ~ t_jit;
         push host rx;

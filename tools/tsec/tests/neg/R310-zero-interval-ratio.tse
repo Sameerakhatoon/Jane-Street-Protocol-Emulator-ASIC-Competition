@@ -1,0 +1,20 @@
+// cs_n shares the instant of the sck drive, so the interval before it is 0 and 10 % of it is 0
+protocol p {
+  wire cs_n : out push_pull idle 1;
+  wire sck  : out push_pull idle 0;
+  role ctl : controller uses cs_n, sck {
+    var op : bits[8];
+    state idle { on host.pull(op) -> dispatch; }
+    state dispatch {
+      after op == 1 -> select;
+      after op == 3 -> deselect;
+      after op != 0 -> idle;
+    }
+    state select {
+      seq { drive sck = 0; drive cs_n = 0 for 100 ns ~ 10 %; } -> idle;
+    }
+    state deselect {
+      seq { drive cs_n = 1 for 100 ns ~ 10 %; } -> idle;
+    }
+  }
+}

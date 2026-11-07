@@ -1,0 +1,8 @@
+tools/tsec/tests/neg/R310-zero-interval-ratio.tse:14:28: error: output placement outside tolerance in role 'ctl': drive cs_n = 0 for 100 ns ~ 10 % [R310]
+ 14 |       seq { drive sck = 0; drive cs_n = 0 for 100 ns ~ 10 %; } -> idle;
+    |                            ^~~~~
+  obligation : OB-EDGE 'drive cs_n = 0 for 100 ns ~ 10 %', timeline entry 1 of its sequence, role ctl, lane 0
+  achieved   : error up to 1.50 ticks (25.0 ns) from the ideal instant, worst at phase 1, pad skew between different pins included (25.0 ns)
+  budget     : 0.00 ticks (0.0 ns) after 50 ppm of drift
+  fix        : a time tolerance (~ t): a ratio tolerance is that fraction of the interval before the action (rule S5), and this action shares its instant with the one before it
+1 obligation(s) or limit(s) not met; no image written (rule R1)

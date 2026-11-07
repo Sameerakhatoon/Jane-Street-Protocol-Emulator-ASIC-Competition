@@ -10,15 +10,28 @@ uart_rx.tse|-|0|-|-
 uart_rx.tse|--fclk 50e6|0|-|-
 uart_rx.tse|-D baud=1000000|0|-|-
 uart_rx.tse|-D baud=1000000 --fclk 50e6|0|-|-
-# Clocked controllers: placement between SCK and data needs a pad skew bound.
-spi_controller_mode0.tse|-|2|R310|output placement outside tolerance in role 'ctl': drive cs_n = 0 for t_css ~ 10 %
-spi_controller_mode1.tse|-|2|R310|output placement outside tolerance in role 'ctl': drive cs_n = 0 for t_css ~ 10 %
-spi_controller_mode2.tse|-|2|R310|output placement outside tolerance in role 'ctl': drive cs_n = 0 for t_css ~ 10 %
-spi_controller_mode3.tse|-|2|R310|output placement outside tolerance in role 'ctl': drive cs_n = 0 for t_css ~ 10 %
+# Clocked controllers: placement between SCK and data needs a pad skew bound. The tile alone
+# measures pads 0.32 to 2.87 ns with 1.05 ns skew (tools/pd/padskew.sh, slow corner); the whole
+# pad path with the Tiny Tapeout mux and the IHP pads is 0 to 21 ns with 3.5 ns skew.
+spi_controller_mode0.tse|-|2|R310|output placement outside tolerance in role 'ctl': drive cs_n = 0 for t_css ~ t_css / 10
+spi_controller_mode1.tse|-|2|R310|output placement outside tolerance in role 'ctl': drive cs_n = 0 for t_css ~ t_css / 10
+spi_controller_mode2.tse|-|2|R310|output placement outside tolerance in role 'ctl': drive cs_n = 0 for t_css ~ t_css / 10
+spi_controller_mode3.tse|-|2|R310|output placement outside tolerance in role 'ctl': drive cs_n = 0 for t_css ~ t_css / 10
 spi_controller_mode0.tse|--pad-skew 0|0|-|-
 spi_controller_mode1.tse|--pad-skew 0|0|-|-
 spi_controller_mode2.tse|--pad-skew 0|0|-|-
 spi_controller_mode3.tse|--pad-skew 0|0|-|-
+spi_controller_mode0.tse|--pad-min 0.32 --pad-max 2.87 --pad-skew 1.05|0|-|-
+spi_controller_mode1.tse|--pad-min 0.32 --pad-max 2.87 --pad-skew 1.05|0|-|-
+spi_controller_mode2.tse|--pad-min 0.32 --pad-max 2.87 --pad-skew 1.05|0|-|-
+spi_controller_mode3.tse|--pad-min 0.32 --pad-max 2.87 --pad-skew 1.05|0|-|-
+spi_controller_mode0.tse|--pad-min 0 --pad-max 21 --pad-skew 3.5|0|-|-
+spi_controller_mode1.tse|--pad-min 0 --pad-max 21 --pad-skew 3.5|0|-|-
+spi_controller_mode2.tse|--pad-min 0 --pad-max 21 --pad-skew 3.5|0|-|-
+spi_controller_mode3.tse|--pad-min 0 --pad-max 21 --pad-skew 3.5|0|-|-
+# At 50 MHz the eighth bit of a byte is placed a whole bit period (10 ticks) off even at zero
+# skew; not yet explained, and not caused by the pad skew or the CS tolerance.
+spi_controller_mode0.tse|--pad-skew 0 --fclk 50e6|2|R310|output placement outside tolerance in role 'ctl': drive sck = 0
 # SPI targets. Between two bytes the lane pushes and waits for the SCK level before the next
 # first edge again; at 4 MHz (3.5 MHz at 50 MHz) it gets there after that edge and the first bit
 # of the next byte is lost, so these are R314 (fix f_sck <= 1.99 MHz). The sequencer reference
@@ -27,9 +40,9 @@ spi_controller_mode3.tse|--pad-skew 0|0|-|-
 spi_target.tse|-|2|R314|re-arm too late in role 'tgt': the wait for rise(sck) first waits for the level fall(sck) leaves, but starts 7 cycles after rise(sck) may already be visible, so it misses that rise(sck) and acts on the next one
 spi_target.tse|-D t_css=114e-9|2|R314|re-arm too late in role 'tgt': the wait for rise(sck) first waits for the level fall(sck) leaves, but starts 7 cycles after rise(sck) may already be visible, so it misses that rise(sck) and acts on the next one
 spi_target.tse|-D t_css=130e-9 -D f_sck=3.5e6 --fclk 50e6|2|R314|re-arm too late in role 'tgt': the wait for rise(sck) first waits for the level fall(sck) leaves, but starts 7 cycles after rise(sck) may already be visible, so it misses that rise(sck) and acts on the next one
-spi_target_mode0_css114.tse|-|2|R314|re-arm too late in role 'tgt': the wait for rise(sck) first waits for the level fall(sck) leaves, but starts 7 cycles after rise(sck) may already be visible, so it misses that rise(sck) and acts on the next one
+spi_target_mode0_css114.tse|-|0|-|-
 spi_target_mode0_css114.tse|-D t_css=130e-9 -D f_sck=3.5e6 --fclk 50e6|2|R314|re-arm too late in role 'tgt': the wait for rise(sck) first waits for the level fall(sck) leaves, but starts 7 cycles after rise(sck) may already be visible, so it misses that rise(sck) and acts on the next one
-spi_target_mode0_css114.tse|--fclk 50e6|2|R314|re-arm too late in role 'tgt': the wait for rise(sck) first waits for the level fall(sck) leaves, but starts 8 cycles after rise(sck) may already be visible, so it misses that rise(sck) and acts on the next one
+spi_target_mode0_css114.tse|--fclk 50e6|2|R314|re-arm too late in role 'tgt': the wait for rise(sck) first waits for the level fall(sck) leaves, but starts 1 cycles after rise(sck) may already be visible, so it misses that rise(sck) and acts on the next one
 spi_target_mode2.tse|-|2|R314|re-arm too late in role 'tgt': the wait for fall(sck) first waits for the level rise(sck) leaves, but starts 7 cycles after fall(sck) may already be visible, so it misses that fall(sck) and acts on the next one
 spi_target_mode2.tse|-D t_css=114e-9|2|R314|re-arm too late in role 'tgt': the wait for fall(sck) first waits for the level rise(sck) leaves, but starts 7 cycles after fall(sck) may already be visible, so it misses that fall(sck) and acts on the next one
 spi_target.tse|-D t_css=117e-9 -D f_sck=1.875e6|0|-|-
@@ -70,6 +83,8 @@ swd_probe.tse|-|2|R310|output placement outside tolerance in role 'probe': shift
 swd_probe.tse|--pad-skew 0|2|R310|output placement outside tolerance in role 'probe': drive swclk = 1 for half ~ t_jit
 jtag_probe.tse|-|2|R310|output placement outside tolerance in role 'probe': shift cmd lsb 2 -> (tms, tdi) for half ~ t_jit
 jtag_probe.tse|--pad-skew 0|0|-|-
+jtag_probe.tse|--pad-min 0.32 --pad-max 2.87 --pad-skew 1.05|0|-|-
+jtag_probe.tse|--pad-min 0 --pad-max 21 --pad-skew 3.5|0|-|-
 ps2_host.tse|-|0|-|-
 # Frame-level specs with assists, through the frame lowering: 10BASE-T transmit builds (not yet run
 # on the chip); the others are rejected on a layout, pin plan or re-arm limit.
