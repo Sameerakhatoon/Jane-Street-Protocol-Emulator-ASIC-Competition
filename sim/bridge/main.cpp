@@ -52,7 +52,8 @@ static void usage(void){
         "  --baud N               UART baud (115200)\n"
         "  --uart-tx PIN          chip TX pin to decode (%s)\n"
         "  --uart-rx PIN|bus      chip RX pin to drive, or the ui_in byte bus (%s)\n"
-        "  --tap IF               Ethernet bridge on Linux TAP IF (rd ui1, td uo1)\n"
+        "  --tap IF               Ethernet bridge on Linux TAP IF\n"
+        "  --tap-pins TD,RD       chip transmit pin to decode and receive pin to drive (uo1,ui1)\n"
         "  --pcap FILE            record TAP frames with model-time stamps\n"
         "  --serprog PORT         flashrom serprog on 127.0.0.1:PORT (0 = any)\n"
         "  --rbb PORT             OpenOCD remote_bitbang on 127.0.0.1:PORT (0 = any)\n"
@@ -61,7 +62,8 @@ static void usage(void){
         "  --swd SWCLK,SWDIO      SWD pins, SWDIO a uio pin (ui5,uio2)\n"
         "  --can IF|unix:PATH     CAN node on SocketCAN IF or a can_frame socket (twice: two nodes)\n"
         "  --can-pins TX,RX       chip CAN TX (uo or uio) and RX pins (uio7,ui6)\n"
-        "  --fst FILE             FST waveform of the whole model\n"
+        "  --can-bit N            clocks per CAN bit (60: 1 Mbit/s)\n"
+        "  --fst FILE            FST waveform of the whole model\n"
         "  --fst-from C           first cycle to dump (0)\n"
         "  --fst-cycles N         cycles to dump (0 = until exit)\n"
         "  --vcd FILE             pins-only VCD for sigrok (1 ns timescale)\n"
@@ -229,6 +231,7 @@ int main(int argc, char** argv){
     const char* tx_name = DEF_TX;
     const char* in_name = DEF_IN;
     const char* tap_if = NULL;
+    const char* tap_pins = "uo1,ui1";
     const char* pcap_path = NULL;
     int         serprog_port = -1;
     const char* fst_path = NULL;
@@ -245,6 +248,7 @@ int main(int argc, char** argv){
     const char* can_host[2] = {NULL, NULL};
     int         n_can = 0;
     const char* can_pins = "uio7,ui6";
+    int         can_bit = CAN_BIT_CLOCKS;
 
     for(int i = 1; i < argc; i++){
         const char* o = argv[i];
@@ -260,6 +264,7 @@ int main(int argc, char** argv){
         else if(!strcmp(o, "--uart-tx"))     tx_name = v;
         else if(!strcmp(o, "--uart-rx"))     in_name = v;
         else if(!strcmp(o, "--tap"))         tap_if = v;
+        else if(!strcmp(o, "--tap-pins"))    tap_pins = v;
         else if(!strcmp(o, "--pcap"))        pcap_path = v;
         else if(!strcmp(o, "--serprog"))     serprog_port = atoi(v);
         else if(!strcmp(o, "--fst"))         fst_path = v;
@@ -274,6 +279,7 @@ int main(int argc, char** argv){
         else if(!strcmp(o, "--jtag"))        jtag_pins = v;
         else if(!strcmp(o, "--swd"))         swd_pins = v;
         else if(!strcmp(o, "--can-pins"))    can_pins = v;
+        else if(!strcmp(o, "--can-bit"))     can_bit = atoi(v);
         else if(!strcmp(o, "--can") && n_can < 2) can_host[n_can++] = v;
         else { usage(); return 2; }
     }
@@ -324,8 +330,11 @@ int main(int argc, char** argv){
         memset(&c, 0, sizeof(c));
         c.ifname = tap_if;
         c.pcap_path = pcap_path;
-        pin_parse("ui1", &c.rd);
-        pin_parse("uo1", &c.td);
+        PinRef tp[2];
+        if(parse_pins(tap_pins, tp, 2) < 0)
+            return 2;
+        c.td = tp[0];
+        c.rd = tp[1];
         if(harness_add(&h, eth_tap_new(&c)) < 0)
             return 1;
     }
@@ -366,7 +375,7 @@ int main(int argc, char** argv){
         if(harness_wire(&h, &canbus) < 0)
             return 1;
         for(int i = 0; i < n_can; i++){
-            can[i] = can_node_new(names[i], can_host[i], &canbus);
+            can[i] = can_node_new(names[i], can_host[i], &canbus, can_bit);
             if(harness_add(&h, can[i]) < 0)
                 return 1;
         }

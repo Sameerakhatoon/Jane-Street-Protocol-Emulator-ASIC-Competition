@@ -61,7 +61,7 @@ The status words:
 | SPI controller, modes 0 to 3, drives a simulated target | SIM, BUILDS | `examples/tests/07-spi.sh` | builds only with `--pad-skew 0` (R310); the tile alone has up to 1.05 ns of pad skew, below |
 | CAN receiver answers with an in-bit ACK by a response rule; a bad-CRC frame is not ACKed, at 125k and 500k | SIM | `examples/tests/09-can.sh` | receiver only; two independent CAN nodes are not expressible |
 | 10BASE-T transmit, 3 frames, 0 violations | SIM | `examples/tests/10-eth10.sh` | transmit only; receive is blocked |
-| SPI flash target answers an ID and a read (ef4015) | SIM | `examples/tests/08-flash.sh` | about 500 to 714 kHz only |
+| SPI flash target answers an ID and a read (ef4015) | SIM | `examples/tests/08-flash.sh` | about 500 to 714 kHz only; the serprog client is a replay of flashrom's traffic, flashrom is not installed here |
 | The compiler rejects a spec it cannot prove and names the fix | BUILDS | `python3 -m tools.tsec build specs/spi_target.tse` | rejected R314; with `-D t_css=117e-9 -D f_sck=1.875e6` it builds. The analysis is checked against the reference model, not mechanised |
 | 25 specs across 9 protocols compile to a pinned set of accept or reject outcomes | BUILDS | `make specs-test` | several are rejected by design, each for a recorded reason |
 | The RTL matches the reference model instruction by instruction on random programs | LOCKSTEP | `make verif-test` | Hypothesis property tests in cocotb |
@@ -69,10 +69,14 @@ The status words:
 | Per-program window proof on the real lane RTL, SPI target | PROVEN (one program) | `make tsec-proof` | the I2C target and 10BASE-T frame proofs do not close yet; frame-role obligations 2 of 5 pass |
 | Check flags timing violations and sweeps a device's margin; Trigger fires on a decoded event sequence | SIM | `make check-thd-sta check-sweep check-trigger` | on the chip in simulation; compiling a spec directly into a Check program is partly done |
 | Independent judges decode pins-only traces from the published standards | SIM | `make judges-test` | nine protocols |
-| Unmodified OpenOCD reads a JTAG IDCODE and an SWD DPIDR, and Linux ping runs over 10BASE-T, through simulated pins | SIM | `make judges-demos judges-run` | runs on a small stand-in test top, not yet on the TSE lanes |
+| Unmodified OpenOCD reads a JTAG IDCODE and an SWD DPIDR, and Linux ping runs over 10BASE-T, through simulated pins | SIM | `make judges-demos judges-run` | runs on a small stand-in test top, not on the TSE lanes (the rows below are) |
+| Unmodified OpenOCD finds IDCODE 0x4BA00477 through the JTAG probe lane, reads it again by DR scan and shifts BYPASS; 8 scans, 0 violations | SIM | `make demo-jtag` | builds only with `--pad-skew 0` (R310); the TAP is a model on the pads; words of 16 pairs that OpenOCD leaves short are padded with moves that leave the TAP where OpenOCD expects it |
+| Unmodified OpenOCD reads DPIDR 0x2BA01477, powers up the debug port and writes SELECT through the SWD probe lane; 19 packets, 0 violations | SIM | `make demo-swd` | SWCLK 1 MHz with 80 ns edge tolerance at `--pad-skew 0` (5 MHz is R310); runs a copy of the spec with SWDIO driven and released explicitly, and the demo clears the SWDIO pad's idle drive, two compiler gaps; the SW-DP is a model that answers OK only |
+| The CAN receiver lane acknowledges 8 frames that the simulator's bit-level CAN node builds from `struct can_frame` records; 0 violations | SIM | `make demo-can` | 500 kbit/s (1 Mbit/s is R311); this WSL kernel has no vcan, so the records come over a Unix socket, not from `cansend`; receiver only |
+| The Linux kernel answers an ARP request and an ICMP echo request sent by the 10BASE-T transmit lane through a TAP device | SIM | `make demo-ping` | transmit only: the replies reach the chip's receive pin, where no lane listens (R314), so ping from Linux does not complete; the frame comes from the 64-octet window variant of `eth10_tx` |
 | The full two-lane chip signs off at 60 MHz: global-route overflow 0 on every layer; detailed routing, KLayout DRC, LVS, antenna, disconnected pins, max cap and max slew all 0; setup and hold met at three corners | MEASURED | `tools/pd/harden-variant.sh info_chip.yaml src/config_chip.json <tag>` | run rtl6d (rtl6c with the supply pin fix; same routing and timing); slow-corner setup slack +1.41 ns, fast-corner hold slack only +0.020 ns; Magic DRC reports 51 flags, all only on the SRAM abstract and waived (`tools/pd/magic-flags.sh`) |
-| Tiny Tapeout precheck passes all nine checks | MEASURED | `tools/pd/precheck.sh <gds>` | on rtl6d, the full-chip layout of the signoff row (and on rtl5e); rtl6c failed the pin check because its supply pins were cut at the SRAMs |
-| Pin delays inside the tile from the clock edge: outputs 0.77 to 2.87 ns, inputs sampled 0.32 to 1.51 ns after the edge; at most 1.05 ns between two outputs and 0.84 ns between two inputs | MEASURED | `tools/pd/padskew.sh` | rtl6c, over three corners (the spreads are the slow corner's); the Tiny Tapeout multiplexer and pad ring outside the tile are not included |
+| Tiny Tapeout precheck passes all nine checks | MEASURED | `tools/pd/precheck.sh <gds>` | a local run on rtl6d, the full-chip layout of the signoff row (and on rtl5e); the official GitHub workflows have not run yet; rtl6c failed the pin check because its supply pins were cut at the SRAMs |
+| Pin delays inside the tile from the clock edge: outputs 0.77 to 2.87 ns, inputs sampled 0.32 to 1.51 ns after the edge; at most 1.05 ns between two outputs and 0.84 ns between two inputs | MEASURED | `tools/pd/padskew.sh` | rtl6d (rtl6c gives the same numbers), over three corners (the spreads are the slow corner's); the Tiny Tapeout multiplexer and pad ring outside the tile are not included. An estimate for them, from the multiplexer's published signoff budgets and the IHP pad cell liberty, not from STA: outputs reach the bond pads at most about 19.7 ns after the tile clock edge, inputs at most about 4.5 ns, and two outputs differ by up to about 3.5 ns at the slow corner; hence `--pad-min 0 --pad-max 21 --pad-skew 3.5` |
 | The routed full chip, with its signoff delays (SDF) at all three corners, loads three random images over the loader pins, commits them and reads them back exactly; in run mode it answers register reads and writes over SPI and refuses what it must while a lane runs | SIM | `make -C verif/glsdf CORNER=<corner> [GL_MODULES=test_spi GL_TEST=]` | rtl6c, `test_loader` test 1 and both `test_spi` tests; the running lane only loops on one word, so no lane drives a protocol yet; Icarus applies the delays but runs no setup or hold checks, so only a wrong value at the pins would show a timing failure; 219 wires on SRAM pins (at most 24 ps) are left out |
 
 ### Known limits
@@ -83,7 +87,7 @@ These are the compiler refusing to build a spec it cannot meet. The rejection is
 - 10BASE-T receive is blocked by a late start-of-frame re-arm and by DPLL limits (`specs/eth10_rx.tse`, R314); transmit works.
 - Two independent CAN nodes are not expressible: the shifted-in and shifted-out bits share one virtual pin (`specs/can_node.tse`, R307).
 - The SPI target runs to about 1.9 MHz, not 4 MHz; the SPI flash target to about 714 kHz.
-- The SPI controller specs build only at `--pad-skew 0`: their edge obligations have no budget left, so any skew between pins is rejected (R310, R312), the tile's measured 1.05 ns as well; a wider `t_jit` does not change it. SWD is rejected even at zero skew.
+- The SPI controller specs build only at `--pad-skew 0`: their edge obligations have no budget left, so any skew between pins is rejected (R310, R312), the tile's measured 1.05 ns as well; a wider `t_jit` does not change it. SWD at 5 MHz is rejected even at zero skew; at 1 MHz it builds.
 
 ## Verification
 
@@ -94,7 +98,7 @@ Four independent checks back the claims above, so a bug has to pass more than on
 - **Independent judges**: decoders written from the published standards read the pins-only traces and count violations, so the thing that judges a run is not the thing that produced it (`make judges-test`, `verif/judges/`).
 - **Compiler soundness**: every accepted or rejected build outcome is pinned and replayed against the reference model; three soundness holes were found this way and fixed with failing tests written first (`make specs-test`).
 
-What is not covered, stated plainly: no silicon, no FPGA, no measured CMOS5L pad timing; the compiler's timing analysis is checked against the reference model but is not a mechanised proof; several per-program RTL window proofs do not close yet; and the full chip does not yet pass precheck or slow-corner setup. `make regress` runs the standing suite end to end.
+What is not covered, stated plainly: no silicon, no FPGA, no measured CMOS5L pad timing; the compiler's timing analysis is checked against the reference model but is not a mechanised proof; several per-program RTL window proofs do not close yet; the full chip's signoff and precheck are local runs, as the official GitHub workflows have not run yet; the pad delays outside the tile are estimates; and at gate level no lane drives a protocol on its pins yet. `make regress` runs the standing suite end to end.
 
 ## What we do differently from PIO and PRU
 
@@ -113,7 +117,7 @@ Other public projects reached parts of the same idea first. This is an honest cr
 - **MarcosAsh** compiles a job to certified firmware or a named refusal and sweeps real device margins on a bench.
 - **FIPE** compiles timing rules out of a spec into on-chip timing monitors and publishes measured device datasheets, on a closed layout.
 
-What is left that is TSE's, all on one design: reaction-window proofs for target roles over every memory slot phase with the fix named; hardware response rules that answer a bit pattern plus a CRC verdict at a bit offset; a CRC of any width 5 to 32 proved equal to a textbook CRC; and Speak, Check and a three-stage decoded-event Trigger from one spec on the same chip. The honest counterweight: TSE has no passing official GDS yet and no hardware, while most serious rivals have one or both.
+What is left that is TSE's, all on one design: reaction-window proofs for target roles over every memory slot phase with the fix named; hardware response rules that answer a bit pattern plus a CRC verdict at a bit offset; a CRC of any width 5 to 32 proved equal to a textbook CRC; and Speak, Check and a three-stage decoded-event Trigger from one spec on the same chip. The honest counterweight: TSE's layout signs off and passes the precheck only in local runs, and there is no hardware, while most serious rivals have a public passing GDS, hardware, or both.
 
 ## Run it
 

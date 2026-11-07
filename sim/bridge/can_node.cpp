@@ -34,6 +34,7 @@ typedef struct CanNode {
     uint8_t     txb[CAN_MAX_BITS];
     int         ntx, txpos, sending;
 
+    int         bit, sample;        // clocks per bit, sample clock
     int         phase, prev, idle, need, in_frame, stage, tail, ack_now, acked;
     uint8_t     d[CAN_MAX_BITS];
     int         nd, expect, run, last, crc_ok;
@@ -293,13 +294,13 @@ static void cn_tick(Adapter* a, Pins* p, uint64_t cycle){
             v = 0;
         wired_and_drive(c->bus, c->drv, v);
     }
-    if(c->phase == CAN_SAMPLE_CLOCK){
+    if(c->phase == c->sample){
         if(c->in_frame)
             rx_bit(c, level);
         else if(level && c->idle < 1000)
             c->idle++;
     }
-    if(++c->phase == CAN_BIT_CLOCKS){
+    if(++c->phase == c->bit){
         c->phase = 0;
         if(c->sending && ++c->txpos >= c->ntx)
             c->sending = 0;
@@ -321,7 +322,7 @@ static void cn_teardown(Adapter* a){
     free(a);
 }
 
-Adapter* can_node_new(const char* name, const char* host, WiredAnd* bus){
+Adapter* can_node_new(const char* name, const char* host, WiredAnd* bus, int bit_clocks){
     Adapter* a = (Adapter*)calloc(1, sizeof(Adapter));
     CanNode* c = (CanNode*)calloc(1, sizeof(CanNode));
     c->name = name;
@@ -332,6 +333,8 @@ Adapter* can_node_new(const char* name, const char* host, WiredAnd* bus){
     c->bus = bus;
     c->prev = 1;
     c->need = 11;
+    c->bit = bit_clocks;
+    c->sample = bit_clocks * 4 / 5;
     a->name = "can";
     a->ctx = c;
     a->fd = -1;

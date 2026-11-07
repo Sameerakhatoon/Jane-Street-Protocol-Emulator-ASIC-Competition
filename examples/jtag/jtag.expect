@@ -1,0 +1,11 @@
+# OpenOCD through the jtag_probe lane: reset and the chain's IDCODE (examine), reset and
+# the IR capture check (OpenOCD shifts more bits than the 4-bit IR), then the script's IR
+# and DR scans: IDCODE (0xE) read by DR scan, and 0xA5 through BYPASS (0xF), one bit later.
+RESET
+IDCODE 4BA00477
+RESET
+IR 6 TDI=3F TDO=31
+IR 4 TDI=E TDO=1
+DR 32 TDI=00000000 TDO=4BA00477
+IR 4 TDI=F TDO=1
+DR 9 TDI=0A5 TDO=14A

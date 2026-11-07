@@ -1,0 +1,23 @@
+# OpenOCD through the swd_probe lane: line reset, JTAG to SWD, line reset, DPIDR; ABORT,
+# SELECT 0 and the power-up handshake on CTRL/STAT (the SW-DP copies each request bit to
+# its acknowledge); then the script reads CTRL/STAT, writes SELECT and reads it back through
+# RDBUFF; OpenOCD leaves with a line reset and SWD to JTAG.
+LINE_RESET
+JTAG_TO_SWD
+LINE_RESET
+DP R 0x0 OK 2BA01477
+DP W 0x0 OK 0000001E
+DP W 0x8 OK 00000000
+DP W 0x4 OK 50000020
+DP R 0x4 OK F0000020
+DP W 0x4 OK 50000000
+DP R 0x4 OK F0000000
+DP R 0x4 OK F0000000
+DP R 0x4 OK F0000000
+DP W 0x4 OK 50000001
+DP R 0x4 OK F0000001
+DP R 0x4 OK F0000001
+DP W 0x8 OK 12345670
+DP R 0xC OK 12345670
+LINE_RESET
+SWD_TO_JTAG
