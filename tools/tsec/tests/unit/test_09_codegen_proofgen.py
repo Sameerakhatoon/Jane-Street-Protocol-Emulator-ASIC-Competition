@@ -1,5 +1,6 @@
 from fractions import Fraction as Fr
 
+from tools.tseasm import isa
 from tools.tsec import proofgen, uppaal
 from tools.tsec.codegen import assemble, image_text, listing_lines
 from tools.tsec.cycles import FetchModel as CyclesFetch
@@ -52,8 +53,19 @@ def test_harness_for_the_receiver():
     assert ".LO(LATE == 0 ? 313 : 210), .HI(312)" in top
     assert ".trig_val(1'b0)" in top and "pc_q == 8'd0" in top
     assert "tse_lane #" in top and "cfg_img[32*tse_regs_pkg::LW_LANE_CFG +: 32]" in top
-    # the bank takes the program's writes, starting from the image
+    # no CSRW in the receiver: the bank is the image as a constant, and the lane must not write it
+    assert "tse_cfg_bank #" not in top and "assign cfg = cfg_img &" in top and "assert (!cfg_we)" in top
+
+
+def test_harness_bank_takes_the_programs_writes():
+    res = compiled("rx_side")
+    sym = front(UART)
+    obs = proofgen.frame_obs(sym, res.role, 1, res.chosen.low, res.chosen.labels, FetchModel())
+    rows = [w for _, w, _, _, _ in assemble(res.chosen)] + [isa.encode("CSRW", addr=0)]
+    top, _ = proofgen.harness(res.role, 1, obs, {"LANE_CFG": 0}, rows, [], (0, 0))
+    # a CSRW: the real bank, starting from the image
     assert "tse_cfg_bank #" in top and ".we(cfg_we)" in top and "assume (cfg == (cfg_img &" in top
+    assert "assert (!cfg_we)" not in top
 
 
 def test_a_check_is_abandoned_off_the_path_to_its_act():
@@ -70,8 +82,10 @@ def test_a_check_is_abandoned_off_the_path_to_its_act():
     assert top.count(".abandon(!(") == len(obs)
     assert f"(ONLY < 0 || ONLY == {len(obs) - 1}) && stay >= 3'd5" in top
     sby = proofgen.sby_text("tgt", 100, n=len(obs))
-    assert f"ob{len(obs) - 1} prv" in sby and sby.index("--") < sby.index("ob0 prv")
-    assert f"late{len(obs) - 1} prv" in sby and "late0: chparam -set ONLY 0 -set LATE 0 top" in sby
+    assert f"ob{len(obs) - 1} obp" in sby and sby.index("--") < sby.index("ob0 obp")
+    assert f"late{len(obs) - 1} obp" in sby and "late0: chparam -set ONLY 0 -set LATE 0 top" in sby
+    # the whole role with abc pdr, each obligation alone with rIC3, both proving
+    assert "prv: abc pdr" in sby and "obp: aiger rIC3" in sby and "obp: mode prove" in sby
 
 
 def test_uppaal_bounds():

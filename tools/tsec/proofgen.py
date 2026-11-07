@@ -2,7 +2,9 @@
 
 The harness top instantiates src/tse_lane.sv with what the chip gives it:
 its configuration bank (src/tse_cfg_bank.sv, starting from the image's lane
-registers, so the program's own CSRW to a bank word takes effect), a
+registers, so the program's own CSRW to a bank word takes effect; a program
+without CSRW gets the image as a constant, and an assertion that it never
+writes), a
 program store answering fetches in the lane's slots (lane k when the
 16-cycle count mod 4 is k, the word one cycle later), the data window in
 the lane's data slot, a two-flop synchronizer on the pins, and free host
@@ -32,6 +34,7 @@ import shutil
 from fractions import Fraction as Fr
 
 from . import cycles
+from ..tseasm import isa
 from .semantics import base_event, min_separation, opposite
 
 TEMPLATES = os.path.join(os.path.dirname(__file__), "proofs", "templates")
@@ -274,6 +277,11 @@ def harness(role, lane, obs, regs, words, window, pads):
     return "\n".join(lines) + "\n", rows
 
 
+def writes_bank(words):
+    """True if the program has a CSRW, the one instruction that writes the configuration bank."""
+    return any((ins := isa.decode(w)) is not None and ins.name == "CSRW" for w in words)
+
+
 def top_lines(role, lane, regs, words, window, what):
     """The harness top up to its checkers: lane, configuration, program store, data window, the
     STATUS read port (pc, pc_q, stay)."""
@@ -348,14 +356,26 @@ def top_lines(role, lane, regs, words, window, what):
         "    .imem_req, .imem_addr, .imem_gnt, .imem_rdata,",
         "    .dmem_req, .dmem_we, .dmem_addr, .dmem_wdata, .dmem_gnt, .dmem_rdata,",
         "    .chip_flags(6'd0), .ts(32'd0), .vin_p(sync), .vin_n(sync), .vout, .voe);",
-        "  // the lane's configuration bank as in tse_top, so the program's CSRW to a bank word",
-        "  // takes effect; flops (the chip's latches show a new value one edge sooner)",
-        "  logic cfg_busy;",
-        "  logic [31:0] cfg_rd;",
-        "  tse_cfg_bank #(.WORDS(32), .LATCH(0), .WD_REG(0), .MASK(tse_regs_pkg::LANE_BANK_MASK)) bank (",
-        "    .clk, .rst_n, .clr(1'b0), .we(cfg_we), .addr(cfg_word), .wdata(cfg_wdata), .busy(cfg_busy),",
-        "    .rd_addr(5'd0), .rd_data(cfg_rd), .q(cfg));",
-        "  always_comb if (init) assume (cfg == (cfg_img & tse_regs_pkg::LANE_BANK_MASK));",
+    ]
+    if writes_bank(words):
+        lines += [
+            "  // the lane's configuration bank as in tse_top, so the program's CSRW to a bank word",
+            "  // takes effect; flops (the chip's latches show a new value one edge sooner)",
+            "  logic cfg_busy;",
+            "  logic [31:0] cfg_rd;",
+            "  tse_cfg_bank #(.WORDS(32), .LATCH(0), .WD_REG(0), .MASK(tse_regs_pkg::LANE_BANK_MASK)) bank (",
+            "    .clk, .rst_n, .clr(1'b0), .we(cfg_we), .addr(cfg_word), .wdata(cfg_wdata), .busy(cfg_busy),",
+            "    .rd_addr(5'd0), .rd_data(cfg_rd), .q(cfg));",
+            "  always_comb if (init) assume (cfg == (cfg_img & tse_regs_pkg::LANE_BANK_MASK));",
+        ]
+    else:
+        lines += [
+            "  // the program has no CSRW, so the bank keeps the image: a constant, which keeps the",
+            "  // proof small; the assertion checks that the lane never writes it",
+            "  assign cfg = cfg_img & tse_regs_pkg::LANE_BANK_MASK;",
+            "  always_comb if (!init) assert (!cfg_we);",
+        ]
+    lines += [
         "  logic [7:0] pc, pc_q;",
         f"  assign pc = h_rdata[{pc_hi}:{pc_lo}];",
         "  always_ff @(posedge clk) pc_q <= pc;",
@@ -368,14 +388,18 @@ def top_lines(role, lane, regs, words, window, what):
 def sby_text(role_name, depth=40, bounded=False, n=0):
     """Prove with abc pdr, or (bounded) check every run of depth cycles from RUN with smtbmc:
     a paced frame's long delay loops keep pdr from converging in reasonable time. Tasks ob0 to
-    ob<n-1> prove one obligation each the same way."""
+    ob<n-1> prove one obligation each, with rIC3's portfolio as for a frame role (the I2C
+    target's single obligations closed with it in 7 to 27 minutes, and not in an hour with abc
+    pdr); bounded, the same way as the whole role."""
     files = [os.path.join(SRC, f) for f in RTL]
     reads = " ".join(os.path.basename(f) for f in files)
-    prv = ["prv: mode bmc", f"prv: depth {depth}"] if bounded else ["prv: mode prove"]
+    mode = ["mode bmc", f"depth {depth}"] if bounded else ["mode prove"]
     return "\n".join([
-        "[tasks]", "prove prv", "cover cvr", *ob_tasks(n, "prv"), "",
-        "[options]", *prv, "cvr: mode cover", f"cvr: depth {depth}", "",
-        "[engines]", "prv: " + ("smtbmc boolector" if bounded else "abc pdr"), "cvr: smtbmc boolector", "",
+        "[tasks]", "prove prv", "cover cvr", *ob_tasks(n, "obp"), "",
+        "[options]", *(f"prv: {m}" for m in mode), *(f"obp: {m}" for m in mode),
+        "cvr: mode cover", f"cvr: depth {depth}", "",
+        "[engines]", "prv: " + ("smtbmc boolector" if bounded else "abc pdr"),
+        "obp: " + ("smtbmc boolector" if bounded else "aiger rIC3"), "cvr: smtbmc boolector", "",
         "[script]", f"read_verilog -formal -sv {reads} tse_window_check.sv top_{role_name}.sv",
         *ob_params(n), "prep -top top", "flatten", "memory_map", "opt -fast", "techmap", "opt -fast",
         "setundef -undriven -anyseq", "setundef -zero", "opt -full", "opt_dff -sat", "opt_clean", "",

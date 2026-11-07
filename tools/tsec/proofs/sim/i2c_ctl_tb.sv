@@ -40,7 +40,8 @@ module tb;
   initial begin
     logic [7:0] a, b;
     logic s;
-    #1 dut.bank.qraw = dut.cfg_img;              // the harness assumes this at reset
+    // the target's program has no CSRW, so its harness holds the bank as the image (a constant):
+    // nothing to load here, unlike the transmitter bench
     cycles(50);
     for (int t = 0; t < `NTX; t++) begin
       m_sda = 1; cycles(10); scl_high(); cycles(40 + $urandom % 20);
