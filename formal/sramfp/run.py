@@ -37,6 +37,7 @@ ROOT = HERE.parent.parent
 TIMEOUT_S = 1800
 BUG_DEPTH = 16
 HARNESS = ["sram_free.sv", "fp_props.sv", "sramfp.sby", "product.py"]
+PDK_STUB = ROOT / "test" / "rtl" / "sg13cmos5l_antennanp.v"     # the top's one PDK cell
 
 # (name, file, old, new): each makes a slot read the word fetched one cycle
 # earlier, so the fresh SRAM output steers the SRAM inputs in that cycle.
@@ -74,13 +75,14 @@ def stage(rtl, out, bug=None):
         shutil.copy(rtl / f, out / f)
     for f in HARNESS:
         shutil.copy(HERE / f, out / f)
+    shutil.copy(PDK_STUB, out / PDK_STUB.name)
     if bug:
         _, f, old, new = bug
         src = (out / f).read_text()
         if old not in src:
             return None
         (out / f).write_text(src.replace(old, new, 1))
-    ys = (f"read_verilog -sv -formal {' '.join(files)} sram_free.sv\n"
+    ys = (f"read_verilog -sv -formal {' '.join(files)} sram_free.sv {PDK_STUB.name}\n"
           f"prep -flatten -top {top}\n"
           "memory_map\nopt -keepdc -fast\nclk2fflogic\nopt_clean\n"
           "write_rtlil chip.il\n")

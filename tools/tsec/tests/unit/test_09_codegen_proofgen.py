@@ -49,8 +49,11 @@ def test_harness_for_the_receiver():
     rows = [w for _, w, _, _, _ in assemble(res.chosen)]
     top, chk = proofgen.harness(res.role, 1, obs, {"LANE_CFG": 0}, rows, [], (0, 0))
     assert len(chk) == 1 and chk[0][1:] == (210, 312)
-    assert ".LO(210), .HI(312)" in top and ".trig_val(1'b0)" in top and "pc_q == 8'd0" in top
-    assert "tse_lane #" in top and "cfg[32*tse_regs_pkg::LW_LANE_CFG +: 32]" in top
+    assert ".LO(LATE == 0 ? 313 : 210), .HI(312)" in top
+    assert ".trig_val(1'b0)" in top and "pc_q == 8'd0" in top
+    assert "tse_lane #" in top and "cfg_img[32*tse_regs_pkg::LW_LANE_CFG +: 32]" in top
+    # the bank takes the program's writes, starting from the image
+    assert "tse_cfg_bank #" in top and ".we(cfg_we)" in top and "assume (cfg == (cfg_img &" in top
 
 
 def test_a_check_is_abandoned_off_the_path_to_its_act():
@@ -68,6 +71,7 @@ def test_a_check_is_abandoned_off_the_path_to_its_act():
     assert f"(ONLY < 0 || ONLY == {len(obs) - 1}) && stay >= 3'd5" in top
     sby = proofgen.sby_text("tgt", 100, n=len(obs))
     assert f"ob{len(obs) - 1} prv" in sby and sby.index("--") < sby.index("ob0 prv")
+    assert f"late{len(obs) - 1} prv" in sby and "late0: chparam -set ONLY 0 -set LATE 0 top" in sby
 
 
 def test_uppaal_bounds():

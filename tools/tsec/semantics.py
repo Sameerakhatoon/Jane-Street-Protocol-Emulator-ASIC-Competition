@@ -190,6 +190,12 @@ def base_event(sym, e):
     return e, None
 
 
+def pin_of(sym, e):
+    """The wire whose pin carries event e, None for an event that is not a pin edge."""
+    base, _ = base_event(sym, e)
+    return base.name.text if base.kind in ("rise", "fall", "edge") else None
+
+
 def level_guard(sym, g):
     """{wire: level} of a guard made of `w == 0|1` terms joined by and, else None."""
     if g is None:

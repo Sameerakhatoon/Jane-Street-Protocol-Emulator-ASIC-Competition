@@ -8,7 +8,7 @@ cd "$(dirname "$0")/../.."
 top=$(sed -n 's/^ *top_module: *"\([^"]*\)".*/\1/p' info.yaml)
 # Packages first so modules can import them; they are not linted as tops.
 rtl="$(ls src/*_pkg.sv 2>/dev/null) $(ls src/*.sv | grep -v _pkg.sv)"
-bb=$(ls src/*_bb.v 2>/dev/null || true)
+bb="$(ls src/*_bb.v 2>/dev/null || true) test/rtl/sg13cmos5l_antennanp.v"
 log=build/lint; mkdir -p $log
 fail=0
 
@@ -46,10 +46,12 @@ if [ -f src/tse_chip.sv ]; then
 fi
 
 if [ -f src/tse_sram_model.v ]; then
-    if verilator --lint-only -Wall -DSIM src/tse_sram_model.v > $log/sram_model.txt 2>&1; then
-        echo "lint ok      tse_sram_model (SIM)"
-    else
-        echo "LINT FAIL    tse_sram_model"; grep -E '^%' $log/sram_model.txt | head; fail=1
-    fi
+    for m in $(sed -n 's/^module \([A-Za-z0-9_]*\).*/\1/p' src/tse_sram_model.v); do
+        if verilator --lint-only -Wall -DSIM --top-module $m src/tse_sram_model.v > $log/sram_model_$m.txt 2>&1; then
+            echo "lint ok      $m (SIM model)"
+        else
+            echo "LINT FAIL    $m (SIM model)"; grep -E '^%' $log/sram_model_$m.txt | head; fail=1
+        fi
+    done
 fi
 exit $fail

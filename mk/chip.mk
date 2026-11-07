@@ -7,10 +7,11 @@ CHIP_TOP := $(shell sed -n 's/^ *top_module: *"\([^"]*\)".*/\1/p' info_chip.yaml
 lint: chip-lint
 test: chip-test
 
-# the full-chip top builds from exactly the files info_chip.yaml lists
+# the full-chip top builds from exactly the files info_chip.yaml lists, plus the
+# stand-in for its one PDK cell
 chip-lint:
-	verilator --lint-only -Wall --top-module $(CHIP_TOP) $(CHIP_SRC)
-	iverilog -g2012 -o /dev/null -s $(CHIP_TOP) $(CHIP_SRC)
+	verilator --lint-only -Wall --top-module $(CHIP_TOP) $(CHIP_SRC) test/rtl/sg13cmos5l_antennanp.v
+	iverilog -g2012 -o /dev/null -s $(CHIP_TOP) $(CHIP_SRC) test/rtl/sg13cmos5l_antennanp.v
 	python3 -c "import json; json.load(open('src/config_chip.json'))"
 
 # program memory alone with stub lanes, then the whole chip

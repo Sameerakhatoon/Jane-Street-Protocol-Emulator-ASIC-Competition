@@ -18,6 +18,7 @@ from .fsm import STRATEGIES, Fsm, NeedHome, layout
 from . import ast as A
 from .fsmtime import Analysis, stability_warnings
 from .lower import unsupported
+from .semantics import pin_of
 from .units import drift_budget
 from .window import DATA_WORDS, WindowPlan
 
@@ -56,7 +57,8 @@ class Scheduler:
 
     def analyse(self, att):
         targets = [ins.a["target"] for ins in att.prog if ins.op == "JMP" and ins.a["cond"] == "TOUT"]
-        a = Analysis(self.sym, self.role, att.prog, att.labels, self.lane, self.fm, self.f, targets)
+        a = Analysis(self.sym, self.role, att.prog, att.labels, self.lane, self.fm, self.f, targets,
+                     self.skew)
         return a.run()
 
     # ------------------------------------------------------------ achieved intervals
@@ -505,6 +507,8 @@ class Scheduler:
                     f"the {ev} level does, or abort on a rise, which is tested with JMP PIN")])
 
     def rule_fix(self, rules, a, b, need_ticks):
+        if a is not None and pin_of(self.sym, a) != pin_of(self.sym, b):
+            need_ticks = need_ticks + self.skew      # the analysis takes the pad skew off
         need = Fr(need_ticks) / self.f
         if not rules:
             return (f"add a datasheet rule {printer.event(a) if a is not None else 'E'} -> "

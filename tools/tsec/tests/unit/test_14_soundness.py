@@ -87,7 +87,7 @@ def test_cs_setup_too_short_for_the_first_opcode_bit():
     assert att is None
     miss = r314(tried, "the wait for rise(sck) first waits")
     assert miss and "after fall(cs_n)" in dict(miss[0].fields)["required"]
-    assert dict(miss[0].fields)["fix"].startswith("t_css >= 151 ns")
+    assert dict(miss[0].fields)["fix"].startswith("t_css >= 176 ns")
 
 
 def jedec_first_out(f_sck, half):
@@ -160,10 +160,34 @@ def test_bytes_back_to_back_at_4mhz_are_rejected():
 
 
 def test_bytes_back_to_back_at_1875khz_on_the_reference_lane():
-    att, _ = compile_role(SPI, t_css="117e-9", f_sck="1.875e6")
+    # t_css 142 ns is 8.5 ticks at the pins, at least 7 cycles at the lane with 25 ns of skew
+    att, _ = compile_role(SPI, t_css="142e-9", f_sck="1.875e6")
     assert att is not None
     for s0 in range(100, 104):          # every slot phase of the CS fall
         assert mosi_samples(att, 7, 16, 2, s0) == list(range(1, 17))
+
+
+# ---------------------------------------------------------------- 1b: pad skew between input pins
+def test_cs_setup_counts_the_pad_skew():
+    # CS and SCK come through different pads. With t_css 117 ns (7.02 ticks) and CS 25 ns slower
+    # than SCK, the lane can see the first rise 5 cycles after the CS fall, not 7.
+    att, tried = compile_role(SPI, t_css="117e-9", f_sck="1.875e6")
+    assert att is None
+    miss = r314(tried, "the wait for rise(sck) first waits")
+    assert miss and any(dict(v.fields)["fix"].startswith("t_css >= 142 ns") for v in miss)
+    sym = front(SPI, t_css="117e-9", f_sck="1.875e6")
+    att, _ = Scheduler(sym, sym.roles[0], 0, FCLK, FetchModel(), (0, 25, 0)).compile()
+    assert att is not None              # with pads known to have no skew it builds
+
+
+def test_without_the_skew_the_first_bit_is_lost_on_the_reference_lane():
+    # the program the analysis accepted before it counted the skew: the first rise 6 cycles
+    # after the CS fall at the lane, in the slot phase where the byte loop's pre-wait comes last,
+    # is missed and every byte is shifted by one bit
+    sym = front(SPI, t_css="117e-9", f_sck="1.875e6")
+    att, _ = Scheduler(sym, sym.roles[0], 0, FCLK, FetchModel(), (0, 25, 0)).compile()
+    got = [mosi_samples(att, 6, 16, 2, s0) for s0 in range(100, 104)]
+    assert list(range(1, 17)) in got and any(g[0] == 2 for g in got)
 
 
 # ---------------------------------------------------------------- 2: own condition first

@@ -20,8 +20,9 @@ die() { echo "FAIL e2e-spi-$ROLE: $*"; exit 1; }
 
 case "$ROLE" in
     target)
-        # back-to-back bytes need SCK <= 1.99 MHz and the first rise 117 ns after CS (R314)
-        SPEC=spi_target_mode0_css114; OPTS=(-D t_css=117e-9 -D f_sck=1.875e6); DEMO=(--half 16)
+        # back-to-back bytes need SCK <= 1.99 MHz and the first rise 142 ns after CS (R314,
+        # 117 ns for the lane plus 25 ns of pad skew between CS and SCK)
+        SPEC=spi_target_mode0_css114; OPTS=(-D t_css=142e-9 -D f_sck=1.875e6); DEMO=(--half 16)
         JUDGE=(--map cs=ui_in4 --map clk=ui_in5 --map mosi=ui_in6 --map miso=uo_out1) ;;
     controller)
         SPEC=spi_controller_mode0; OPTS=(--pad-skew 0); DEMO=()

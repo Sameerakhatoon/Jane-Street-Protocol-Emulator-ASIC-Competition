@@ -62,7 +62,7 @@ The status words:
 | CAN receiver answers with an in-bit ACK by a response rule; a bad-CRC frame is not ACKed, at 125k and 500k | SIM | `examples/tests/09-can.sh` | receiver only; two independent CAN nodes are not expressible |
 | 10BASE-T transmit, 3 frames, 0 violations | SIM | `examples/tests/10-eth10.sh` | transmit only; receive is blocked |
 | SPI flash target answers an ID and a read (ef4015) | SIM | `examples/tests/08-flash.sh` | about 500 to 714 kHz only; the serprog client is a replay of flashrom's traffic, flashrom is not installed here |
-| The compiler rejects a spec it cannot prove and names the fix | BUILDS | `python3 -m tools.tsec build specs/spi_target.tse` | rejected R314; with `-D t_css=117e-9 -D f_sck=1.875e6` it builds. The analysis is checked against the reference model, not mechanised |
+| The compiler rejects a spec it cannot prove and names the fix | BUILDS | `python3 -m tools.tsec build specs/spi_target.tse` | rejected R314; with `-D t_css=142e-9 -D f_sck=1.875e6` it builds. The analysis is checked against the reference model, not mechanised |
 | 25 specs across 9 protocols compile to a pinned set of accept or reject outcomes | BUILDS | `make specs-test` | several are rejected by design, each for a recorded reason |
 | The RTL matches the reference model instruction by instruction on random programs | LOCKSTEP | `make verif-test` | Hypothesis property tests in cocotb |
 | CRC of any width 5 to 32 equals a textbook CRC; the stuffer, codec, DPLL, slot arbiter and SRAM false path meet their properties | PROVEN | `make formal` | planted bugs must fail; UNKNOWN is a failure |
@@ -102,7 +102,7 @@ What is not covered, stated plainly: no silicon, no FPGA, no measured CMOS5L pad
 
 ## What we do differently from PIO and PRU
 
-1. **Timing is checked before a program exists.** With PIO or PRU the programmer counts cycles; here the compiler places every edge and rejects a spec it cannot meet. Example: `specs/spi_target.tse` at 4 MHz is rejected (`R314`, the lane reaches its wait for the next SCK rise too late, fix `f_sck <= 1.99 MHz`); with `-D t_css=117e-9 -D f_sck=1.875e6` it builds.
+1. **Timing is checked before a program exists.** With PIO or PRU the programmer counts cycles; here the compiler places every edge and rejects a spec it cannot meet. Example: `specs/spi_target.tse` at 4 MHz is rejected (`R314`, the lane reaches its wait for the next SCK rise too late, fix `f_sck <= 1.99 MHz`); with `-D t_css=142e-9 -D f_sck=1.875e6` it builds.
 2. **Protocol assists in every lane.** CRC, bit stuffing, line codes, clock recovery and response rules are hardware, so a lane does not spend instructions per bit on them (PIO has none of these; a PRU does them in software).
 3. **Lanes cannot disturb each other.** Memory access is granted by fixed slots, proven with SymbiYosys for the slot arbiter (`formal/arb/`), and measured end to end in `examples/combo/`.
 

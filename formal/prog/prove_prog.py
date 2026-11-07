@@ -277,6 +277,9 @@ def main():
         text = top.read_text().replace("tse_lane #(", "prog_lane #(")
         notes = list(NOTE_RE.finditer(text))
         checks = [Check(m, nt) for m, nt in zip(CHECK_RE.finditer(text), notes)]
+        if not checks and "tse_window_check #" in text:
+            raise SystemExit(f"prove_prog: {role}: the harness has window checkers this script cannot "
+                             "read (the generator's format moved on); nothing would be proved")
         if not checks:
             rows.append(f"--  {role:10s} no window obligation in the generated harness: nothing to prove")
             continue

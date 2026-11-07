@@ -8,6 +8,8 @@
 # Annotating takes Icarus about 40 minutes per corner before the test starts.
 # usage: make -C verif/glsdf [RUN=runs/rtl6c/proj/runs/wokwi] [CORNER=nom_typ_1p20V_25C]
 #        [GL_TEST=test_01_random_images_load] [GL_MODULES=test_loader]
+# the lane tests: GL_MODULES=test_lane GL_TEST=test_0 (UART, then SPI controller), judged
+# from the pins-only VCDs they write to build/glsdf/RUN/CORNER/lane
 # corners: nom_fast_1p32V_m40C nom_typ_1p20V_25C nom_slow_1p08V_125C
 TOP      := $(abspath ../..)
 RUN      ?= runs/rtl6c/proj/runs/wokwi
@@ -35,6 +37,7 @@ SIM_BUILD        := $(BUILD)/sim
 COCOTB_RESULTS_FILE := $(BUILD)/results.xml
 
 export LANES := 2
+export LANE_OUT := $(BUILD)/lane
 export PYTHONPATH := $(TOP)/verif/chip:$(TOP)/host:$(TOP):$(PYTHONPATH)
 export PYTHONDONTWRITEBYTECODE := 1
 

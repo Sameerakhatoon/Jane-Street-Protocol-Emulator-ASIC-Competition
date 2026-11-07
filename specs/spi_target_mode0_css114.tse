@@ -21,22 +21,27 @@
 //                                            t_css >= 91.2 ns / 109.3 ns
 //   first rise          OB-REARM             after the fall the lane drives MISO and sets
 //                                            its counter before it waits for the first
-//                                            rise: 7 ticks, so t_css >= 116.7 ns at 60 MHz
-//                                            (116.6 ns is rejected), 140 ns at 50 MHz
-//                                            (130 ns is rejected), at any pad setting
+//                                            rise: 7 ticks, plus the pad skew between the
+//                                            CS and SCK pins (the SCK rise can reach the
+//                                            lane that much earlier than the CS fall)
 //   byte gap            OB-REARM             push, then wait for the SCK level: f_sck <=
 //                                            2.14 MHz at 60 MHz (1.7 MHz proven at 50 MHz)
 //
-// So the claim is t_css >= 117 ns and f_sck <= 2 MHz at 60 MHz (140 ns and
-// 1.7 MHz at 50 MHz). Driving the first bit while armed, before CS falls,
-// would lower the re-arm limit to about 84 ns (84 ns builds, 80 ns is
-// rejected, on a variant of this file with the tile pads), but MISO would then show
-// data while the target is not selected. Controllers that hold CS for a
-// whole SCK period before the first edge (250 ns at 2 MHz) meet 117 ns easily.
+// Smallest t_css that builds (one ns less is rejected):
+//
+//                          default pads (0 to 25 ns)    full pad path (0 to 21 ns, skew 3.5 ns)
+//   60 MHz, f_sck 2 MHz    142 ns                       121 ns
+//   50 MHz, f_sck 1.7 MHz  165 ns                       144 ns
+//
+// The default t_css is the one that builds with the compiler's default pads.
+// Driving the first bit while armed, before CS falls, would shorten the re-arm
+// by several ticks, but MISO would then show data while the target is not
+// selected. Controllers that hold CS for a whole SCK period before the first
+// edge (250 ns at 2 MHz) meet 142 ns easily.
 protocol spi_target_mode0_css114 {
   param f_sck : freq = 2 MHz;          // fastest SCK the controller will use
   param t_su  : time = 5 ns;           // controller's MISO setup before its sampling edge
-  param t_css : time = 117 ns;         // controller's CS fall to first SCK rise
+  param t_css : time = 142 ns;         // controller's CS fall to first SCK rise
   param t_mo  : time = 20 ns;          // controller's MOSI output delay after SCK falls
   unit  half  = 1 / (2 * f_sck);
 

@@ -5,7 +5,7 @@ tsec: protocol 'spi_target_mode0', clock 60 MHz, S = 4, fetch buffer 2 word(s), 
   param t_mo = 2e-08 (time)
 
 == role tgt (target) on lane 0
-strategy: state machine, rolled loops (13793 analysis states)
+strategy: state machine, rolled loops (14027 analysis states)
 addr  word   instruction                    note
   0  4010          SET   PINS, 0, mask=0b0001     idle levels before driving
   1  4111          SET   PINDIRS, 1, mask=0b0001  outputs on (turnaround pins off)
@@ -29,7 +29,7 @@ addr  word   instruction                    note
  19  000a          JMP   ALWAYS, bits             -> bits
 obligations (worst case over every slot phase, buffer state and legal environment timing; pads 0 to 25 ns):
   line 50 shift miso     after fall(cs_n)   66.7 to 108.3 ns, window [0.0, 165.0], margins 66.7 and 56.7 ns  ok
-  line 56 shift mosi     after rise(sck)    16.7 to 75.0 ns, window [0.0, 246.7], margins 16.7 and 171.7 ns  ok
+  line 56 shift mosi     after rise(sck)    16.7 to 91.7 ns, window [0.0, 246.7], margins 16.7 and 155.0 ns  ok
   line 57 shift miso     after fall(sck)    66.7 to 108.3 ns, window [0.0, 261.7], margins 66.7 and 153.3 ns  ok
   abort: reaches the abort state within 79 cycles of the alternate condition being seen (stated bound)
   host contract, pull host txw: send the word bit-reversed: OUT shifts bit 0 first, and the spec sends the msb first

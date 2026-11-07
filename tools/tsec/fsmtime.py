@@ -42,7 +42,7 @@ from fractions import Fraction as Fr
 from . import ast as A
 from . import cycles, isa, printer
 from .diag import TseError
-from .semantics import level_guard, min_separation, opposite, stable_after
+from .semantics import level_guard, min_separation, opposite, pin_of, stable_after
 
 DATA = "data"                  # a register value that depends on data (a count from a variable)
 MAX_STATES = 1_500_000         # beyond this the analysis gives up (R325) instead of exhausting memory
@@ -94,9 +94,9 @@ class Result:
 
 
 class Analysis:
-    def __init__(self, sym, role, prog, labels, lane, fm, fclk, abort_targets=()):
+    def __init__(self, sym, role, prog, labels, lane, fm, fclk, abort_targets=(), skew=0):
         self.sym, self.role, self.prog, self.labels = sym, role, prog, labels
-        self.lane, self.fm, self.f = lane, fm, fclk
+        self.lane, self.fm, self.f, self.skew = lane, fm, fclk, skew
         self.ms_cache, self.events = {}, {}
         self.host_ready = any(a.b is None and a.a.kind == "named" and a.a.name.text == "host"
                               and a.a.attr is not None and a.a.attr.text == "ready" for a in role.assumes)
@@ -215,9 +215,14 @@ class Analysis:
         return k
 
     def ms(self, a, b):
+        """Least cycles between a and b becoming visible to the lane. On one pin the pad delay is
+        the same for both, so the rules' separation floored; on two pins the second may come
+        through a pad up to the skew faster than the first."""
         key = (a, b)
         if key not in self.ms_cache:
             t, used = min_separation(self.sym, self.role, self.events[a], self.events[b], self.f)
+            if used and pin_of(self.sym, self.events[a]) != pin_of(self.sym, self.events[b]):
+                t = max(Fr(0), t - self.skew)
             self.ms_cache[key] = (math.floor(t), used)
         return self.ms_cache[key]
 

@@ -180,11 +180,14 @@ def test_frame_checks_of_the_buffered_transmitter():
     assert "assume (h_tx_we)" not in top
     assert "assume (h_tx_we)" in proofgen.frame_harness(res.role, 0, checks, {}, [0], [], True)
     sby = proofgen.frame_sby("mac_tx", len(checks))
-    assert "abc pdr" in sby
-    # one task per obligation, not run by default, arming that checker alone
+    assert "aiger rIC3" in sby
+    # per obligation a proof and its planted bug, not run by default, arming that checker alone
     tasks = sby[sby.index("[tasks]"):sby.index("[options]")].split()
-    assert tasks == ["[tasks]", "prove", "--"] + [f"ob{k}" for k in range(5)]
-    assert "ob4: chparam -set ONLY 4 top" in sby
+    assert tasks == ["[tasks]", "prove", "--"] + [f"{t}{k}" for k in range(5) for t in ("ob", "late")]
+    assert "ob4: chparam -set ONLY 4 top" in sby and "late4: chparam -set ONLY 4 -set LATE 4 top" in sby
+    # the planted bug: no response meets the window (one past HI)
+    feed = checks.index(feeds[0])
+    assert f".LO(LATE == {feed} ? 3 : 2), .HI(2)" in top
     assert sby.index("chparam") < sby.index("prep -top top")
     assert f"(ONLY < 0 || ONLY == {checks.index(feeds[0])}) && (" in top
 
