@@ -6,14 +6,15 @@
 # usage: tools/pd/magic-flags.sh <run dir, e.g. runs/rtl6d/proj/runs/wokwi>
 # Writes <run dir>/magic-flags/ (clips, per-window reports, summary.txt).
 #
-# Waiver, rtl6c and rtl6d: Magic reports 51 flags (32 M4.e, 14 M3.f, 5 M1.f), all on the two
-# SRAM macros or 0.5 um outside their top and bottom edges. The abstract (src/maglef, from the
-# vendor LEF) draws each obstruction layer as one solid rectangle, so the wide-metal .f rules
-# fire on our wires beside it, and its pin and obstruction rectangles meet in 0.03 um slivers
-# (M4.e); the real layout has neither. This script finds 0 of the 51 on the real GDS (on rtl6b
-# it finds 722 of the 727 real pSD.e/f errors, so it does see errors of ours), the IHP KLayout
-# deck checks M1.e to M4.f on the real GDS clean, and the Tiny Tapeout precheck runs no Magic
-# for IHP. Recheck after any change to the macro placement, the power grid or the abstract.
+# Waiver, rtl6c and rtl6d: Magic reports 51 flags (32 M4.e, 14 M3.f, 5 M1.f), hm2a 53
+# (7 M1.f), all on the two SRAM macros or 0.5 um outside their top and bottom edges. The
+# abstract (src/maglef, from the vendor LEF) draws each obstruction layer as one solid
+# rectangle, so the wide-metal .f rules fire on our wires beside it, and its pin and
+# obstruction rectangles meet in 0.03 um slivers (M4.e); the real layout has neither. This
+# script finds 0 of them on the real GDS (on rtl6b it finds 722 of the 727 real pSD.e/f
+# errors, so it does see errors of ours), the IHP KLayout deck checks M1.e to M4.f on the
+# real GDS clean, and the Tiny Tapeout precheck runs no Magic for IHP.
+# Recheck after any change to the macro placement, the power grid or the abstract.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 source tools/pd/env.sh
