@@ -456,6 +456,8 @@ def write(outdir, role, lane, obs, regs, words, window, pads, bounded=False, dep
 # An event the lane does not show on STATUS (the DPLL's half strobe) has no checker.
 STATUS_EV = {"ev_TXNEED": 0, "rx": 1, "hit": 2}
 CHECKERS = ("tse_window_check.sv",)
+# the lane's engines, every instance but the sequencer (src/tse_lane.sv), for cut<k>
+ENGINES = " ".join(f"*/{u}" for u in ("u_dpll", "u_crc", "u_stuff", "u_codec", "u_rule", "u_tmr"))
 
 
 class Check:
@@ -594,15 +596,22 @@ def frame_sby(role_name, n=0):
     rIC3's portfolio: abc pdr did not converge in 50 minutes on any of them, all together or
     alone. No cover task: the first frame's events come a few hundred cycles after RUN, too deep
     for a bounded cover; instead task late<k>, checker k with a window no response can meet,
-    must fail, which shows its trigger and response are reached."""
+    must fail, which shows its trigger and response are reached. Tasks cut<k> and cutlate<k> do
+    the same with the lane's engines cut (ENGINES): their outputs become free inputs, which every
+    behaviour of the real engines is one of, so a pass holds for the real lane (a failure may not).
+    For a feed, whose act follows its event with no wait between, the engines only steer which
+    path the program takes, and the deep state of the DPLL, stuffer, CRC and codec is gone."""
     files = [os.path.join(SRC, f) for f in RTL]
     reads = " ".join(os.path.basename(f) for f in files)
     return "\n".join([
-        "[tasks]", "prove", *ob_tasks(n), "",
+        "[tasks]", "prove", *ob_tasks(n), *[f"{t}{k}" for k in range(n) for t in ("cut", "cutlate")], "",
         "[options]", "mode prove", "",
         "[engines]", "aiger rIC3", "",
         "[script]", f"read_verilog -formal -sv {reads} {' '.join(CHECKERS)} top_{role_name}.sv",
-        *ob_params(n), "prep -top top", "flatten", "memory_map", "opt -fast", "techmap", "opt -fast",
+        *ob_params(n), *[f"cut{k}: chparam -set ONLY {k} top" for k in range(n)],
+        *[f"cutlate{k}: chparam -set ONLY {k} -set LATE {k} top" for k in range(n)], "prep -top top",
+        *[f"{t}{k}: cutpoint {ENGINES}" for k in range(n) for t in ("cut", "cutlate")], "flatten",
+        "memory_map", "opt -fast", "techmap", "opt -fast",
         "setundef -undriven -anyseq", "setundef -zero", "opt -full", "opt_dff -sat", "opt_clean", "",
         "[files]", *files, *CHECKERS, f"top_{role_name}.sv",
     ]) + "\n"
@@ -825,10 +834,23 @@ def place_lines(pl, host_ready=False):
         lines += ["  always_ff @(posedge clk)",
                   "    if (init) begin pch <= '0; pk <= '0; pt <= '0; end",
                   "    else begin pch <= n_ch; pk <= n_k; pt <= n_pt; end"]
+        # a solver proves a chain's windows faster with lemmas tying pt to the lane's state: q,
+        # pt plus the sequencer's delay count, stays in a range at each (chain, entry, pc) while
+        # a delay counts down (not at a wait that ends a chain, where q grows as long as the
+        # outside world takes). place_lemmas.py writes them from a simulation over lem_ok; each
+        # task asserts them with its obligation, so a wrong lemma fails the proof, never helps it
+        lines += ["  logic [8:0] p_dly;                     // tied to dut.u_seq.dly after flatten (sby)",
+                  f"  logic [{tw}:0] q;",
+                  "  logic lem_ok;",
+                  "  assign q = pt + p_dly;",
+                  f"  // chains end at: {' '.join(str(r) for r in sorted(pl.resets))}",
+                  "  assign lem_ok = 1'b1;                  // LEMMAS"]
+    ok = " && lem_ok" if pl.chains else ""
     # sampled at the clock: the same states for the solver, and no glitches in a simulator
-    lines += ["  always @(posedge clk) if (!init) begin", "    assert (!order_bad);"]
+    lines += ["  always @(posedge clk) if (!init) begin", f"    assert (!order_bad{ok});"]
     for g, (line, text, code) in enumerate(pl.groups):
-        lines.append(f"    if (ONLY < 0 || ONLY == {g}) assert (!bad[{g}]);   // line {line}: {code} {text}")
+        lines.append(f"    if (ONLY < 0 || ONLY == {g}) assert (!bad[{g}]{ok});"
+                     f"   // line {line}: {code} {text}")
     lines += ["  end", "endmodule"]
     return lines
 
@@ -838,9 +860,10 @@ def place_harness(role, lane, pl, regs, words, window, host_ready=False):
     return "\n".join(lines + place_lines(pl, host_ready)) + "\n"
 
 
-def place_sby(role_name, n):
+def place_sby(role_name, n, probe=False):
     """Prove every check with abc pdr (task prove) or rIC3 (rprove), or one obligation alone
-    (ob<k>, ric<k>), or its planted bug (late<k>, rlate<k>: must FAIL)."""
+    (ob<k>, ric<k>), or its planted bug (late<k>, rlate<k>: must FAIL). probe: the harness has
+    p_dly (a chain), tied to the sequencer's delay count once the design is flat."""
     files = [os.path.join(SRC, f) for f in RTL]
     reads = " ".join(os.path.basename(f) for f in files)
     return "\n".join([
@@ -848,7 +871,8 @@ def place_sby(role_name, n):
         "[options]", "prv: mode prove", "ric: mode prove", "",
         "[engines]", "prv: abc pdr", "ric: aiger rIC3", "",
         "[script]", f"read_verilog -formal -sv {reads} top_{role_name}_place.sv",
-        *ob_params(n), *ric_params(n), "prep -top top", "flatten", "memory_map", "opt -fast", "techmap",
+        *ob_params(n), *ric_params(n), "prep -top top", "flatten",
+        *(["connect -set p_dly dut.u_seq.dly"] if probe else []), "memory_map", "opt -fast", "techmap",
         "opt -fast", "setundef -undriven -anyseq", "setundef -zero", "opt -full", "opt_dff -sat",
         "opt_clean", "",
         "[files]", *files, f"top_{role_name}_place.sv",
@@ -877,7 +901,7 @@ def write_place(outdir, role, lane, pl, regs, words, window, host_ready=False):
     with open(os.path.join(outdir, f"top_{name}_place.sv"), "w") as fh:
         fh.write(place_harness(role, lane, pl, regs, words, window, host_ready))
     with open(os.path.join(outdir, f"{name}_place.sby"), "w") as fh:
-        fh.write(place_sby(name, len(pl.groups)))
+        fh.write(place_sby(name, len(pl.groups), bool(pl.chains)))
     with open(os.path.join(outdir, f"{name}_place.txt"), "w") as fh:
         fh.write(place_table(pl))
     with open(os.path.join(outdir, f"{name}.hex"), "w") as fh:

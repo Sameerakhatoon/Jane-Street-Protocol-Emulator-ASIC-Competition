@@ -185,7 +185,12 @@ def test_frame_checks_of_the_buffered_transmitter():
     assert "aiger rIC3" in sby
     # per obligation a proof and its planted bug, not run by default, arming that checker alone
     tasks = sby[sby.index("[tasks]"):sby.index("[options]")].split()
-    assert tasks == ["[tasks]", "prove", "--"] + [f"{t}{k}" for k in range(5) for t in ("ob", "late")]
+    assert tasks == ["[tasks]", "prove", "--"] + [f"{t}{k}" for k in range(5) for t in ("ob", "late")] + \
+        [f"{t}{k}" for k in range(5) for t in ("cut", "cutlate")]
+    # cut<k>: the same with every lane engine but the sequencer a free input, after elaboration
+    cut = "cut4: cutpoint */u_dpll */u_crc */u_stuff */u_codec */u_rule */u_tmr"
+    assert cut in sby and sby.index("prep -top top") < sby.index(cut) < sby.index("flatten")
+    assert "*/u_seq" not in sby and "cutlate4: chparam -set ONLY 4 -set LATE 4 top" in sby
     assert "ob4: chparam -set ONLY 4 top" in sby and "late4: chparam -set ONLY 4 -set LATE 4 top" in sby
     # the planted bug: no response meets the window (one past HI)
     feed = checks.index(feeds[0])

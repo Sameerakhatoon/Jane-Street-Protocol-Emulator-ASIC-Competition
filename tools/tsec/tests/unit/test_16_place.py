@@ -39,12 +39,15 @@ def test_chain_windows_hold_the_analysis_claims():
 def test_chain_harness_counts_entries_and_plants_one_bug_per_obligation():
     sym, _, pl = fsm("spi_controller_mode0", (0, 25, 0))
     top = proofgen.place_harness(sym.roles[0], 0, pl, {"LANE_CFG": 0}, [0], [])
-    assert "assert (!order_bad);" in top and "dd = pt;" in top and "n_pt = " in top
+    assert "assert (!order_bad && lem_ok);" in top and "dd = pt;" in top and "n_pt = " in top
     for g in range(len(pl.groups)):
-        assert f"LATE == {g} ||" in top and f"if (ONLY < 0 || ONLY == {g}) assert (!bad[{g}]);" in top
+        assert f"LATE == {g} ||" in top
+        assert f"if (ONLY < 0 || ONLY == {g}) assert (!bad[{g}] && lem_ok);" in top
     # a wait for the host ends the chain, as in the analysis
     assert pl.resets and all("n_ch = '0;" in top for _ in pl.resets)
-    sby = proofgen.place_sby("ctl", len(pl.groups))
+    sby = proofgen.place_sby("ctl", len(pl.groups), True)
+    assert sby.index("flatten") < sby.index("connect -set p_dly dut.u_seq.dly") < sby.index("memory_map")
+    assert "connect -set" not in proofgen.place_sby("ctl", len(pl.groups))
     assert "prv: abc pdr" in sby and "late10 prv" in sby and "top_ctl_place.sv" in sby
     assert "rprove ric" in sby and "ric: aiger rIC3" in sby and "rlate10 ric" in sby
 
@@ -85,3 +88,49 @@ def test_paced_frame_visits_in_issue_order():
     assert pl.resets == {res.chosen.labels["idle"]}
     top = proofgen.place_harness(sym.roles[0], 0, pl, {"LANE_CFG": 0}, [0], [])
     assert "8'd9: begin" in top and "default: order_bad = 1'b1;" in top
+
+
+def test_lemmas_from_a_simulation_are_asserted_not_assumed(tmp_path):
+    # place_lemmas.py turns a LEMLOG run into q ranges per (chain, entry, pc) inside lem_ok, which
+    # every task asserts with its obligation; a wait that ends a chain gets none (the host is free)
+    import importlib.util
+    spec_ = importlib.util.spec_from_file_location("place_lemmas", "tools/tsec/proofs/sim/place_lemmas.py")
+    lem = importlib.util.module_from_spec(spec_)
+    spec_.loader.exec_module(lem)
+    sym, _, pl = fsm("spi_controller_mode0", (0, 25, 0))
+    top = tmp_path / "top.sv"
+    top.write_text(proofgen.place_harness(sym.roles[0], 0, pl, {"LANE_CFG": 0}, [0], []))
+    end = min(pl.resets)
+    log = tmp_path / "lem.log"
+    log.write_text(f"lem 3 5 70 40 70\nlem 3 5 70 44 70\nlem 3 6 71 50 70\nlem 1 9 {end} 7 {end}\n"
+                   "place g0 k1 0\n")
+    lem.main(str(top), str(log), 1)
+    text = top.read_text()
+    assert "assign lem_ok = 1'b1;" not in text and "always_comb begin\n    lem_ok = 1'b1;" in text
+    assert f"'d{(3 << 16) | (5 << 8) | 70}: lem_ok = q >= " in text and "'d39 && q <= " in text
+    assert f"'d{(1 << 16) | (9 << 8) | end}:" not in text
+    assert "assume" not in text.split("// lemmas from a simulation")[1].split("endmodule")[0]
+
+
+def load(name):
+    import importlib.util
+    spec_ = importlib.util.spec_from_file_location(name, f"tools/tsec/proofs/sim/{name}.py")
+    mod = importlib.util.module_from_spec(spec_)
+    spec_.loader.exec_module(mod)
+    return mod
+
+
+def test_lemmas_whose_range_a_slow_host_changes_are_left_free(tmp_path):
+    # a (chain, entry, pc) whose q range differs in a run with a slow host waits on the host
+    # somewhere in its chain: no lemma there, as the solver's host may wait as long as it likes
+    lem = load("place_lemmas")
+    sym, _, pl = fsm("spi_controller_mode0", (0, 25, 0))
+    top = tmp_path / "top.sv"
+    top.write_text(proofgen.place_harness(sym.roles[0], 0, pl, {"LANE_CFG": 0}, [0], []))
+    fast, slow = tmp_path / "fast.log", tmp_path / "slow.log"
+    fast.write_text("lem 3 5 70 40 70\nlem 3 6 70 50 70\n")
+    slow.write_text("lem 3 5 70 40 70\nlem 3 6 70 50 70\nlem 3 6 70 90 70\n")
+    lem.main(str(top), str(fast), 0, str(slow))
+    text = top.read_text()
+    assert f"'d{(3 << 16) | (5 << 8) | 70}: lem_ok = q >= " in text
+    assert f"'d{(3 << 16) | (6 << 8) | 70}:" not in text

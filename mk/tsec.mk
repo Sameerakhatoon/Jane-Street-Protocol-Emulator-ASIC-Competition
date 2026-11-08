@@ -121,22 +121,36 @@ tsec-proof:
 # modes 1 to 3 differ only in levels) and the I2C controller (fast mode), each shown live in
 # simulation first (tools/tsec/proofs/sim/place_sims.sh: no bug, no failure, every obligation
 # checked, every distance inside its window and the analysis' claim; then planted bug k fails,
-# for every k). Then every task of TSEC_PROOF2_PASS must PASS and every planted bug of
-# TSEC_PROOF2_FAIL must FAIL, TSEC_PROOF_JOBS at a time, each within TSEC_PROOF2_TIMEOUT seconds.
-# Left open at 40 minutes each (rIC3): uart_tx and uart_rx obligations 0 and 1, the SPI
-# controller's 1 to 10; at an hour each, the CAN receiver's 1, 2, 4, 5 and 6 (its bench
-# answers and passes all eight).
+# for every k). Then the chains of the UART transmitter and receiver and the SPI controller get
+# lemmas (place_lemmas.sh: "pt + the sequencer's delay count in [least, most]" per chain, entry and
+# pc, mined in simulation, left free where a slow host changes them, checked live again), which
+# every task asserts with its obligation: a wrong lemma fails a proof, never passes one. The CAN
+# receiver's 1, 2, 4, 5 and 6 are proved as cut<k> (the lane's engines cut to free inputs, a
+# sound over-approximation: a PASS holds for the real RTL), with cutlate<k> as their planted bugs.
+# Then every task of TSEC_PROOF2_PASS must PASS and every planted bug of TSEC_PROOF2_FAIL must
+# FAIL, TSEC_PROOF_JOBS at a time, each within TSEC_PROOF2_TIMEOUT seconds (rIC3 -e ic3 at 4 GB
+# took up to 45 minutes on each). The UART planted bugs for obligation 1 (first checked some 4,700
+# cycles in) are shown failing by place_sims.sh only. The CAN receiver's cut1 took 93 minutes
+# (rIC3 -e ic3 --ic3-ctp --ic3-inn; plain ic3 and k-induction ran out at two hours and one): run
+# with TSEC_PROOF2_TIMEOUT=7200 at least.
 TSEC_PROOF2 := build/tsec-proof2
 TSEC_PROOF2_BUILDS := uart_tx uart_rx jtag_probe@--pad-skew@0 spi_controller_mode0@--pad-skew@0 \
 	i2c_controller_fm spi_flash_target can_rx_ack
 TSEC_PROOF2_SIMS := uart_tx:100000:3 uart_rx:200000:40 jtag_probe:100000:3 \
 	spi_controller_mode0:100000:3:5:0 i2c_controller_fm:400000:3:8:13
+# chain lemmas: role:ncyc:pinhold[:hostmax:hostshift[:rxre]] (place_lemmas.sh)
+TSEC_PROOF2_LEMS := uart_tx:100000:3 uart_rx:200000:40:-:0:300 spi_controller_mode0:100000:3:5:0
 # window benches: role/harness, bench, frames, checkers
 TSEC_PROOF2_WSIMS := spi_flash_target/flash:flash_ctl_tb:10:10 can_rx_ack/node:can_tx_tb:12:8
 TSEC_PROOF2_PASS := $(foreach k,0 1 2 3 4 5 6 7 8 9,spi_flash_target/flash:ob$(k)) \
 	$(foreach k,0 3 7,can_rx_ack/node:ob$(k)) jtag_probe/probe_place:rprove \
-	spi_controller_mode0/ctl_place:ric0 $(foreach k,$(shell seq 0 29),i2c_controller_fm/ctl_place:ric$(k))
-TSEC_PROOF2_FAIL := $(foreach k,0 1 2,spi_flash_target/flash:late$(k))
+	$(foreach k,0 1 2 3 4 5 6 7 8 9 10,spi_controller_mode0/ctl_place:ric$(k)) \
+	$(foreach k,0 1,uart_tx/tx_side_place:ric$(k) uart_rx/rx_side_place:ric$(k)) \
+	$(foreach k,1 2 4 5 6,can_rx_ack/node:cut$(k)) $(foreach k,$(shell seq 0 29),i2c_controller_fm/ctl_place:ric$(k))
+TSEC_PROOF2_FAIL := $(foreach k,0 1 2,spi_flash_target/flash:late$(k)) \
+	$(foreach k,1 2 3 4 5 6 7 8 9 10,spi_controller_mode0/ctl_place:rlate$(k)) \
+	uart_tx/tx_side_place:rlate0 uart_rx/rx_side_place:rlate0 \
+	$(foreach k,1 2 4 5 6,can_rx_ack/node:cutlate$(k))
 TSEC_PROOF2_TIMEOUT ?= 3600
 tsec-proof-more:
 	rm -rf $(TSEC_PROOF2)
@@ -146,6 +160,10 @@ tsec-proof-more:
 	done
 	@for s in $(TSEC_PROOF2_SIMS); do \
 		bash tools/tsec/proofs/sim/place_sims.sh $(TSEC_PROOF2)/$${s%%:*}/proof $$(echo $${s#*:} | tr : ' ') \
+			|| exit 1; \
+	done
+	@for l in $(TSEC_PROOF2_LEMS); do \
+		bash tools/tsec/proofs/sim/place_lemmas.sh $(TSEC_PROOF2)/$${l%%:*}/proof $$(echo $${l#*:} | tr : ' ') \
 			|| exit 1; \
 	done
 	@for w in $(TSEC_PROOF2_WSIMS); do d=$${w%%:*}; tb=$$(echo $$w | cut -d: -f2); \
