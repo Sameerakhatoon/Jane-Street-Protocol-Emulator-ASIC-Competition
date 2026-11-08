@@ -3,8 +3,9 @@
 # Unmodified OpenOCD reads an SWD DPIDR through the chip's SWD probe lane:
 # swd_probe_driven.tse (specs/swd_probe.tse with SWDIO driven and released
 # explicitly; as shipped its image never drives SWDIO) -> tsec build at SWCLK
-# 1 MHz with an 80 ns edge tolerance (the 5 MHz default is R310 and the
-# shipped spec builds at 1 MHz and 40 ns) -> TSEI image -> Verilated full chip
+# 1 MHz with an 80 ns edge tolerance (the 5 MHz default is R310 at the
+# default pads, and the shipped spec builds at 1 MHz and 40 ns; with zero pad
+# skew the 5 MHz default builds) -> TSEI image -> Verilated full chip
 # -> OpenOCD remote_bitbang SWD into swd_demo.py, which runs the lane's host
 # steps -> an SW-DP on the lane's pads -> pins-only VCD -> SWD judge.
 #
@@ -26,9 +27,9 @@ step() { printf '== %s\n' "$*"; }
 die() { echo "FAIL e2e-swd: $*"; exit 1; }
 
 command -v openocd >/dev/null || die "no openocd"
-step "the default build is rejected (R310)"
+step "the default build is rejected at the default pads (R310)"
 st=0
-python3 -m tools.tsec build specs/swd_probe.tse --pad-skew 0 -o "$OUT/default" >"$OUT/tsec-default.log" 2>&1 || st=$?
+python3 -m tools.tsec build specs/swd_probe.tse -o "$OUT/default" >"$OUT/tsec-default.log" 2>&1 || st=$?
 [ $st -eq 2 ] && grep -q "R310" "$OUT/tsec-default.log" || die "the 5 MHz build is no longer R310"
 grep -m1 "R310" "$OUT/tsec-default.log"
 

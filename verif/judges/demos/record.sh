@@ -30,6 +30,13 @@ start_sim(){
 }
 
 stop_sim(){
+    # OpenOCD has quit, but the simulator may still be clocking its last
+    # buffered operations (the line reset sent on shutdown): wait until it
+    # has closed the connection, then stop it.
+    for _ in $(seq 100); do
+        ss -Htn state close-wait "( sport = :$port )" 2>/dev/null | grep -q . || break
+        sleep 0.1
+    done
     kill -INT "$sim" 2>/dev/null
     wait "$sim" 2>/dev/null
 }
