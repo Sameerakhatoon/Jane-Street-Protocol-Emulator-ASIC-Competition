@@ -38,10 +38,27 @@
 // by several ticks, but MISO would then show data while the target is not
 // selected. Controllers that hold CS for a whole SCK period before the first
 // edge (250 ns at 2 MHz) meet 142 ns easily.
+//
+// CS hold (t_csh, rule csh): after the last SCK fall of a byte the lane drives
+// MISO and then tests cs_n before it pushes the byte. If CS rises before that
+// test sees it low, the abort wins and a byte the controller finished is lost;
+// the pad skew can also let the CS rise reach the lane before the SCK fall. The
+// test comes up to 5 cycles after the fall is seen, so CS must stay low 6 cycles
+// plus the pad skew after the last fall. Smallest t_csh that builds (one ns
+// less is rejected):
+//
+//                          default pads (0 to 25 ns)    full pad path (0 to 21 ns, skew 3.5 ns)
+//   60 MHz                 125 ns                       104 ns
+//   50 MHz                 145 ns                       124 ns
+//
+// The default t_csh, 126 ns, is the fix the compiler names with its default
+// pads at 60 MHz; controllers that keep CS low for half an SCK period after
+// the last fall (250 ns at 2 MHz) meet it.
 protocol spi_target_mode0_css142 {
   param f_sck : freq = 2 MHz;          // fastest SCK the controller will use
   param t_su  : time = 5 ns;           // controller's MISO setup before its sampling edge
   param t_css : time = 142 ns;         // controller's CS fall to first SCK rise
+  param t_csh : time = 126 ns;         // controller's last SCK fall to CS rise
   param t_mo  : time = 20 ns;          // controller's MOSI output delay after SCK falls
   unit  half  = 1 / (2 * f_sck);
 
@@ -54,6 +71,7 @@ protocol spi_target_mode0_css142 {
     rule sck_low  : fall(sck)  -> rise(sck) >= half;
     rule sck_high : rise(sck)  -> fall(sck) >= half;
     rule css      : fall(cs_n) -> rise(sck) >= t_css;
+    rule csh      : fall(sck)  -> rise(cs_n) >= t_csh;
   }
 
   role tgt : target uses cs_n, sck, mosi, miso {

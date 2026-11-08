@@ -4,9 +4,9 @@
 The golden runs in tests/golden pin this text line for line.
 """
 import math
-from fractions import Fraction as Fr
 
 from .codegen import listing_lines
+from .pads import Pads
 
 STRATEGY_NAME = {"dly": "DLY pacing", "timer": "bit-timer pacing", "rolled": "rolled loops",
                  "unrolled": "unrolled loops", "frames": "frame engine"}
@@ -65,16 +65,20 @@ def fsm_section(res, rows, fclk, pads):
 
 def fsm_obligations(att, fclk, pads):
     from . import printer
-    pmin, pmax = (Fr(p) * fclk / 10**9 for p in pads[:2])
+    pad = Pads.of(pads)
+    win = pad.ticks_by_kind(fclk)
 
     def ns(t):
         return f"{float(t / fclk * 10**9):.1f}"
+    shown = ("in {:g} to {:g} ns, out {:g} to {:g} ns".format(*pad.inp[:2], *pad.out[:2]) if pad.split
+             else "{:g} to {:g} ns".format(*pad.hull()))
     out = [f"obligations (worst case over every slot phase, buffer state and legal environment "
-           f"timing; pads {pads[0]:g} to {pads[1]:g} ns):"]
+           f"timing; pads {shown}):"]
     for ins in att.prog:
         ob = ins.ob
         if ob is not None:
             st = att.res.obs[id(ins)]
+            pmin, pmax = win[ob.kind]
             if ob.kind == "out":
                 lo, hi = st.dmin + 3 + pmin, st.dmax + 4 + pmax
             else:
@@ -97,7 +101,7 @@ def fsm_obligations(att, fclk, pads):
                        f"edge, needs at least {float(ins.sep.ticks):.2f} ticks"
                        + (f" and at most {float(ins.sep.hi):.2f}" if ins.sep.hi is not None else "")
                        + (" with pad skew" if ins.sep.skew else "") + "  ok")
-    for st, k, err, budget, where, ok, skew in getattr(att, "pace_rows", []):
+    for st, k, err, budget, where, ok, skew, kinds in getattr(att, "pace_rows", []):
         out.append(f"  line {st.span.line:2d} {printer.stmt(st, 0).rstrip(';')[:40]:<40} placement "
                    f"error {float(err):.2f} of {float(budget):.2f} ticks  ok")
     if att.res.abort_latency is not None:

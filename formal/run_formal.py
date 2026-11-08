@@ -14,6 +14,7 @@ failures.
 usage: run_formal.py [--rtl DIR] [--only job,job] [--no-bugs]
 """
 import argparse
+import os
 import shutil
 import subprocess
 import sys
@@ -22,7 +23,8 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent
-TIMEOUT_S = 900
+# dpll proves in about 760 s on an idle machine, so 900 s failed it whenever other work shared the CPU
+TIMEOUT_S = int(os.environ.get("FORMAL_TIMEOUT_S", 1800))
 
 # job: (harness dir, RTL files, planted bugs as (name, task, file, old, new))
 JOBS = {

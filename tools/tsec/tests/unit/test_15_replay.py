@@ -194,8 +194,9 @@ def whole_byte_counts(b, vis, info, issued):
     for fall, rise, whole in info:
         if whole is None:
             continue
-        # an edge seen in the same cycle as the CS rise still counts: no CS hold time applies,
-        # and a WAIT whose pin condition and alternate hold together ends on the pin
+        # an edge seen in the same cycle as the CS rise still counts: the replay raises CS
+        # earlier than the csh rule allows (samples, not pushes, are counted), and a WAIT
+        # whose pin condition and alternate hold together ends on the pin
         n_edges = sum(1 for c, w, v in vis if fall < c <= rise and (w, "rise" if v else "fall") in edges)
         n_samp = sum(1 for pc in b.samples for c in issued.get(pc, []) if fall < c <= rise + 8)
         out.append((n_edges, n_samp))
@@ -243,3 +244,39 @@ def test_a_late_program_is_caught():
         v, _, (vis, info, issued) = replay(b, rng)
         bad += v + [1 for e, n in whole_byte_counts(b, vis, info, issued) if e != n]
     assert bad
+
+
+def test_controller_at_50mhz_places_every_bit_on_the_reference_lane():
+    # At 50 MHz a bit is 10 cycles, which moves the slot phase by 2 each bit. The launch used to
+    # sit alone in its SRAM word (a pad after it), so the next word was read in the lane's slot
+    # after it: from the third bit on each bit came 2 cycles late, the eighth a whole bit period
+    # (R310). Now the launch and the sample share a word, the pad after the SCK rise carries the
+    # rise's delay, and the chain starts 1 cycle into its phase-locked word, so every action of
+    # the byte dispatches at the cycle the timeline asks for.
+    with open("specs/spi_controller_mode0.tse") as fh:
+        sym = front(fh.read())
+    sch = Scheduler(sym, sym.roles[0], 0, Fr(50_000_000), FetchModel(), (0, 21, Fr(7, 2)))
+    att, _ = sch.compile()
+    assert att is not None
+    chain = next(c for c in att.fsm.chain_list if len(c.entries) == 33)       # 8 bits, then idle
+    entry = {}
+    for pc, i in enumerate(att.prog):
+        for p in getattr(i, "paces", None) or ():
+            if p.chain is chain:
+                entry[pc] = min(entry.get(pc, p.entry), p.entry)
+    assert sorted(entry.values())[-1] == 32
+    ncyc = 600
+    env = [ref.Env(0, 0, 0, 0, 0, 1, 2) for _ in range(ncyc)]      # the host steps 2, 2, ...
+    rows = ref.run(words(att), env, 0, FetchModel().lat, 0, lane_cfg(att), 0, 0, ncyc)
+    first = {}
+    for c, r in enumerate(rows):
+        if r["issue"] and r["pc"] in entry:
+            first.setdefault(r["pc"], c)
+    assert set(first) == set(entry)
+    start = first[next(pc for pc, k in entry.items() if k == 0)]
+    e0 = chain.entries[0]
+    got = {k: first[pc] - start for pc, k in entry.items()}
+    want = {k: sch.target(chain, k, e0) for k in entry.values()}
+    assert got == want
+    assert [got[4 * n] for n in range(8)] == [10 * n for n in range(8)]          # SCK fall, MOSI
+    assert [got[4 * n + 2] for n in range(8)] == [10 * n + 5 for n in range(8)]  # SCK rise

@@ -106,9 +106,11 @@ class Ctx:
 
 
 class Fsm:
-    def __init__(self, sym, role, fclk, strategy="rolled", persist=(), window=None, rule=None):
+    def __init__(self, sym, role, fclk, strategy="rolled", persist=(), window=None, rule=None,
+                 lock_shift=0):
         self.sym, self.role, self.f, self.strategy = sym, role, fclk, strategy
         self.rule = rule                      # RuleFirst: a respond whose first bit a rule drives
+        self.lock_shift = lock_shift          # cycles between the phase-locked word and a chain start
         self.persist = set(persist)
         self.window = window or WindowPlan(role, 0, DATA_WORDS)
         for v in sorted(self.arrays(), key=lambda v: -self.var_width(v)):
@@ -129,6 +131,7 @@ class Fsm:
         self.side = pace.side_wires(role)     # side-set wires, ss bit 0 first
         self.chains, self.chain_list, self.pending_side, self.pending_paces = {}, [], {}, []
         self.next_stmt, self.entry, self.pace_hint = None, None, None
+        self.cur_state = None                 # the state being lowered (goto's source)
         self.allocate_pins()
 
     # ------------------------------------------------------------ pins
@@ -248,6 +251,8 @@ class Fsm:
         self.exits.append((state, facts.copy()))
         j = self.jump(state)
         j.note = f"-> {state}"
+        j.goto_levels = dict(facts.levels)      # skip_known_levels: the levels known at the jump
+        j.goto_from = self.cur_state
         if self.pending_sep is not None:        # a wait at the end of a seq holds the next state off
             j.keep = True
             self.action(j, None)
@@ -271,11 +276,60 @@ class Fsm:
         else:
             raise unsupported("the stores of kept variables at state changes do not settle",
                               self.role.name.span)
+        self.skip_known_levels()
         body = self.prog
         self.prog = []
         self.prologue()
         self.prog += body
         return self.prog
+
+    def skip_known_levels(self):
+        """A state that starts by waiting for a level (the pre-wait before its first edge, placed
+        because some way in does not know the wire's level) and goes back to itself is entered
+        again past that wait when its own end knows the level: the last wait on that path
+        ended on it (an SPI target's byte loop, which ends on the byte's last SCK fall). The
+        pre-wait is not only cycles there: if the next edge has come by the time it runs, it
+        waits through that edge and the whole pulse (R314), which held the SPI targets to
+        about 2 MHz with bytes back to back. Counter loads before the skipped waits are copied
+        in front of the jump. A trampoline's pre-wait is kept (its words must both be
+        buffered). Only a state's jump to itself: a jump into another state's level wait
+        (spi_flash_target's ignore to idle on cs_n) lets the analysis measure that state's
+        first edge from an older event, and those entries are left as they are."""
+        pos = {ins.label: k for k, ins in enumerate(self.prog) if ins.op == "LABEL"}
+        for j in [i for i in self.prog if getattr(i, "goto_levels", None)]:
+            levels, k = j.goto_levels, pos.get(j.a["target"])
+            if k is None or j.goto_from != j.a["target"]:
+                continue
+            prefix, copy, past, wires = [], [], None, []
+            while k < len(self.prog):
+                ins = self.prog[k]
+                if ins.op == "LABEL":
+                    pass
+                elif ins.op == "SET" and ins.a["dst"] in ("X", "Y") and ins.ob is None \
+                        and ins.sep is None and not getattr(ins, "side", None):
+                    prefix.append(ins)
+                elif ins.op == "WAIT" and ins.wait is not None and ins.wait.kind == "pre" \
+                        and not getattr(ins.wait, "own", False) \
+                        and not getattr(ins, "align_even", False) \
+                        and levels.get(ins.wait.wire) == ins.a["pol"] == ins.wait.level:
+                    nxt = self.prog[k + 1] if k + 1 < len(self.prog) else None
+                    if nxt is not None and nxt.op == "JMP" and nxt.a["cond"] == "TOUT":
+                        k += 1              # the wait's alternate exit goes with it
+                    past, copy = k + 1, list(prefix)
+                    wires.append(ins.wait.wire)
+                else:
+                    break
+                k += 1
+            if past is None or (copy and (j.sep is not None or getattr(j, "keep", False))):
+                continue
+            skip = self.label("known")
+            self.prog.insert(past, Ins("LABEL", {}, label=skip))
+            pos = {ins.label: n for n, ins in enumerate(self.prog) if ins.op == "LABEL"}
+            at = self.prog.index(j)         # Ins compares by identity
+            for c in reversed(copy):
+                self.prog.insert(at, Ins("SET", dict(c.a), note=c.note))
+            j.a["target"] = skip
+            j.note += f" (past the wait for the {' and '.join(wires)} level it knows)"
 
     def entry_facts(self):
         """Facts at each state's entry: the meet over every way in (a fixed point)."""
@@ -321,6 +375,7 @@ class Fsm:
 
     def state(self, st, facts):
         self.released = set()
+        self.cur_state = st.name.text
         self.place(st.name.text)
         self.last_effect = None         # a wait measures from our last output on this path only
         edges = st.edges
@@ -1001,7 +1056,9 @@ class Fsm:
             j = self.jump(ab.target, "PIN")
             j.note, j.abort_pin = note + f" (test {wire} == 1)", True
         else:
-            self.jump(ab.target, "TOUT").note = note
+            j = self.jump(ab.target, "TOUT")
+            j.note = note
+        j.exit_event = ab.event         # the hold check: the abort must not be seen here yet
 
     def pure(self, s):
         """A timed statement of a paced chain, or a counted loop of only such statements."""
@@ -1249,6 +1306,9 @@ class Fsm:
         lock = chain is not None and not self.counters and self.starts_chain(chain, s)
         if lock:
             self.emit("DLY", d=0).note = "phase lock: the next word is fetched in this lane's slot"
+            if self.lock_shift:         # the chain starts lock_shift cycles into the locked word
+                sh = self.emit("DLY", d=self.lock_shift - 1)
+                sh.align_even, sh.note = True, "phase shift: the chain's word reads fall in its slots"
         ins = self.action_for(s, facts, ctx)
         ins.ob = ob
         if ob is not None and self.rule is not None and ctx.respond is self.rule.edge:
@@ -1257,7 +1317,8 @@ class Fsm:
                 self.prog.remove(self.pending_tune)
                 self.pending_tune = None
         if lock:
-            ins.align_even = ins.lock = True
+            ins.lock = True
+            ins.align_even = not self.lock_shift
         if self.pending_tune is not None:
             self.pending_tune.serves = ins
         if chain is not None:
@@ -1302,7 +1363,8 @@ class Fsm:
             d.optional, d.note = True, "pace: distance to the next timed action"
             ins.pace_dly, ins.pace_field = d, "d"
         if extra < 3 and (self.pace_hint is not None if self.entry is not None
-                          else k + 1 < len(chain.entries)):
+                          else k + 1 < len(chain.entries)) \
+                and not (getattr(ins, "lock", False) and self.lock_shift):
             ins.align_even = True               # short: it and the next action share a word
     def own_edge_window(self, s, win, facts, ctx):
         """A window after an edge we make ourselves is a distance between two of our own
@@ -1402,7 +1464,8 @@ class Fsm:
         if self.pending_sep is not None:
             ref, ticks, span, dly, text = self.pending_sep
             if ref is not None:
-                ins.sep = Sep(ref[0], ticks, span, text, skew=ref[1] is not None and ref[1] != wire)
+                ins.sep = Sep(ref[0], ticks, span, text, skew=ref[1] is not None and ref[1] != wire,
+                              drive=wire is not None)
                 dly.serves = ins
             self.pending_sep = None
         if wire is not None:
@@ -1661,11 +1724,23 @@ def layout(prog):
             if getattr(ins, "align", False):
                 pending.append(None)
             continue
-        align = None in pending or getattr(ins, "align_even", False) or \
+        # A short action starts a word so that it and the next action share it; when the next
+        # action is short too, the pair already made wins (a pad before the second would leave
+        # the first alone in its word and give the second's fetch only one cycle).
+        paired = len(out) % 2 == 1 and getattr(out[-1], "align_even", False) \
+            and not getattr(ins, "lock", False)
+        align = None in pending or (getattr(ins, "align_even", False) and not paired) or \
             (ins.op == "WAIT" and ins.wait is not None and ins.wait.kind == "edge"
              and not getattr(ins, "tramp", False) and reacts(prog, k))
         if align and len(out) % 2:
             pad = Ins("DLY", {"d": 0}, note="pad: start an SRAM word")
+            prev = out[-1] if out else None
+            if prev is not None and prev.op == "DLY" and getattr(prev, "pace_dly", None) is prev \
+                    and prev.a["d"] >= 1:
+                # the next word is read while the last instruction of this one runs: let the pad
+                # carry the paced delay, so the read hides behind it instead of a 1-cycle pad
+                pad.a["d"], prev.a["d"] = prev.a["d"] - 1, 0
+                prev.pace_dly, pad.note = pad, "pad: start an SRAM word, and the paced delay"
             out.append(pad)
         names = [p for p in pending if p is not None]
         for name in names:

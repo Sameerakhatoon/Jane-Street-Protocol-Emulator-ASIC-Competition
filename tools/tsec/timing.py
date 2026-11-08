@@ -125,7 +125,7 @@ def analyse(low, labels, lane, fm, ppm, nco_phase=Fr(0)):
                 if ob.ref == "anchor":
                     rng = (Fr(issue - p), Fr(issue - p) + 1)      # S6: sample in [d, d + 1)
                     lo, hi = ob.window
-                    pmin, pmax = getattr(low, "pads", (0, 0))   # pad delays, in ticks
+                    pmin, pmax = getattr(low, "pads", {}).get(ob.kind, (0, 0))   # pads, in ticks
                     err = max(lo - rng[0] - pmin, rng[1] + pmax - hi, 0)
                     cost = abs(rng[0] + Fr(1, 2) - ob.ideals[v])
                     ok, shown, budget = err == 0, rng, (hi - lo) / 2

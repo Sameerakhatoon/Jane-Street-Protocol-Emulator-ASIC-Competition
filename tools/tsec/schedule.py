@@ -15,6 +15,7 @@ from .diag import TseError
 from .fsmsched import Scheduler
 from . import assist_events, frametime     # frame roles
 from .lower import Lowering, frame_shape
+from .pads import Pads
 from .timing import Violation, analyse
 
 STRATEGIES = ("dly", "timer")
@@ -108,7 +109,7 @@ def compile_role(sym, role, lane, fclk, fm, ppm, pads=(0, 25), window=(0, 128)):
         return res
     for mode in STRATEGIES:
         low = Lowering(sym, role, fclk, mode)
-        low.pads = (Fr(pads[0]) * fclk / 10**9, Fr(pads[1]) * fclk / 10**9)
+        low.pads = Pads.of(pads).ticks_by_kind(fclk)       # ns to ticks, per obligation kind
         low.lower()
         if len(low.prog) > isa.MAX_INSTRUCTIONS:
             raise TseError("R301", f"program too large: {len(low.prog)} instructions, a lane holds "

@@ -130,12 +130,16 @@ def test_reference_lane_answers_in_time_at_500khz():
     assert 16 <= jedec_first_out("5e5", 60) < 17
 
 
-def mosi_samples(att, css, half, nbytes, s0):
-    """For a mode 0 frame of nbytes back to back on the reference lane (CS falls at s0, the
-    first SCK rise css cycles later): after which rise each MOSI sample comes (1, 2, ...)."""
+def mosi_timing(att, css, half, nbytes, s0, gap=None):
+    """For a mode 0 frame of nbytes on the reference lane (CS falls at s0, the first SCK rise
+    css cycles later, SCK low for gap cycles between bytes, half by default): for each MOSI
+    sample, after which rise it comes (1, 2, ...) and how many cycles after that rise."""
     f = att.fsm
     cs, sck = (1 << f.pin_in["cs_n"]), (1 << f.pin_in["sck"])
-    edges = [s0 + css + half * k for k in range(16 * nbytes)]
+    edges, t = [], s0 + css
+    for k in range(16 * nbytes):
+        edges.append(t)
+        t += gap if gap is not None and k % 16 == 15 else half
     end = edges[-1] + 20
 
     def pins(k):
@@ -145,19 +149,71 @@ def mosi_samples(att, css, half, nbytes, s0):
     rows = run_lane(att, pins, end + 100)
     samp = {k for k, i in enumerate(att.prog) if i.op == "IN" and i.a.get("src") == "PINS"}
     rises = edges[0::2]
-    return [sum(1 for r in rises if r <= k) for k, r in enumerate(rows)
-            if r["issue"] and r["pc"] in samp and s0 <= k < end]
+    out = []
+    for k, r in enumerate(rows):
+        if r["issue"] and r["pc"] in samp and s0 <= k < end:
+            seen = [x for x in rises if x <= k]
+            out.append((len(seen), k - seen[-1] if seen else None))
+    return out
 
 
-def test_bytes_back_to_back_at_4mhz_are_rejected():
-    # Between bytes the lane pushes and waits for SCK low again before the next rise; at
-    # 4 MHz that wait comes after the rise, so the first bit of the second byte is lost.
-    att, tried = compile_role(SPI, t_css="117e-9")
+def mosi_samples(att, css, half, nbytes, s0, gap=None):
+    return [n for n, _ in mosi_timing(att, css, half, nbytes, s0, gap)]
+
+
+def no_skip(self):                          # the lowering before the byte loop skipped its pre-wait
+    pass
+
+
+def test_old_lowering_lost_the_first_bit_of_the_next_byte(monkeypatch):
+    # Between bytes the lane used to go back to the byte loop's wait for SCK low before the
+    # next rise; at 4 MHz that wait comes after the rise, so the first bit of the second byte
+    # was taken after rise 10 instead of 9.
+    monkeypatch.setattr(F.Fsm, "skip_known_levels", no_skip)
+    att, tried = compile_role(SPI, t_css="142e-9")
     assert att is None
     miss = r314(tried, "the wait for rise(sck) first waits")
     assert any(dict(v.fields)["required"].endswith("rise(sck) after fall(sck)") for v in miss)
     got = mosi_samples(tried[0], 20, 8, 2, 100)
     assert got[:8] == list(range(1, 9)) and got[8] == 10
+
+
+def test_byte_loop_goes_back_past_its_wait_for_sck_low():
+    att, _ = compile_role(SPI, t_css="142e-9", f_sck="1.875e6")
+    back = [i for i in att.prog if i.op == "JMP" and i.note.startswith("-> bits")]
+    assert back and all("past the wait for the sck level" in i.note for i in back)
+    for j in back:
+        tgt = att.prog[att.labels[j.a["target"]]]
+        assert tgt.op == "WAIT" and tgt.wait.kind == "edge" and tgt.a["pol"] == 1
+    # the state's own entry from armed keeps it: SCK may be high when CS falls
+    top = att.prog[att.labels["bits"]:]
+    assert next(i for i in top if i.op == "WAIT").wait.kind == "pre"
+
+
+def test_bytes_back_to_back_at_4mhz_are_sampled_late():
+    # Between bytes the lane outputs the next MISO bit, tests CS, pushes and jumps back, 4
+    # instructions and a jump's fetch where a byte has 2. At 4 MHz (7.5 cycles a half period)
+    # the next rise can come before that is done: the first bit of the next byte is taken at
+    # the right rise but up to 7 cycles after it (1 inside a byte), as SCK falls, after which
+    # MOSI may change (t_mo). The window check says so (R311), no longer a missed edge.
+    att, tried = compile_role(SPI, t_css="142e-9")
+    assert att is None
+    unrolled = next(t for t in tried if t.mode == "unrolled")
+    assert {v.code for v in unrolled.violations} == {"R311"}
+    assert any("shift mosi late" in v.msg for v in unrolled.violations)
+    lag = [mosi_timing(unrolled, 20, 7, 2, s0) for s0 in range(100, 108)]
+    assert all([n for n, _ in g] == list(range(1, 17)) for g in lag)
+    assert max(g[8][1] for g in lag) == 7 and max(d for g in lag for _, d in g[:8]) == 1
+
+
+def test_bytes_at_4mhz_with_a_byte_gap():
+    # SCK low 11 cycles (183 ns) between bytes, which is what the analysis asks (t_gap >= 184 ns
+    # as the lane sees it, with pads): the first bit of the next byte is taken 3 cycles after its rise.
+    _, tried = compile_role(SPI, t_css="142e-9")
+    unrolled = next(t for t in tried if t.mode == "unrolled")
+    for s0 in range(100, 108):
+        got = mosi_timing(unrolled, 20, 7, 3, s0, gap=11)
+        assert [n for n, _ in got] == list(range(1, 25)) and max(d for _, d in got) <= 3
 
 
 def test_bytes_back_to_back_at_1875khz_on_the_reference_lane():
@@ -166,6 +222,16 @@ def test_bytes_back_to_back_at_1875khz_on_the_reference_lane():
     assert att is not None
     for s0 in range(100, 104):          # every slot phase of the CS fall
         assert mosi_samples(att, 7, 16, 2, s0) == list(range(1, 17))
+
+
+def test_bytes_back_to_back_at_3200khz_on_the_reference_lane():
+    # the fastest SCK the byte loop now follows with no gap (about 2 MHz before it skipped its
+    # pre-wait); 3.2 MHz is 9.4 cycles a half period, 9 at the lane
+    att, _ = compile_role(SPI, t_css="142e-9", f_sck="3.2e6")
+    assert att is not None
+    for s0 in range(100, 108):
+        got = mosi_timing(att, 9, 9, 3, s0)
+        assert [n for n, _ in got] == list(range(1, 25)) and max(d for _, d in got) < 9
 
 
 # ---------------------------------------------------------------- 1b: pad skew between input pins
@@ -189,6 +255,61 @@ def test_without_the_skew_the_first_bit_is_lost_on_the_reference_lane():
     att, _ = Scheduler(sym, sym.roles[0], 0, FCLK, FetchModel(), (0, 25, 0)).compile()
     got = [mosi_samples(att, 6, 16, 2, s0) for s0 in range(100, 104)]
     assert list(range(1, 17)) in got and any(g[0] == 2 for g in got)
+
+
+def test_cs_hold_counts_the_pad_skew():
+    # The CS rise and the last SCK fall come through different pads. With t_csh 100 ns (6 ticks)
+    # and CS 25 ns faster than SCK, the lane can see the CS rise 4 cycles after the last fall,
+    # before it tests cs_n ahead of the push, and the finished byte is dropped.
+    att, tried = compile_role(SPI, t_css="142e-9", f_sck="1.875e6", t_csh="100e-9")
+    assert att is None
+    miss = r314(tried, "abort seen too soon")
+    assert miss and all(dict(v.fields)["obligation"].startswith("OB-HOLD rise(cs_n) after fall(sck)")
+                        for v in miss)
+    assert any(dict(v.fields)["fix"].startswith("t_csh >= 126 ns") for v in miss)
+    sym = front(SPI, t_css="142e-9", f_sck="1.875e6", t_csh="100e-9")
+    att, _ = Scheduler(sym, sym.roles[0], 0, FCLK, FetchModel(), (0, 25, 0)).compile()
+    assert att is not None              # with pads known to have no skew it builds
+
+
+def test_without_a_hold_rule_an_early_cs_rise_is_the_specs_abort():
+    # no rule from the last fall to the CS rise: the abort may come at any time, as before
+    src = SPI.replace("    rule csh      : fall(sck)  -> rise(cs_n) >= t_csh;\n", "")
+    assert src != SPI
+    att, _ = compile_role(src, t_css="142e-9", f_sck="1.875e6")
+    assert att is not None
+
+
+def byte_pushed(att, hold, s0, half=16, css=7):
+    """One mode 0 byte on the reference lane, CS rising hold cycles after the last SCK fall (as
+    the lane sees both): whether the lane pushes the byte."""
+    f = att.fsm
+    cs, sck = (1 << f.pin_in["cs_n"]), (1 << f.pin_in["sck"])
+    edges = [s0 + css + half * k for k in range(16)]
+    rise_cs = edges[-1] + hold
+
+    def pins(k):
+        if k < s0 or k >= rise_cs:
+            return cs
+        return sck if sum(1 for e in edges if e <= k) % 2 else 0
+    rows = run_lane(att, pins, rise_cs + 200)
+    push = [k for k, i in enumerate(att.prog) if i.op == "PUSH"]
+    return any(r["issue"] and r["pc"] in push for r in rows)
+
+
+@pytest.mark.parametrize("t_csh", ["142e-9", "126e-9"])      # rolled, unrolled byte loop
+def test_cs_hold_on_the_reference_lane(t_csh):
+    # With no hold at all the analysis names how late the cs_n test before the push can come
+    # after the last fall is seen (N cycles). On the reference lane a CS rise N cycles after
+    # that fall drops the byte in some slot phase, and N + 1 never does.
+    att, _ = compile_role(SPI, t_css="142e-9", f_sck="1.875e6", t_csh=t_csh)
+    assert att is not None
+    _, tried = compile_role(SPI, t_css="142e-9", f_sck="1.875e6", t_csh="1e-9")
+    msg = next(v.msg for t in tried if t.mode == att.mode for v in t.violations
+               if "abort seen too soon" in v.msg)
+    n = int(msg.split("comes up to ")[1].split()[0])
+    assert all(byte_pushed(att, n + 1, s0) for s0 in range(100, 104))
+    assert not all(byte_pushed(att, n, s0) for s0 in range(100, 104))
 
 
 # ---------------------------------------------------------------- 2: own condition first

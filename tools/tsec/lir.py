@@ -53,6 +53,7 @@ class Sep:
     skew: bool = False          # different pins: pad skew counts against the distance
     hi: object = None           # a window after our own edge also has a largest distance
     kind: str = "out"           # in: the instruction samples, the distance ends at its sample
+    drive: bool = True          # out: the instruction drives a pin (else it samples or acts off the pins)
 
 
 @dataclass(eq=False)

@@ -19,6 +19,7 @@ from .fsm import STRATEGIES, Fsm, NeedHome, layout
 from . import ast as A
 from .fsmtime import Analysis, stability_warnings
 from .lower import unsupported
+from .pads import Pads
 from .semantics import pin_of
 from .units import drift_budget
 from .window import DATA_WORDS, WindowPlan
@@ -52,20 +53,26 @@ class Scheduler:
     def __init__(self, sym, role, lane, fclk, fm, pads, ppm=50, window=(0, DATA_WORDS)):
         self.sym, self.role, self.lane, self.f, self.fm, self.ppm = sym, role, lane, fclk, fm, ppm
         self.wbase, self.wlimit = window
-        self.pads = (Fr(pads[0]) * fclk / 10**9, Fr(pads[1]) * fclk / 10**9)   # ns to ticks
-        self.skew = Fr(pads[2] if len(pads) > 2 else pads[1] - pads[0]) * fclk / 10**9
-        self.pads_ns = pads
+        self.pad = Pads.of(pads)
+        self.win = self.pad.ticks_by_kind(fclk)         # ns to ticks, per window kind
+        self.pads = self.win["out"]                     # one pad on a path through both directions
+        self.skew_in, self.skew_out, self.skew_x = (
+            Fr(s) * fclk / 10**9 for s in (self.pad.inp[2], self.pad.out[2], self.pad.cross))
+
+    def kind_skew(self, a, b):
+        """Pad skew in ticks between two pins of kinds a and b ("in" samples, "out" drives)."""
+        return self.skew_in if a == b == "in" else self.skew_out if a == b == "out" else self.skew_x
 
     def analyse(self, att):
         targets = [ins.a["target"] for ins in att.prog if ins.op == "JMP" and ins.a["cond"] == "TOUT"]
         a = Analysis(self.sym, self.role, att.prog, att.labels, self.lane, self.fm, self.f, targets,
-                     self.skew)
+                     self.skew_in)          # the lane sees every event through an input pad
         return a.run()
 
     # ------------------------------------------------------------ achieved intervals
     def achieved(self, ob, st):
         """Ticks at the pins after the pin edge: [lo, hi]."""
-        pmin, pmax = self.pads
+        pmin, pmax = self.win[ob.kind]
         if ob.kind == "out":
             return st.dmin + 3 + pmin, st.dmax + 4 + pmax
         return st.dmin + pmin, st.dmax + 1 + pmax
@@ -75,19 +82,22 @@ class Scheduler:
         if ins.ob is not None:
             lo = ins.ob.lo + safety
             base = 3 if ins.ob.kind == "out" else 0
-            return "dmin", math.ceil(lo - self.pads[0] - base)
+            return "dmin", math.ceil(lo - self.win[ins.ob.kind][0] - base)
         if ins.sep is not None:
             return "sep", math.ceil(self.sep_bounds(ins.sep)[0])
         return None, None
 
     def sep_bounds(self, sep):
         """(least, largest) issue-to-issue cycles that keep a distance inside its bounds at the
-        pins: outputs differ by the pad skew; a sample sees the pin 3 cycles and a pad earlier."""
+        pins: outputs differ by the output pad skew; a sample sees the pin 3 cycles and a pad
+        earlier (our output's pad and the sampled input's: one pad in the hull of the two)."""
         pmin, pmax = self.pads
         if sep.kind == "in":
             lo, shift_hi = sep.ticks + 3 + pmax, 3 + pmin
         else:
-            skew = self.skew if sep.skew else 0
+            # from our drive to another drive: the output skew; to a sample or an action off the
+            # pins: an output pad against an input pad, or the output skew if that is larger
+            skew = (self.skew_out if sep.drive else max(self.skew_out, self.skew_x)) if sep.skew else 0
             lo, shift_hi = sep.ticks + skew, -skew
         return lo, (None if sep.hi is None else sep.hi + shift_hi)
 
@@ -147,8 +157,9 @@ class Scheduler:
         return math.floor(e.ideal - o + Fr(1, 2))
 
     def pace_rows(self, att):
-        """(stmt, entry, error ticks, budget ticks, where, ok) per timed statement of each chain:
-        the worst entry over every visit, slot phase and buffer state."""
+        """(stmt, entry, error ticks, budget ticks, where, ok, skew counted, (kind of entry 0,
+        kind of this entry)) per timed statement of each chain: the worst entry over every visit,
+        slot phase and buffer state."""
         rows = []
         for chain in att.fsm.chain_list:
             rec = att.res.paces.get(id(chain), {})
@@ -156,17 +167,22 @@ class Scheduler:
             worst = {}
             for k, e in enumerate(chain.entries):
                 st = e.stmts[0]
+                kinds = (e0.kind, e.kind)
                 r = rec.get(k)
                 if r is None:
-                    worst.setdefault(id(st), (st, k, None, None, "never reached on any path", False, 0))
+                    worst.setdefault(id(st), (st, k, None, None, "never reached on any path", False, 0,
+                                              kinds))
                     continue
                 o = (pace.OUT_OFFSET if e.kind == "out" else 0) - \
                     (pace.OUT_OFFSET if e0.kind == "out" else 0)
-                skew = self.skew if (set(e.wires) != set(e0.wires) or e.kind != e0.kind) else 0
+                # two drives: the output skew; two samples: the input skew; a drive and a sample:
+                # an output pad against an input pad (Pads.cross)
+                differ = set(e.wires) != set(e0.wires) or e.kind != e0.kind
+                skew = self.kind_skew(*kinds) if differ else 0
                 err = max(abs(r[0] + o - e.ideal), abs(r[1] + o - e.ideal)) + skew
                 budget = drift_budget(e.tol, e.ideal, self.ppm)
                 where = r[3] if abs(r[0] + o - e.ideal) >= abs(r[1] + o - e.ideal) else r[4]
-                row = (st, k, err, budget, where, err <= budget, skew)
+                row = (st, k, err, budget, where, err <= budget, skew, kinds)
                 old = worst.get(id(st))
                 if old is None or (old[2] is not None and err - budget > old[2] - old[3]):
                     worst[id(st)] = row
@@ -237,34 +253,62 @@ class Scheduler:
     def attempts(self, rule):
         tried = []
         for mode in STRATEGIES:
-            fsm, ir = self.lower(mode, rule)
-            att = FsmAttempt(mode, fsm, [], {})
-            att.ir = ir
-            self.lay(att)
-            prog = att.prog
-            if len(prog) > isa.MAX_INSTRUCTIONS:
+            att = self.attempt(mode, rule)
+            if att is None:
                 if mode == STRATEGIES[-1] and not tried:
-                    raise TseError("R301", f"program too large: {len(prog)} instructions, a lane holds "
-                                   f"{isa.MAX_INSTRUCTIONS} (8-bit jump targets)", self.role.name.span)
+                    raise TseError("R301", f"program too large: {self.too_large} instructions, a lane "
+                                   f"holds {isa.MAX_INSTRUCTIONS} (8-bit jump targets)",
+                                   self.role.name.span)
                 continue
-            att.res = self.solve(att)
-            att.violations = self.diagnostics(att)
-            att.pace_rows = self.pace_rows(att)
-            att.warnings = self.warnings(att)
-            att.hint = HINTS[mode]
             tried.append(att)
             if not att.violations:
                 return att, tried
-            if not fsm_has_loops(prog):
+            shifted = self.shifted(mode, rule, att)
+            if shifted is not None:
+                tried.append(shifted)
+                return shifted, tried
+            if not fsm_has_loops(att.prog):
                 break
         return None, tried
 
-    def lower(self, mode, rule=None):
+    def attempt(self, mode, rule, shift=0):
+        """One lowering, laid out, solved and checked; None when it does not fit in a lane."""
+        fsm, ir = self.lower(mode, rule, shift)
+        att = FsmAttempt(mode, fsm, [], {})
+        att.ir = ir
+        self.lay(att)
+        if len(att.prog) > isa.MAX_INSTRUCTIONS:
+            self.too_large = len(att.prog)
+            return None
+        att.res = self.solve(att)
+        att.violations = self.diagnostics(att)
+        att.pace_rows = self.pace_rows(att)
+        att.warnings = self.warnings(att)
+        att.hint = HINTS[mode]
+        return att
+
+    def shifted(self, mode, rule, att):
+        """A paced chain starts at a fixed phase after its phase lock, and where the next word is
+        read in the lane's slot then decides when every later action of the chain can issue: a
+        bit period that is not a whole number of slot frames moves that phase, and at some
+        phases an action waits for its word. When only placements fail, start the chains 1 to 3
+        cycles later and keep the first lowering that meets everything (the failures shown stay
+        those of the unshifted one)."""
+        if not any(getattr(i, "lock", False) for i in att.prog) or \
+                any(v.code not in ("R310", "R312") for v in att.violations):
+            return None
+        for k in range(1, self.fm.S):
+            alt = self.attempt(mode, rule, k)
+            if alt is not None and not alt.violations:
+                return alt
+        return None
+
+    def lower(self, mode, rule=None, shift=0):
         """Lower the role; each NeedHome adds the variable to the ones kept in the data window."""
         persist = []
         while True:
             fsm = Fsm(self.sym, self.role, self.f, mode, persist,
-                      WindowPlan(self.role, self.wbase, self.wlimit), rule)
+                      WindowPlan(self.role, self.wbase, self.wlimit), rule, shift)
             try:
                 return fsm, fsm.lower()
             except NeedHome as e:
@@ -316,15 +360,15 @@ class Scheduler:
             st = ins.paces[-1].stmt
             out.append(TseError("R310", f"obligation unproven in role '{self.role.name.text}': "
                                 f"{printer.stmt(st, 0).rstrip(';')}: {why}", st.span))
-        for st, k, err, budget, where, ok, skew in self.pace_rows(att):
+        for st, k, err, budget, where, ok, skew, kinds in self.pace_rows(att):
             if not ok:
-                out.append(self.pace_error(st, k, err, budget, where, skew))
+                out.append(self.pace_error(st, k, err, budget, where, skew, kinds))
         return sorted(out, key=lambda e: (e.span.line, e.span.col))
 
     def warnings(self, att):
         out = []
         for ins, wire, ev, latest, stable in stability_warnings(self.sym, self.role, att.res, self.f,
-                                                                self.pads):
+                                                                self.win["in"]):
             span = ins.ob.span if ins.ob is not None else self.role.name.span
             out.append(TseError("W260", f"a guard reads '{wire}' up to {ticks_ns(latest, self.f)} after "
                                 f"{printer.event(ev)}, but the datasheet keeps '{wire}' stable for "
@@ -333,7 +377,7 @@ class Scheduler:
                                 guard_span(att, ins, span)))
         return out
 
-    def pace_error(self, st, k, err, budget, where, skew):
+    def pace_error(self, st, k, err, budget, where, skew, kinds):
         out = pace.is_out(st)
         code = "R310" if out else "R312"
         title = "output placement outside tolerance" if out else "sample placement outside tolerance"
@@ -347,14 +391,14 @@ class Scheduler:
                            f"sequence, role {self.role.name.text}, lane {self.lane}"),
             ("achieved", f"error up to {float(err):.2f} ticks ({ticks_ns(err, self.f)}) from the ideal "
                          f"instant, worst at {where}, pad skew between different pins included "
-                         f"({ticks_ns(self.skew, self.f)})"),
+                         f"({ticks_ns(self.kind_skew(*kinds), self.f)})"),
             ("budget", f"{float(budget):.2f} ticks ({ticks_ns(budget, self.f)}) after {self.ppm} ppm "
                        "of drift"),
             ("fix", "a time tolerance (~ t): a ratio tolerance is that fraction of the interval before "
                     "the action (rule S5), and this action shares its instant with the one before it"
              if budget <= 0 and ratio else
              f"pads characterised with a skew at or below {ticks_ns(budget - err + skew, self.f)} "
-             "between these pins (--pad-skew)" if skew and budget - err + skew >= 0 else
+             f"between these pins ({self.pad.skew_flag(*kinds)})" if skew and budget - err + skew >= 0 else
              "a wider tolerance; a rolled loop repeats its delays, so a period that is not a whole "
              "number of cycles drifts, and unrolled code places every action")])
 
@@ -381,7 +425,7 @@ class Scheduler:
             ("path", f"edge to synchronizer 1 to 2 ticks + program {st.dmin} to {st.dmax} cycles "
                      f"(least at {st.where_min}, most at {st.where_max})"
                      + (" + 2 output stages" if ob.kind == "out" else "")
-                     + f", pads {self.pads_ns[0]:g} to {self.pads_ns[1]:g} ns"),
+                     + ", pads {:g} to {:g} ns".format(*self.pad.window(ob.kind))),
             ("late by" if late else "early by",
              ticks_ns(hi - ob.hi, f) if late else ticks_ns(ob.lo - lo, f)),
         ]
@@ -402,15 +446,16 @@ class Scheduler:
     def window_fix(self, ob, lo, hi, late):
         f = self.f
         parts = []
+        pmin, pmax = self.win[ob.kind]
         if late:
             need = hi / f
-            ideal = (hi - self.pads[1] + self.pads[0]) / f
+            ideal = (hi - pmax + pmin) / f
             for p, text in fix.solve(self.sym, ob.hi_expr, need, at_least=True):
                 ideal_txt = dict(fix.solve(self.sym, ob.hi_expr, ideal, at_least=True)).get(p)
                 parts.append(text + (f" ({ideal_txt.split(' ', 2)[2]} with ideal pads)"
-                                     if ideal_txt and self.pads[1] != self.pads[0] else ""))
-            room = ob.hi - (hi - self.pads[1])
-            if room >= self.pads[0] and self.pads[1] > room:
+                                     if ideal_txt and pmax != pmin else ""))
+            room = ob.hi - (hi - pmax)
+            if room >= pmin and pmax > room:
                 parts.append(f"pads characterised at or below {ticks_ns(room, f)}")
         else:
             for p, text in fix.solve(self.sym, ob.lo_expr, lo / f, at_least=False):
@@ -457,6 +502,22 @@ class Scheduler:
                 ("required", f"{own} and {ev} never in the same cycle"),
                 ("fix", f"add a datasheet rule {own} -> {ev} >= {ticks_ns(Fr(1), f)} or "
                         f"{ev} -> {own} >= {ticks_ns(Fr(1), f)}")])
+        if m.kind == "hold":
+            skewed = pin_of(self.sym, m.event) != pin_of(self.sym, m.prev)
+            msg = (f"abort seen too soon in role '{self.role.name.text}': the abort test after {prev} "
+                   f"comes up to {m.lateness} cycles after {ev} may already be visible, so a "
+                   f"statement the environment finished is dropped")
+            fields = [("obligation", f"OB-HOLD {ev} after {prev}, role {self.role.name.text}, "
+                                     f"lane {self.lane}"),
+                      ("required", f"{ev} not visible before the abort test after {prev}"
+                                   + (" (the pad skew between the pins included)" if skewed else "")),
+                      ("achieved", f"tested up to {m.lateness} cycles after {ev} may be visible "
+                                   f"(worst at {m.where})")]
+            fx = self.rule_fix(m.rules, m.prev, m.event, m.limit + m.lateness + 1)
+            if fx:
+                fields.append(("fix", fx))
+            return TseError("R314", msg, m.event.span if m.event.span.line else self.role.name.span,
+                            fields=fields)
         if m.kind == "pre":
             opp = printer.event(_opposite(m.event))
             msg = (f"re-arm too late in role '{self.role.name.text}': the wait for {ev} first waits "
@@ -509,7 +570,7 @@ class Scheduler:
 
     def rule_fix(self, rules, a, b, need_ticks):
         if a is not None and pin_of(self.sym, a) != pin_of(self.sym, b):
-            need_ticks = need_ticks + self.skew      # the analysis takes the pad skew off
+            need_ticks = need_ticks + self.skew_in   # the analysis takes the input pad skew off
         need = Fr(need_ticks) / self.f
         if not rules:
             return (f"add a datasheet rule {printer.event(a) if a is not None else 'E'} -> "

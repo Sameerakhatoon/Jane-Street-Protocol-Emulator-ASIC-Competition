@@ -33,6 +33,7 @@ protocol spi_target_mode3 {
   param f_sck : freq = 4 MHz;          // fastest SCK the controller will use
   param t_su  : time = 5 ns;           // controller's MISO setup before its sampling edge
   param t_css : time = 100 ns;         // controller's CS fall to first SCK edge
+  param t_csh : time = 142 ns;         // controller's last SCK rise to CS rise
   param t_mo  : time = 20 ns;          // controller's MOSI output delay after its launch edge
   unit  half  = 1 / (2 * f_sck);
 
@@ -45,6 +46,7 @@ protocol spi_target_mode3 {
     rule sck_low  : fall(sck)  -> rise(sck) >= half;
     rule sck_high : rise(sck)  -> fall(sck) >= half;
     rule css      : fall(cs_n) -> fall(sck) >= t_css;
+    rule csh      : rise(sck)  -> rise(cs_n) >= t_csh;
   }
 
   role tgt : target uses cs_n, sck, mosi, miso {

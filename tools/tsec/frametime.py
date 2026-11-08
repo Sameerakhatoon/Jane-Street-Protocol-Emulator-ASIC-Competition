@@ -27,6 +27,7 @@ from . import cycles, isa, printer
 from .diag import TseError
 from .framelower import FrameLowering, Ob
 from .lir import Ins
+from .pads import Pads
 
 MAX_STATES = 1_500_000
 PHASES = 16
@@ -315,7 +316,9 @@ def compile_role(sym, role, lane, fclk, fm, ppm, pads):
                        f"{isa.MAX_INSTRUCTIONS}", role.name.span)
     att = Attempt("frames", low, prog, labels)
     att.warnings = list(low.warnings)
-    pmin, pmax = (Fr(p) * fclk / 10**9 for p in pads[:2])
+    # the engine's rule drive answers a field start the receiver found on an input: one pad in
+    # the hull of the input and output ranges, as for any output after an input edge (pads.py)
+    pmin, pmax = Pads.of(pads).ticks_by_kind(fclk)["out"]
     solve(att, lane, fm, ppm)
     att.rows, att.violations = judge(att, fclk, ppm)
     att.static, bad = static_obs(sym, low, fclk, ppm, pmin, pmax)

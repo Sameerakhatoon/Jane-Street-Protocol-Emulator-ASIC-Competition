@@ -30,7 +30,10 @@ hold, the wait ends on it with AFLAG clear and JMP TOUT falls through. A
 JMP PIN on the abort level sees the level itself. A pending abort that
 reaches a pull, a push or a wait without the alternate, or that runs longer
 than the horizon, is lost (R314), as is a change alternate that can arrive
-in the same cycle as the wait's own edge.
+in the same cycle as the wait's own edge. The abort test after a waiting
+statement must come before the abort event can be visible when a rule keeps
+that event a least time after the last event the lane waited for (a CS hold
+after the last SCK edge), or a statement the environment finished is dropped.
 
 States are merged on their normalised form, so loops terminate; offsets
 older than a horizon are clamped: the longest separation the rules give plus
@@ -71,7 +74,8 @@ class Miss:
     rules: list
     where: str
     alt: bool = False
-    kind: str = "edge"          # edge, pre (a pre-wait after its edge), lost or tie (an abort lost)
+    kind: str = "edge"          # edge, pre (a pre-wait after its edge), lost or tie (an abort lost),
+    #                             hold (an abort seen before the test after a finished statement)
 
 
 @dataclass
@@ -218,7 +222,7 @@ class Analysis:
     def ms(self, a, b):
         """Least cycles between a and b becoming visible to the lane. On one pin the pad delay is
         the same for both, so the rules' separation floored; on two pins the second may come
-        through a pad up to the skew faster than the first."""
+        through its input pad up to the input skew faster than the first."""
         key = (a, b)
         if key not in self.ms_cache:
             t, used = min_separation(self.sym, self.role, self.events[a], self.events[b], self.f)
@@ -304,6 +308,8 @@ class Analysis:
                 self.res.seps[id(ins)] = (ins, lo, where if old is None or d < old[1] else old[2], hi)
         if id(ins) in self.refs:
             marks = tuple((k, v) for k, v in marks if k != id(ins)) + ((id(ins), t),)
+        if checking and last is not None and getattr(ins, "exit_event", None) is not None:
+            self.check_hold(ins, t, last, where)
         if ins.reads is not None and anchor is not None and checking \
                 and not getattr(ins, "abort_check", False):
             self.record_read(ins, t, anchor)
@@ -448,6 +454,22 @@ class Analysis:
             self.record_miss(Miss(ins, t - e, lim, self.events[E], self.events[last[0]], used, where,
                                   kind="pre"))
 
+    def check_hold(self, ins, t, last, where):
+        """The abort test after a waiting statement of an abortable seq decides whether the work
+        after it (a push, the next state) happens. The lane got here on its own condition, so the
+        environment finished the statement with the last event the lane waited for. If a rule
+        says the abort event comes no sooner than some time after that event, the spec's target
+        completes the statement, and so must the lane: the abort must not be visible yet when the
+        test looks, or a finished transfer is dropped (or, on two pins, the abort can overtake
+        that last event through the pads). Without such a rule the abort may come at any time
+        and dropping the work is the spec's own behaviour."""
+        A_ = self.ev(ins.exit_event)
+        lim, used = self.ms(last[0], A_)
+        e = last[1] + lim
+        if used and e <= t:
+            self.record_miss(Miss(ins, t - e, lim, ins.exit_event, self.events[last[0]], used, where,
+                                  kind="hold"))
+
     def check_tie(self, ins, w, E, where):
         """A change alternate and the wait's own edge seen in the same cycle: the own condition
         wins and the change is never seen (the next wait compares with the new level). A rule
@@ -587,7 +609,8 @@ class Analysis:
 
 def stability_warnings(sym, role, res, fclk, pads):
     """W260 data: (ins, wire, event, latest read in ticks, stable ticks) where a pin test may read a
-    wire after the datasheet stops guaranteeing it."""
+    wire after the datasheet stops guaranteeing it. pads: the input range in ticks (the event and
+    the wire both reach the lane through input pads)."""
     out = []
     for r in res.reads.values():
         stable = stable_after(sym, role, r.event, r.wire, fclk)

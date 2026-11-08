@@ -2,10 +2,11 @@ tsec: protocol 'spi_target_mode0', clock 60 MHz, S = 4, fetch buffer 2 word(s), 
   param f_sck = 1.875e+06 (freq)
   param t_su = 5e-09 (time)
   param t_css = 1.7e-07 (time)
+  param t_csh = 1.42e-07 (time)
   param t_mo = 2e-08 (time)
 
 == role tgt (target) on lane 0
-strategy: state machine, rolled loops (14027 analysis states)
+strategy: state machine, rolled loops (13041 analysis states)
 addr  word   instruction                    note
   0  4010          SET   PINS, 0, mask=0b0001     idle levels before driving
   1  4111          SET   PINDIRS, 1, mask=0b0001  outputs on (turnaround pins off)
@@ -26,14 +27,15 @@ addr  word   instruction                    note
  16  030c          JMP   YDEC, L5                 
  17  0502          JMP   PIN, L1                  abort on rise(cs_n) (test cs_n == 1)
  18  c000          PUSH                           
- 19  000a          JMP   ALWAYS, bits             -> bits
+ 19  4307          SET   Y, 7                     repeat 8
+ 20  000c          JMP   ALWAYS, L5               -> bits (past the wait for the sck level it knows)
 obligations (worst case over every slot phase, buffer state and legal environment timing; pads 0 to 25 ns):
-  line 50 shift miso     after fall(cs_n)   66.7 to 108.3 ns, window [0.0, 165.0], margins 66.7 and 56.7 ns  ok
-  line 56 shift mosi     after rise(sck)    16.7 to 91.7 ns, window [0.0, 246.7], margins 16.7 and 155.0 ns  ok
-  line 57 shift miso     after fall(sck)    66.7 to 108.3 ns, window [0.0, 261.7], margins 66.7 and 153.3 ns  ok
+  line 55 shift miso     after fall(cs_n)   66.7 to 108.3 ns, window [0.0, 165.0], margins 66.7 and 56.7 ns  ok
+  line 61 shift mosi     after rise(sck)    16.7 to 91.7 ns, window [0.0, 246.7], margins 16.7 and 155.0 ns  ok
+  line 62 shift miso     after fall(sck)    66.7 to 108.3 ns, window [0.0, 261.7], margins 66.7 and 153.3 ns  ok
   abort: reaches the abort state within 79 cycles of the alternate condition being seen (stated bound)
   host contract, pull host txw: send the word bit-reversed: OUT shifts bit 0 first, and the spec sends the msb first
   host contract, push host rxb: mailbox bits 7 to 0, first bit received highest; higher bits are not defined; the push does not block, so the host must empty the mailbox before the next push
-ACCEPTED: 20 instructions, image 4010 4111 c300 4201 0009 e000 2420 2020 8000 0206 4307 2048 2448 a000 2048 8000 030c 0502 c000 000a
+ACCEPTED: 21 instructions, image 4010 4111 c300 4201 0009 e000 2420 2020 8000 0206 4307 2048 2448 a000 2048 8000 030c 0502 c000 4307 000c
 
 RESULT: all roles accepted, image ready

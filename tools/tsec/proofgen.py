@@ -27,7 +27,9 @@ being seen to the action (the compiler's measure), the checker's age is
 D + 1, and the pin-level window [a, b] (pads d_min, d_max) holds when, for
 an output reaching the pins in [D + 3, D + 4] and a sample in [D, D + 1]:
     LO = ceil(a - d_min - base) + 1,   HI = floor(b - d_max - base - 1) + 1,
-base 3 for an output and 0 for a sample. QUIET is the least separation the
+base 3 for an output and 0 for a sample (d_min, d_max per kind as pads.py
+gives them: the input range for a sample, one pad in the hull of both ranges for
+an output). QUIET is the least separation the
 datasheet allows before the trigger, and the trigger holds until the
 response (the checker's two assumptions, the environment's contract).
 """
@@ -274,7 +276,8 @@ def ric_params(n):
 
 def harness(role, lane, obs, regs, words, window, pads):
     """(top module text, [(Ob, LO, HI)])."""
-    rows = [(ob, *window_bounds(ob.lo, ob.hi, pads[0], pads[1], ob.kind)) for ob in obs]
+    win = pads if isinstance(pads, dict) else {"in": pads, "out": pads}     # ticks, per kind
+    rows = [(ob, *window_bounds(ob.lo, ob.hi, *win[ob.kind][:2], ob.kind)) for ob in obs]
     lines = top_lines(role, lane, regs, words, window, "one checker per OB-WIN obligation")
     for k, (ob, lo, hi) in enumerate(rows):
         en = only(k, "stay >= 3'd5 && (" + " || ".join(f"pc_q == 8'd{p}" for p in ob.waits) + ")")
@@ -667,9 +670,14 @@ def blocks(ins):
 
 def fsm_place(att, lane, fm, ppm, pads, skew):
     """Place of an accepted state machine (fsmsched.FsmAttempt); pads (d_min, d_max) and skew
-    in ticks."""
+    in ticks. pads is one pad in the hull of both directions; skew is one value for every pair
+    of pads, or {"in", "out", "x"} per pair as the scheduler takes them (Pads.skew)."""
     from . import pace, printer
     from .units import drift_budget
+    sk_in, sk_out, sk_x = (skew["in"], skew["out"], skew["x"]) if isinstance(skew, dict) else (skew,) * 3
+
+    def kind_skew(a, b):
+        return sk_in if a == b == "in" else sk_out if a == b == "out" else sk_x
     prog, pl, memo = att.prog, Place(), {}
     if any(i.wait is not None and i.wait.abort is not None for i in prog):
         pl.skipped.append("an abort: the analysis stops checking while one is pending, which the "
@@ -680,7 +688,7 @@ def fsm_place(att, lane, fm, ppm, pads, skew):
         rec, e0, rows = att.res.paces.get(id(ch), {}), ch.entries[0], []
         for k, e in enumerate(ch.entries):
             o = (pace.OUT_OFFSET if e.kind == "out" else 0) - (pace.OUT_OFFSET if e0.kind == "out" else 0)
-            sk = skew if (set(e.wires) != set(e0.wires) or e.kind != e0.kind) else 0
+            sk = kind_skew(e0.kind, e.kind) if (set(e.wires) != set(e0.wires) or e.kind != e0.kind) else 0
             m = drift_budget(e.tol, e.ideal, ppm) - sk
             st = e.stmts[0]
             g = None if k == 0 else pl.group(
@@ -703,7 +711,7 @@ def fsm_place(att, lane, fm, ppm, pads, skew):
         if s.kind == "in":
             lo, hi = s.ticks + 3 + pmax, None if s.hi is None else s.hi + 3 + pmin
         else:
-            sk = skew if s.skew else 0
+            sk = (sk_out if s.drive else max(sk_out, sk_x)) if s.skew else 0     # as sep_bounds
             lo, hi = s.ticks + sk, None if s.hi is None else s.hi - sk
         r = next(q for q, x in enumerate(prog) if x is s.ref)
         g = pl.group(("sep", p), s.span.line, s.text, "OB-HOLD" if s.hi is None else "OB-WIN", memo)

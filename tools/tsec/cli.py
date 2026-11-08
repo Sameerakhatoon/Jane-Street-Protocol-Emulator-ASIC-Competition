@@ -23,6 +23,7 @@ from .check import check
 from .codegen import assemble, image_text, listing_lines
 from .diag import EXIT_ERRORS, EXIT_INTERNAL, EXIT_OK, EXIT_REJECTED, Errors, TseError, render
 from .lexer import lex
+from .pads import Pads
 from .parser import parse
 from .resolve import resolve
 from .schedule import compile_role
@@ -56,6 +57,15 @@ def arg_parser():
             p.add_argument("--pad-max", type=float, default=25, help="largest pad delay, ns")
             p.add_argument("--pad-skew", type=float, default=None,
                            help="largest delay difference between two pads, ns (default max - min)")
+            for d, what in (("in", "input pads (pin to lane)"), ("out", "output pads (lane to pin)")):
+                p.add_argument(f"--pad-{d}-min", type=float, default=None,
+                               help=f"least delay of the {what}, ns (default --pad-min)")
+                p.add_argument(f"--pad-{d}-max", type=float, default=None,
+                               help=f"largest delay of the {what}, ns (default --pad-max)")
+                p.add_argument(f"--pad-{d}-skew", type=float, default=None,
+                               help=f"largest delay difference between two {what}, ns (default "
+                                    "--pad-skew if neither bound of this direction is given, "
+                                    "else its max - min, or --pad-skew if smaller)")
             p.add_argument("--emit", default="img,lst,report,json",
                            help="comma list of img, lst, report, json, lir, xml, proof, or all")
     sub.add_parser("selftest")
@@ -129,7 +139,23 @@ def rejection_diags(res):
     return sorted(out, key=lambda e: (e.span.line, e.span.col))
 
 
+def pads_of(args):
+    """The pad delays from the flags (pads.Pads), or the text of what is wrong with them."""
+    inp = (args.pad_in_min, args.pad_in_max, args.pad_in_skew)
+    out = (args.pad_out_min, args.pad_out_max, args.pad_out_skew)
+    pads = Pads.from_flags(args.pad_min, args.pad_max, args.pad_skew, inp, out)
+    for d, (lo, hi, skew) in (("in", pads.inp), ("out", pads.out)):
+        if (inp if d == "in" else out) != (None, None, None) and (lo > hi or skew < 0):
+            return (f"--pad-{d}-*: the {d}put pads need least <= largest and a skew >= 0, "
+                    f"got {lo:g} to {hi:g} ns, skew {skew:g} ns")
+    return pads
+
+
 def build(args, src, path):
+    pads = pads_of(args)
+    if isinstance(pads, str):
+        print(f"tsec: {pads}", file=sys.stderr)
+        return EXIT_ERRORS
     sym = front_end(src, path, overrides_of(args.D))
     if sym is None:
         return EXIT_ERRORS
@@ -141,8 +167,6 @@ def build(args, src, path):
         return EXIT_ERRORS
     emit = {"img", "lst", "report", "json", "lir", "xml", "proof"} if args.emit == "all" \
         else set(args.emit.split(","))
-    skew = args.pad_max - args.pad_min if args.pad_skew is None else args.pad_skew
-    pads = (args.pad_min, args.pad_max, skew)
     text = report.header(sym, fclk, fm, args.ppm)
     rejected, accepted, warned = [], [], []
     wbase = 0
@@ -206,6 +230,7 @@ def window_rows(accepted):
 
 
 def write_outputs(out, stem, sym, accepted, text, emit, fclk, fm=None, pads=(0, 25), ppm=50):
+    pads = Pads.of(pads)
     os.makedirs(out, exist_ok=True)
 
     def put(name, body):
@@ -236,7 +261,7 @@ def write_outputs(out, stem, sym, accepted, text, emit, fclk, fm=None, pads=(0, 
                 continue
             put(f"{stem}_{res.role.name.text}.xml", uppaal.export(res.role, res.chosen.low))
     if "proof" in emit:
-        ticks = tuple(Fr(p) * fclk / 10**9 for p in pads[:2])
+        ticks = pads.ticks_by_kind(fclk)
         for lane, res, rows, cfg in accepted:
             if res.kind == "frames":        # engine events and pins; the data window reads 0
                 checks, _ = proofgen.frame_checks(res.chosen, lane, fm, ppm)
@@ -251,7 +276,9 @@ def write_outputs(out, stem, sym, accepted, text, emit, fclk, fm=None, pads=(0, 
                 window = [(w.addr + k, w.init if k == 0 and w.init is not None else 0)
                           for w in res.chosen.fsm.window.rows() for k in range(w.size)]
                 depth = proofgen.cover_depth(res.chosen.prog, res.chosen.labels, lane, fm, obs)
-                place = proofgen.fsm_place(res.chosen, lane, fm, ppm, ticks, Fr(pads[2]) * fclk / 10**9)
+                skew = {k: Fr(s) * fclk / 10**9 for k, s in
+                        (("in", pads.inp[2]), ("out", pads.out[2]), ("x", pads.cross))}
+                place = proofgen.fsm_place(res.chosen, lane, fm, ppm, ticks["out"], skew)
             else:
                 obs = proofgen.frame_obs(sym, res.role, lane, res.chosen.low, res.chosen.labels, fm)
                 window = []
