@@ -245,18 +245,25 @@ def write_outputs(out, stem, sym, accepted, text, emit, fclk, fm=None, pads=(0, 
                                           [w for _, w, _, _, _ in rows], [], res.chosen.low.host_ready)
                 continue
             depth = 40
+            words = [w for _, w, _, _, _ in rows]
             if res.kind == "fsm":
                 obs = proofgen.fsm_obs(sym, res.role, lane, res.chosen, fm, fclk)
                 window = [(w.addr + k, w.init if k == 0 and w.init is not None else 0)
                           for w in res.chosen.fsm.window.rows() for k in range(w.size)]
                 depth = proofgen.cover_depth(res.chosen.prog, res.chosen.labels, lane, fm, obs)
+                place = proofgen.fsm_place(res.chosen, lane, fm, ppm, ticks, Fr(pads[2]) * fclk / 10**9)
             else:
                 obs = proofgen.frame_obs(sym, res.role, lane, res.chosen.low, res.chosen.labels, fm)
                 window = []
+                place = proofgen.frame_place(res.chosen.low, res.chosen.labels, lane, fm, ppm)
+            ready = any(a.b is None and a.a.kind == "named" and a.a.name.text == "host" and
+                        a.a.attr is not None and a.a.attr.text == "ready" for a in res.role.assumes)
+            proofgen.write_place(os.path.join(out, "proof"), res.role, lane, place, cfg[0], words, window,
+                                 ready)
             if not obs:                 # nothing a response window could check
                 continue
             proofgen.write(os.path.join(out, "proof"), res.role, lane, obs, cfg[0],
-                           [w for _, w, _, _, _ in rows], window, ticks, res.kind != "fsm", depth)
+                           words, window, ticks, res.kind != "fsm", depth)
 
 
 def run(argv):

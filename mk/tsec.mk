@@ -4,7 +4,7 @@ PY ?= python3
 TSEC_SRC := $(shell find tools/tsec -name '*.py' -o -name '*.sh') $(wildcard specs/*.tse)
 TSEC_PROOF := build/tsec-proof
 
-.PHONY: tsec-lint tsec-test tsec-proof tsec-fuzz
+.PHONY: tsec-lint tsec-test tsec-proof tsec-proof-more tsec-fuzz
 
 # byte-compile, then style: no tabs, no trailing blanks, lines up to 110, no en or em dashes
 tsec-lint:
@@ -107,6 +107,71 @@ tsec-proof:
 		echo "$$t: $$got (want $$want)"; \
 		[ "$$got" = "$$want" ] || exit 1; \
 	done
+
+# More roles than tsec-proof, opt-in: the solver part takes about 3 hours with rIC3, one task
+# at a time (each task is a portfolio of some 16 processes: run it alone on the machine).
+# Window harnesses: the SPI flash target (a state machine; abc pdr left 9 of 10 open after 45
+# minutes, rIC3 proves each alone) and the CAN in-bit ACK receiver (a frame role, rIC3). Their
+# planted bugs beyond the first few need traces of 250 cycles or more, too deep for the solver
+# in an hour, so a bench drives legal traffic (flash_ctl_tb.sv: SPI mode 0 frames of every
+# command; can_tx_tb.sv: stuffed standard frames with a correct CRC, now and then a bad one):
+# no bug, no failure and every checker answered; planted bug k, checker k fails. Own-instant
+# harnesses (top_<role>_place.sv: paced chains, distances after our own edge, paced-frame
+# placements) for the UART transmitter and receiver, the JTAG probe, the SPI controller (mode 0;
+# modes 1 to 3 differ only in levels) and the I2C controller (fast mode), each shown live in
+# simulation first (tools/tsec/proofs/sim/place_sims.sh: no bug, no failure, every obligation
+# checked, every distance inside its window and the analysis' claim; then planted bug k fails,
+# for every k). Then every task of TSEC_PROOF2_PASS must PASS and every planted bug of
+# TSEC_PROOF2_FAIL must FAIL, TSEC_PROOF_JOBS at a time, each within TSEC_PROOF2_TIMEOUT seconds.
+# Left open at 40 minutes each (rIC3): uart_tx and uart_rx obligations 0 and 1, the SPI
+# controller's 1 to 10; at an hour each, the CAN receiver's 1, 2, 4, 5 and 6 (its bench
+# answers and passes all eight).
+TSEC_PROOF2 := build/tsec-proof2
+TSEC_PROOF2_BUILDS := uart_tx uart_rx jtag_probe@--pad-skew@0 spi_controller_mode0@--pad-skew@0 \
+	i2c_controller_fm spi_flash_target can_rx_ack
+TSEC_PROOF2_SIMS := uart_tx:100000:3 uart_rx:200000:40 jtag_probe:100000:3 \
+	spi_controller_mode0:100000:3:5:0 i2c_controller_fm:400000:3:8:13
+# window benches: role/harness, bench, frames, checkers
+TSEC_PROOF2_WSIMS := spi_flash_target/flash:flash_ctl_tb:10:10 can_rx_ack/node:can_tx_tb:12:8
+TSEC_PROOF2_PASS := $(foreach k,0 1 2 3 4 5 6 7 8 9,spi_flash_target/flash:ob$(k)) \
+	$(foreach k,0 3 7,can_rx_ack/node:ob$(k)) jtag_probe/probe_place:rprove \
+	spi_controller_mode0/ctl_place:ric0 $(foreach k,$(shell seq 0 29),i2c_controller_fm/ctl_place:ric$(k))
+TSEC_PROOF2_FAIL := $(foreach k,0 1 2,spi_flash_target/flash:late$(k))
+TSEC_PROOF2_TIMEOUT ?= 3600
+tsec-proof-more:
+	rm -rf $(TSEC_PROOF2)
+	mkdir -p $(TSEC_PROOF2)
+	@for b in $(TSEC_PROOF2_BUILDS); do n=$${b%%@*}; a=$$(echo $$b | cut -s -d@ -f2- | tr @ ' '); \
+		$(PY) -m tools.tsec build specs/$$n.tse $$a --emit proof -o $(TSEC_PROOF2)/$$n > /dev/null || exit 1; \
+	done
+	@for s in $(TSEC_PROOF2_SIMS); do \
+		bash tools/tsec/proofs/sim/place_sims.sh $(TSEC_PROOF2)/$${s%%:*}/proof $$(echo $${s#*:} | tr : ' ') \
+			|| exit 1; \
+	done
+	@for w in $(TSEC_PROOF2_WSIMS); do d=$${w%%:*}; tb=$$(echo $$w | cut -d: -f2); \
+		ntx=$$(echo $$w | cut -d: -f3); ng=$${w##*:}; o=$(TSEC_PROOF2)/$$(dirname $$d); \
+		for L in -1 $$(seq 0 $$((ng - 1))); do \
+			iverilog -g2012 -DNTX=$$ntx -DLATE=$$L -o $$o/sim.out $(TSEC_PROOF_LANE) \
+				$$(ls $$o/proof/tse_*_check.sv) $$o/proof/top_$$(basename $$d).sv \
+				tools/tsec/proofs/sim/$$tb.sv 2> /dev/null || exit 1; \
+			vvp -n $$o/sim.out > $$o/sim$$L.log; \
+			n=$$(grep -A1 '^ERROR' $$o/sim$$L.log | grep -c 'Time: [1-9]'); \
+			idle=$$(grep -c 'answered 0$$' $$o/sim$$L.log); \
+			echo "$$d sim late$$L: $$n failures, $$idle checkers never answered"; \
+			bad=$$([ $$L = -1 ] && echo $$n || echo $$((n == 0))); \
+			[ $$idle = 0 ] && [ $$bad = 0 ] || exit 1; \
+		done; \
+	done
+	@for t in $(TSEC_PROOF2_PASS) $(TSEC_PROOF2_FAIL); do echo "$$t"; done | \
+		xargs -P $(TSEC_PROOF_JOBS) -L 1 sh -c 'd=$${0%%:*}; cd $(TSEC_PROOF2)/$$(dirname $$d)/proof && \
+		timeout $(TSEC_PROOF2_TIMEOUT) sby -f $$(basename $$d).sby $${0#*:} > /dev/null 2>&1; true'
+	@for t in $(TSEC_PROOF2_PASS); do echo "$$t PASS"; done > $(TSEC_PROOF2)/want
+	@for t in $(TSEC_PROOF2_FAIL); do echo "$$t FAIL"; done >> $(TSEC_PROOF2)/want
+	@while read t want; do d=$${t%%:*}; \
+		got=$$(cat $(TSEC_PROOF2)/$$(dirname $$d)/proof/$$(basename $$d)_$${t#*:}/status 2>/dev/null | cut -d' ' -f1); \
+		echo "$$t: $$got (want $$want)"; \
+		[ "$$got" = "$$want" ] || exit 1; \
+	done < $(TSEC_PROOF2)/want
 
 lint: tsec-lint
 test: tsec-test

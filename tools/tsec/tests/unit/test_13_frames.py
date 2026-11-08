@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 """Frame roles: lowering, timing, configuration, proof checks and every rejection reason."""
+import re
 import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
@@ -191,6 +192,43 @@ def test_frame_checks_of_the_buffered_transmitter():
     assert f".LO(LATE == {feed} ? 3 : 2), .HI(2)" in top
     assert sby.index("chparam") < sby.index("prep -top top")
     assert f"(ONLY < 0 || ONLY == {checks.index(feeds[0])}) && (" in top
+
+
+def test_feed_check_does_not_add_a_csrw_s_cycles():
+    # The CAN receiver writes the rule position and the RX word length with a CSRW to a lane
+    # register (CSRW_CYC_CFGWORD cycles), but the sequencer moves its pc on as the write issues
+    # and holds the next instruction: the lane leaves it D + 1 cycles after the event, as any other
+    sym, res = compiled(CAN_ACK, bitrate=500e3)
+    checks, _ = proofgen.frame_checks(res.chosen, 0, FetchModel(), 50)
+    stats, prog = res.chosen.an.stats, res.chosen.prog
+    long = 0
+    for c in checks:
+        k = int(c.what.split()[1].rstrip(","))
+        st = stats[id(prog[k])]
+        assert (c.lo, c.hi) == (st.vmin + 1, st.vmax + 1)
+        long += prog[k].op == "CSRW" and proofgen.extra_cycles(prog[k], 0, FetchModel()) > 0
+    assert long >= 3
+
+
+def test_feed_checks_arm_at_the_wait_that_leads_to_their_act():
+    # The CAN receiver serves the header word at one wait and every data byte at another, and a
+    # frame without data bytes skips the byte loop. A feed check arms only at a wait its act
+    # follows with no other WAIT on the way, and ends when the lane leaves that path or comes
+    # back to the wait: the trigger was then served by another branch
+    sym, res = compiled(CAN_ACK, bitrate=500e3)
+    checks, _ = proofgen.frame_checks(res.chosen, 0, FetchModel(), 50)
+    prog, labels = res.chosen.prog, res.chosen.labels
+    first = next(p for p, i in enumerate(prog) if i.op == "WAIT")
+    early = 0
+    for c in checks:
+        k = int(c.what.split()[1].rstrip(","))
+        at = sorted({int(x) for x in re.findall(r"pc_q == 8'd(\d+)", c.en)})
+        direct, path = proofgen.feed_path(prog, labels, at, k)
+        assert direct == at and k in path and set(at) <= path
+        assert all(prog[q].op != "WAIT" for q in path - set(at))
+        assert c.abandon.startswith("!(") and "stay < 3'd5" in c.abandon
+        early += at == [first] and any(i.op == "WAIT" for i in prog[first + 1:k])
+    assert early >= 2           # acts past the byte loop's wait, still served from the header
 
 
 # ------------------------------------------------------------------ the receivers and the limits

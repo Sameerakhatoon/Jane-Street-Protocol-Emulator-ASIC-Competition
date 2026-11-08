@@ -18,13 +18,15 @@ synchronized trigger pin (what a WAIT sees), armed only while the lane is
 at one of the waits for that event in the obligation's state, and has been
 there for 5 cycles (longer than any fetch stall, so the WAIT has dispatched:
 PC alone also shows an instruction still waiting for its word). Its response
-is the cycle the lane leaves the acting instruction: with the instruction's
-d extra cycles, the action happened in that cycle minus 1 + d. So with D
-the cycles from the trigger being seen to the action (the compiler's
-measure), the checker's age is D + 1 + d, and the pin-level window [a, b]
-(pads d_min, d_max) holds when, for an output reaching the pins in
-[D + 3, D + 4] and a sample in [D, D + 1]:
-    LO = ceil(a - d_min - base) + 1 + d,   HI = floor(b - d_max - base - 1) + 1 + d,
+is the cycle the lane leaves the acting instruction: every instruction acts
+in the cycle it retires, and the sequencer moves its pc on at that edge
+(src/tse_seq.sv; a delay field or a CSRW's cycles hold the next instruction,
+whose pc STATUS already shows), so the action happened in that cycle minus 1,
+whatever the instruction's length. So with D the cycles from the trigger
+being seen to the action (the compiler's measure), the checker's age is
+D + 1, and the pin-level window [a, b] (pads d_min, d_max) holds when, for
+an output reaching the pins in [D + 3, D + 4] and a sample in [D, D + 1]:
+    LO = ceil(a - d_min - base) + 1,   HI = floor(b - d_max - base - 1) + 1,
 base 3 for an output and 0 for a sample. QUIET is the least separation the
 datasheet allows before the trigger, and the trigger holds until the
 response (the checker's two assumptions, the environment's contract).
@@ -47,10 +49,10 @@ BASE = {"out": 3, "in": 0}
 SYNC = 2                        # the harness's two-flop synchronizer on the pins
 
 
-def window_bounds(lo, hi, d_min=0, d_max=0, kind="in", extra=0):
+def window_bounds(lo, hi, d_min=0, d_max=0, kind="in"):
     """Checker step bounds (LO, HI) for a pin-level window [lo, hi] in ticks."""
     base = BASE[kind]
-    return max(1, math.ceil(lo - d_min - base) + 1 + extra), math.floor(hi - d_max - base - 1) + 1 + extra
+    return max(1, math.ceil(lo - d_min - base) + 1), math.floor(hi - d_max - base - 1) + 1
 
 
 class Ob:
@@ -259,9 +261,20 @@ def ob_params(n):
         [f"late{k}: chparam -set ONLY {k} -set LATE {k} top" for k in range(n)]
 
 
+def ric_tasks(n):
+    """The same per obligation with rIC3 (ric<k>, its planted bug rlate<k>), for a place harness:
+    on the flash target rIC3 proved in 5 to 41 minutes what abc pdr left open after 45."""
+    return [f"{t}{k} ric" for k in range(n) for t in ("ric", "rlate")]
+
+
+def ric_params(n):
+    return [f"ric{k}: chparam -set ONLY {k} top" for k in range(n)] + \
+        [f"rlate{k}: chparam -set ONLY {k} -set LATE {k} top" for k in range(n)]
+
+
 def harness(role, lane, obs, regs, words, window, pads):
     """(top module text, [(Ob, LO, HI)])."""
-    rows = [(ob, *window_bounds(ob.lo, ob.hi, pads[0], pads[1], ob.kind, ob.extra)) for ob in obs]
+    rows = [(ob, *window_bounds(ob.lo, ob.hi, pads[0], pads[1], ob.kind)) for ob in obs]
     lines = top_lines(role, lane, regs, words, window, "one checker per OB-WIN obligation")
     for k, (ob, lo, hi) in enumerate(rows):
         en = only(k, "stay >= 3'd5 && (" + " || ".join(f"pc_q == 8'd{p}" for p in ob.waits) + ")")
@@ -430,7 +443,8 @@ def write(outdir, role, lane, obs, regs, words, window, pads, bounded=False, dep
 # A frame role's obligations are about engine events and pins, not input edges:
 #   feed   the instruction serving an engine event dispatches D cycles after the event is
 #          seen, D in the analysis' range [vmin, vmax]. The event bit is on STATUS (what a
-#          WAIT sees), so the checker's age is D + 1 + d as for a state machine;
+#          WAIT sees), so the checker's age is D + 1 as for a state machine (the analysis
+#          measures dispatch, also for a CSRW whose bank write takes more cycles);
 #   place  pin to pin: the response pin changes ideal +/- (tolerance less the clock budget)
 #          cycles after the trigger pin (or, after a `send`, after TX goes idle, which is the
 #          cycle the line takes its idle level);
@@ -453,6 +467,41 @@ def marked(prog, mark, before=None, fw=False):
     if fw:
         return [p for p in range(end) if getattr(getattr(prog[p], "fw", None), "mark", None) == mark]
     return [p for p in range(end) if getattr(prog[p], "mark", None) == mark]
+
+
+def feed_path(prog, labels, waits, act):
+    """(the waits act follows with no other WAIT on the way, the pcs from them to act) of a frame
+    role's program, or (None, None). A trigger seen at any other wait is served by another
+    instruction: the lane takes a branch off the path (a frame without data bytes skips the byte
+    loop) or comes back to the wait (the byte loop's earlier bytes), and either ends the check."""
+    def succ(pc):
+        ins = prog[pc]
+        out = [] if ins.op == "JMP" and ins.a["cond"] == "ALWAYS" else [pc + 1]
+        if ins.op == "JMP":
+            out.append(labels[ins.a["target"]])
+        return [n for n in out if n < len(prog)]
+    direct, path = [], set()
+    for w0 in waits:
+        seen, todo = {w0}, [w0]
+        while todo:
+            q = todo.pop()
+            for n in succ(q):
+                if n not in seen and (n == act or prog[n].op != "WAIT"):
+                    seen.add(n)
+                    if n != act:
+                        todo.append(n)
+        if act not in seen:
+            continue
+        back, changed = {act}, True
+        while changed:
+            changed = False
+            for q in seen - back:
+                if any(n in back for n in succ(q)):
+                    back.add(q)
+                    changed = True
+        direct.append(w0)
+        path |= back
+    return (direct, path) if direct else (None, None)
 
 
 def frame_checks(att, lane, fm, ppm):
@@ -480,10 +529,17 @@ def frame_checks(att, lane, fm, ppm):
             if bit is None or not waits or st is None or st.vmax in (None, False):
                 skipped.append(f"line {line}: {ob.name} (its event is not on STATUS)")
                 continue
+            direct, path = feed_path(prog, att.labels, waits, k)
+            if direct is None:
+                skipped.append(f"line {line}: {ob.name} (no wait leads to it)")
+                continue
             d = extra_cycles(ins, lane, fm)
-            checks.append(Check("window", line, ob.name, lo=st.vmin + 1 + d, hi=st.vmax + 1 + d,
-                                en=f"stay >= 3'd5 && pc_q == 8'd{waits[-1]}", trig=ev.format(bit), tval=1,
+            at = " || ".join(f"pc_q == 8'd{w}" for w in direct)
+            off = " || ".join(f"pc_q == 8'd{q}" for q in sorted(path))
+            checks.append(Check("window", line, ob.name, lo=st.vmin + 1, hi=st.vmax + 1,
+                                en=f"stay >= 3'd5 && ({at})", trig=ev.format(bit), tval=1,
                                 resp=f"pc_q == 8'd{k} && pc != 8'd{k}", rval=1,
+                                abandon=f"!({off}) || (({at}) && stay < 3'd5)",
                                 what=f"instruction {k}, {d} extra cycles, D in [{st.vmin}, {st.vmax}]"))
         elif ob.kind == "place":
             budget = ob.tol - Fr(ppm, 10**6) * ob.ideal
@@ -525,7 +581,7 @@ def frame_harness(role, lane, checks, regs, words, window, host_ready=False):
         lines += [f"    .clk, .rst(init), .en({only(k, '(' + c.en + ')')}), .trig_in({c.trig}),"
                   f" .trig_val(1'b{c.tval}),",
                   f"    .resp_out({c.resp}), .resp_val(1'b{c.rval})"
-                  ", .abandon(1'b0));"]
+                  f", .abandon({getattr(c, 'abandon', '1' + chr(39) + 'b0')}));"]
     lines.append("endmodule")
     return "\n".join(lines) + "\n"
 
@@ -559,5 +615,262 @@ def write_frames(outdir, role, lane, checks, regs, words, window, host_ready=Fal
         fh.write(frame_harness(role, lane, checks, regs, words, window, host_ready))
     with open(os.path.join(outdir, f"{name}.sby"), "w") as fh:
         fh.write(frame_sby(name, len(checks)))
+    with open(os.path.join(outdir, f"{name}.hex"), "w") as fh:
+        fh.write("".join(f"{w:04x}\n" for w in words))
+
+
+# ------------------------------------------------------------------ placements
+# The obligations a role checks between two of its own instants have no outside trigger, so
+# they get a harness of their own (top_<role>_place.sv, <role>_place.sby) beside the window
+# harness, which stays as it was:
+#   chain  a paced chain of a state machine (OB-EDGE, OB-SAMP): each timed action issues
+#          ideal +/- (tolerance less drift and, between different pins or kinds, the pad skew)
+#          after the chain's first action, an output counted OUT_OFFSET cycles later than a
+#          sample, as fsmsched.pace_rows checks it;
+#   sep    a least (and with a window after our own edge, a largest) distance from the
+#          instruction that drove a wire last, as fsmsched.sep_bounds gives it in cycles;
+#   frame  a paced frame's placements (OB-EDGE, OB-SAMP after its first action), each visit at
+#          its ideal +/- (tolerance less drift), an output one cycle after its issue
+#          (timing.analyse).
+# The harness follows the analysis on STATUS: every instruction acts in the cycle it retires
+# and the sequencer moves its pc on at that edge (src/tse_seq.sv: pc <= npc on retire; a delay
+# field or a CSRW's cycles hold the next instruction, whose pc STATUS already shows), so an
+# instruction issued one cycle before the cycle the lane leaves it, whatever its length;
+# a chain's entries counted as fsmtime.record_pace counts them and ended where the analysis
+# ends them (a wait for the environment, a frame's anchor). Where the lane runs a chain's
+# actions out of the analysed order, order_bad fails every task: the count would mean nothing.
+# Nothing about the environment is assumed (the pins and the host are free), except a role's
+# labelled `assume host_ready`. LATE = k empties obligation k's window, so late<k> must fail.
+class Place:
+    """The own-instant checks of one role: groups (one per obligation) and how to see them."""
+
+    def __init__(self):
+        self.groups = []            # (line, text, code)
+        self.chains = []            # per chain, per entry: (lo, hi, group or None, claim or None)
+        self.paces = {}             # pc -> [(chain, entries holding its statement, hint)]
+        self.seps = []              # (ref pc, pc, lo, hi or None, group, claim or None)
+        self.resets = set()         # pcs whose leaving ends the chain
+        self.skipped = []
+
+    def group(self, key, line, text, code, memo):
+        if key not in memo:
+            memo[key] = len(self.groups)
+            self.groups.append((line, text, code))
+        return memo[key]
+
+
+def blocks(ins):
+    """The analysis ends a paced chain at a wait for the environment (fsmtime.step)."""
+    w = ins.wait
+    return (w is not None and w.kind in ("edge", "pre", "pull")) or (ins.op == "PULL" and ins.a.get("blk"))
+
+
+def fsm_place(att, lane, fm, ppm, pads, skew):
+    """Place of an accepted state machine (fsmsched.FsmAttempt); pads (d_min, d_max) and skew
+    in ticks."""
+    from . import pace, printer
+    from .units import drift_budget
+    prog, pl, memo = att.prog, Place(), {}
+    if any(i.wait is not None and i.wait.abort is not None for i in prog):
+        pl.skipped.append("an abort: the analysis stops checking while one is pending, which the "
+                          "pins do not show")
+        return pl
+    chains = att.fsm.chain_list
+    for ch in chains:
+        rec, e0, rows = att.res.paces.get(id(ch), {}), ch.entries[0], []
+        for k, e in enumerate(ch.entries):
+            o = (pace.OUT_OFFSET if e.kind == "out" else 0) - (pace.OUT_OFFSET if e0.kind == "out" else 0)
+            sk = skew if (set(e.wires) != set(e0.wires) or e.kind != e0.kind) else 0
+            m = drift_budget(e.tol, e.ideal, ppm) - sk
+            st = e.stmts[0]
+            g = None if k == 0 else pl.group(
+                ("chain", id(st)), st.span.line, printer.stmt(st, 0).strip().rstrip(";"),
+                "OB-EDGE" if pace.is_out(st) else "OB-SAMP", memo)
+            claim = tuple(rec[k][:2]) if k in rec else None
+            rows.append((max(0, math.ceil(e.ideal - o - m)), math.floor(e.ideal - o + m), g, claim))
+        pl.chains.append(rows)
+    for p, ins in enumerate(prog):
+        for pc_ in getattr(ins, "paces", None) or ():
+            pl.paces.setdefault(p, []).append((chains.index(pc_.chain), pc_.chain.index(pc_.stmt),
+                                               pc_.entry))
+        if blocks(ins):
+            pl.resets.add(p)
+    pmin, pmax = pads
+    for p, ins in enumerate(prog):
+        s = ins.sep
+        if s is None:
+            continue
+        if s.kind == "in":
+            lo, hi = s.ticks + 3 + pmax, None if s.hi is None else s.hi + 3 + pmin
+        else:
+            sk = skew if s.skew else 0
+            lo, hi = s.ticks + sk, None if s.hi is None else s.hi - sk
+        r = next(q for q, x in enumerate(prog) if x is s.ref)
+        g = pl.group(("sep", p), s.span.line, s.text, "OB-HOLD" if s.hi is None else "OB-WIN", memo)
+        got = att.res.seps.get(id(ins))
+        pl.seps.append((r, p, math.ceil(lo), None if hi is None else math.floor(hi), g,
+                        None if got is None else (got[1], got[3])))
+    return pl
+
+
+def frame_place(low, labels, lane, fm, ppm):
+    """Place of an accepted paced frame (lower.Lowering): every visit of each placement after the
+    frame's first action, in issue order, as one chain from the anchor."""
+    from .units import drift_budget
+    pl, memo = Place(), {}
+    at = {id(ins.ob): p for p, ins in enumerate(low.prog) if ins.ob is not None}
+    order = sorted(((ob.ideals[v], n, v, ob) for n, ob in enumerate(low.frame.actions)
+                    for v in range(ob.reps) if id(ob) in at), key=lambda t: (t[0], t[1], t[2]))
+    if len(order) < 2:
+        return pl
+    first, rows = order[0][3], []
+    for k, (ideal0, _, v, ob) in enumerate(order):
+        ideal = ideal0 - first.ideals[0]
+        shift = (1 if ob.kind == "out" else 0) - (1 if first.kind == "out" else 0)
+        b = drift_budget(ob.tol, ideal, ppm)
+        g = None if k == 0 or ob.ref == "anchor" else pl.group(
+            ("frame", id(ob)), ob.line, ob.name, ob.code, memo)
+        rows.append((max(0, math.ceil(ideal - b) - shift), math.floor(ideal + b) - shift, g, None))
+        pl.paces.setdefault(at[id(ob)], [(0, [], None)])[0][1].append(k)
+    pl.chains.append(rows)
+    pl.resets.add(labels["idle"])
+    return pl
+
+
+def place_lines(pl, host_ready=False):
+    """The checks of pl, after top_lines: a chain tracker, one distance counter per reference
+    instruction, and per group an assertion (armed by ONLY, emptied by LATE)."""
+    G = len(pl.groups)
+    big = [hi for rows in pl.chains for _, hi, _, _ in rows] + \
+        [max(lo, hi or 0) for _, _, lo, hi, _, _ in pl.seps] + [1]
+    tw = (max(big) + 4).bit_length() + 1
+    cb = max(1, len(pl.chains).bit_length())
+    lines = []
+    if host_ready:
+        lines += ["  // assumption host_ready: a host word is always waiting",
+                  "  always_comb if (!init) assume (h_tx_we);"]
+    lines += [
+        "  // own-instant checks: hit[g] when obligation g is checked this cycle, bad[g] when the",
+        "  // distance is outside its window; gv and gk hold the distance and entry, for simulation",
+        f"  logic [{G - 1}:0] hit, bad;",
+        f"  logic [{G * tw - 1}:0] gv;",
+        f"  logic [{G * 8 - 1}:0] gk;",
+        "  logic order_bad, left;",
+        "  assign left = !init && pc != pc_q;     // the lane leaves pc_q in this cycle",
+    ]
+    if pl.chains:
+        lines += [
+            f"  logic [{cb - 1}:0] pch = '0;             // the chain the analysis is in, plus 1; 0: none",
+            f"  logic [{cb - 1}:0] n_ch;",
+            "  logic [7:0] pk = '0;                   // its next entry",
+            "  logic [7:0] n_k;",
+            f"  logic [{tw - 1}:0] pt = '0;              // cycles since its first action's issue",
+            f"  logic [{tw - 1}:0] n_pt, dd;",
+        ]
+    for r in sorted({r for r, *_ in pl.seps}):
+        lines += [f"  logic [{tw - 1}:0] sr{r} = '0;            // cycles since instruction {r} issued",
+                  f"  logic sv{r} = 1'b0;",
+                  "  always_ff @(posedge clk)",
+                  f"    if (left && pc_q == 8'd{r}) begin sr{r} <= {tw}'d1; sv{r} <= 1'b1; end",
+                  f"    else if (sr{r} != '1) sr{r} <= sr{r} + 1'b1;"]
+
+    def check(g, lo, hi, val, k):
+        cond = f"LATE == {g} || {val} < {tw}'d{lo}" + ("" if hi is None else f" || {val} > {tw}'d{hi}")
+        return [f"hit[{g}] = 1'b1; gv[{g * tw} +: {tw}] = {val}; gk[{g * 8} +: 8] = 8'd{k};",
+                f"if ({cond}) bad[{g}] = 1'b1;"]
+
+    body = []
+    for p in sorted(set(pl.paces) | pl.resets) if pl.chains else []:
+        code = ["dd = pt;"] if p in pl.paces else []
+        for c, ks, hint in pl.paces.get(p, []):
+            rows, C = pl.chains[c], c + 1
+
+            def entry(k):
+                lo, hi, g, _ = rows[k]
+                return [] if g is None else check(g, lo, hi, "dd", k)
+            restart = ([f"n_ch = {cb}'d{C}; n_k = 8'd1; n_pt = {tw}'d1; dd = '0;"] if 0 in ks
+                       else ["order_bad = 1'b1;"])
+            cases = [f"8'd{k}: begin {' '.join(entry(k))} end" for k in ks if k > 0]
+            generic = [f"if (n_ch != {cb}'d{C} || n_k >= 8'd{len(rows)}" + (" || 1'b1" if hint == 0 else "")
+                       + ") begin", *["  " + x for x in restart], "end else begin", "  case (n_k)",
+                       *["    " + x for x in cases], "    default: order_bad = 1'b1;", "  endcase",
+                       "  n_k = n_k + 1'b1;", "end"]
+            if hint is not None and hint > 0:
+                code += [f"if (n_ch == {cb}'d{C}) begin", *["  " + x for x in entry(hint)],
+                         f"  if (n_k < 8'd{hint + 1}) n_k = 8'd{hint + 1};", "end else begin",
+                         *["  " + x for x in generic], "end"]
+            else:
+                code += generic
+        if p in pl.resets:
+            code.append("n_ch = '0;")
+        body += [f"      8'd{p}: begin", *["        " + x for x in code], "      end"]
+    lines += ["  always_comb begin", "    hit = '0; bad = '0; gv = '0; gk = '0; order_bad = 1'b0;"]
+    if pl.chains:
+        lines += ["    n_ch = pch; n_k = pk; n_pt = pt == '1 ? pt : pt + 1'b1; dd = '0;",
+                  "    if (left) case (pc_q)", *body, "      default: ;", "    endcase"]
+    for r, p, lo, hi, g, _ in pl.seps:
+        lines += [f"    if (left && pc_q == 8'd{p} && sv{r}) begin",
+                  *["      " + x for x in check(g, lo, hi, f"sr{r}", 0)],
+                  "    end"]
+    lines += ["  end"]
+    if pl.chains:
+        lines += ["  always_ff @(posedge clk)",
+                  "    if (init) begin pch <= '0; pk <= '0; pt <= '0; end",
+                  "    else begin pch <= n_ch; pk <= n_k; pt <= n_pt; end"]
+    # sampled at the clock: the same states for the solver, and no glitches in a simulator
+    lines += ["  always @(posedge clk) if (!init) begin", "    assert (!order_bad);"]
+    for g, (line, text, code) in enumerate(pl.groups):
+        lines.append(f"    if (ONLY < 0 || ONLY == {g}) assert (!bad[{g}]);   // line {line}: {code} {text}")
+    lines += ["  end", "endmodule"]
+    return lines
+
+
+def place_harness(role, lane, pl, regs, words, window, host_ready=False):
+    lines = top_lines(role, lane, regs, words, window, "its own instants: chains, distances, frames")
+    return "\n".join(lines + place_lines(pl, host_ready)) + "\n"
+
+
+def place_sby(role_name, n):
+    """Prove every check with abc pdr (task prove) or rIC3 (rprove), or one obligation alone
+    (ob<k>, ric<k>), or its planted bug (late<k>, rlate<k>: must FAIL)."""
+    files = [os.path.join(SRC, f) for f in RTL]
+    reads = " ".join(os.path.basename(f) for f in files)
+    return "\n".join([
+        "[tasks]", "prove prv", "rprove ric", *ob_tasks(n, "prv"), *ric_tasks(n), "",
+        "[options]", "prv: mode prove", "ric: mode prove", "",
+        "[engines]", "prv: abc pdr", "ric: aiger rIC3", "",
+        "[script]", f"read_verilog -formal -sv {reads} top_{role_name}_place.sv",
+        *ob_params(n), *ric_params(n), "prep -top top", "flatten", "memory_map", "opt -fast", "techmap",
+        "opt -fast", "setundef -undriven -anyseq", "setundef -zero", "opt -full", "opt_dff -sat",
+        "opt_clean", "",
+        "[files]", *files, f"top_{role_name}_place.sv",
+    ]) + "\n"
+
+
+def place_table(pl):
+    """Per obligation its line and statement, and per checked entry its window and the
+    analysis' claim (issue cycles from the reference): what a simulation log is compared with."""
+    out = [f"ob{g} line {line}: {code} {text}" for g, (line, text, code) in enumerate(pl.groups)]
+    for rows in pl.chains:
+        out += [f"  g{g} k{k} [{lo}, {hi}]" + ("" if claim is None else f" claim [{claim[0]}, {claim[1]}]")
+                for k, (lo, hi, g, claim) in enumerate(rows) if g is not None]
+    out += [f"  g{g} k0 [{lo}, {'' if hi is None else hi}]"
+            + ("" if claim is None else f" claim [{claim[0]}, {claim[1]}]")
+            for _, _, lo, hi, g, claim in pl.seps]
+    return "\n".join(out + [f"skipped: {s}" for s in pl.skipped]) + "\n"
+
+
+def write_place(outdir, role, lane, pl, regs, words, window, host_ready=False):
+    """Write the own-instant harness of one role (nothing when pl has no obligation)."""
+    if not pl.groups:
+        return
+    os.makedirs(outdir, exist_ok=True)
+    name = role.name.text
+    with open(os.path.join(outdir, f"top_{name}_place.sv"), "w") as fh:
+        fh.write(place_harness(role, lane, pl, regs, words, window, host_ready))
+    with open(os.path.join(outdir, f"{name}_place.sby"), "w") as fh:
+        fh.write(place_sby(name, len(pl.groups)))
+    with open(os.path.join(outdir, f"{name}_place.txt"), "w") as fh:
+        fh.write(place_table(pl))
     with open(os.path.join(outdir, f"{name}.hex"), "w") as fh:
         fh.write("".join(f"{w:04x}\n" for w in words))
