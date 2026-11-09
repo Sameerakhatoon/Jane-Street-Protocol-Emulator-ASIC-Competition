@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
-"""Board code and the datasheet snippet use only names the real Tiny Tapeout SDK has.
+"""Board code and the datasheet snippets use only names the real Tiny Tapeout SDK, the
+board code and the host library have, and the snippets run on the stand-in.
 
 The names come from tests/data/ttboard_sdk_names.txt, extracted from the SDK
 source at tt-micropython-firmware commit d485c7a9986336024e35d790568fca33be1c5665.
@@ -9,7 +10,6 @@ import glob
 import os
 import re
 import sys
-import types
 
 import pytest
 
@@ -24,8 +24,9 @@ from machine import Pin  # noqa: E402
 from ttboard import demoboard  # noqa: E402
 from ttboard.demoboard import SDK, DemoBoard  # noqa: E402
 from ttboard.mode import RPMode  # noqa: E402
-from tse_host import model  # noqa: E402
+from tse_host import image, model, session  # noqa: E402
 from tse_rp2 import board  # noqa: E402
+from tse_rp2.board import TseBoard  # noqa: E402
 
 IMPORTS = {"ttboard.demoboard": {"DemoBoard"}, "ttboard.mode": {"RPMode"}}
 BOARD_FILES = sorted(glob.glob(os.path.join(ROOT, "host", "tse_rp2", "*.py")))
@@ -37,9 +38,25 @@ def world():
     return rp2.WORLD
 
 
-def snippet():
+def snippets():
+    """Every python block of the datasheet page, in order, as one program."""
     text = open(os.path.join(ROOT, "docs", "info.md")).read()
-    return re.search(r"```python\n(.*?)```", text, re.S).group(1)
+    return "\n".join(re.findall(r"```python\n(.*?)```", text, re.S))
+
+
+def board_uses(tree):
+    """(owner, name) for b.X (the TseBoard), b.session.X and image.X."""
+    out = []
+    for n in ast.walk(tree):
+        if not isinstance(n, ast.Attribute):
+            continue
+        v = n.value
+        if isinstance(v, ast.Name) and v.id in ("b", "image"):
+            out.append((v.id, n.attr))
+        elif (isinstance(v, ast.Attribute) and v.attr == "session"
+              and isinstance(v.value, ast.Name) and v.value.id == "b"):
+            out.append(("session", n.attr))
+    return out
 
 
 def sdk_uses(tree, roots):
@@ -83,28 +100,30 @@ def test_02_board_files(path):
     assert check(sdk_uses(tree, {"tt"})) == []
 
 
-# 3: every SDK name in the datasheet snippet exists in the SDK
+# 3: every name in the datasheet snippets exists in the SDK, the board code or the host library
 def test_03_snippet_names():
-    uses = sdk_uses(ast.parse(snippet()), {"tt"})
-    assert len(uses) > 10 and check(uses) == []
+    tree = ast.parse(snippets())
+    assert check(sdk_uses(tree, {"tt"})) == []
+    have = {"b": lambda n: n == "session" or hasattr(TseBoard, n),
+            "session": lambda n: hasattr(session.Session, n),
+            "image": lambda n: hasattr(image, n)}
+    uses = board_uses(tree)
+    assert len(uses) >= 5 and [u for u in uses if not have[u[0]](u[1])] == []
 
 
-# 4: the snippet runs on the stand-in and leaves 'A' on ui_in with uio[0] pulsed
-def test_04_snippet_runs(world, monkeypatch):
-    seen = []
-    real = world.chip.set_inputs
-
-    def spy(ui_in=None, uio_in=None, rst_n=None):
-        seen.append((ui_in, uio_in & 1, rst_n))
-        real(ui_in=ui_in, uio_in=uio_in, rst_n=rst_n)
-    world.chip.set_inputs = spy
-    fake_time = types.SimpleNamespace(sleep_ms=lambda ms: rp2.sleep_us(ms * 1000))
-    monkeypatch.setitem(sys.modules, "time", fake_time)
-    exec(snippet(), {})
-    monkeypatch.undo()
-    assert world.selected == "tt_um_tse_sk" and world.sys_hz == 120000000
-    assert world.clk_div == 2 and world.owner[25] == world.owner[26] == "cpu"
-    assert (0x41, 1, 1) in seen and seen[-1][:2] == (0x41, 0)
+# 4: the snippets run on the stand-in: the board selects the chip, loads the image,
+# starts lanes 0 and 1 and leaves 'A' in lane 0's transmit mailbox
+def test_04_snippet_runs(world, tmp_path):
+    path = tmp_path / "uart.tsei"
+    blocks = [(0x0000, [0] * 8), (0x1019, [0x0100]), (0x1119, [0x0201])]
+    path.write_bytes(image.pack(blocks, 60000000, b"uart"))
+    code = snippets()
+    assert code.count('"/uart.tsei"') == 1
+    exec(code.replace('"/uart.tsei"', repr(str(path))), {})
+    chip = world.chip
+    assert world.selected == board.PROJECT and world.sys_hz == 120000000
+    assert chip.loaded and chip.rst_n == 1 and chip.run == 0b11
+    assert chip.mbox_tx[0] == 0x41
 
 
 # 5: a name the SDK lacks fails here as it would on the board
