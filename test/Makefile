@@ -2,7 +2,7 @@
 # Makefile
 # See https://docs.cocotb.org/en/stable/quickstart.html for more info
 # The top module and the source list are read from ../info.yaml, so the two
-# can never drift apart.
+# can never drift apart. make INFO=info_uart.yaml runs the UART test design.
 
 # defaults
 SIM ?= icarus
@@ -16,7 +16,7 @@ PROJECT_SOURCES := $(shell sed -n '/^ *source_files:/,/^[^ ]/s/^ *- *"\([^"]*\)"
 ifneq ($(GATES),yes)
 
 # RTL simulation:
-SIM_BUILD				= sim_build/rtl
+SIM_BUILD				= sim_build/rtl-$(TT_TOP)
 # the full chip's SRAM black box is replaced by its behavioural model
 VERILOG_SOURCES += $(addprefix $(SRC_DIR)/,$(patsubst tse_sram_bb.v,tse_sram_model.v,$(PROJECT_SOURCES)))
 COMPILE_ARGS    += -g2012 -DSIM

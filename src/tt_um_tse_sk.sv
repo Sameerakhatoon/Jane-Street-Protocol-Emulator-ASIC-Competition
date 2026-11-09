@@ -9,8 +9,8 @@
 //   uo_out[2]   toggles per received byte
 //   uo_out[3]   RX framing error, held until the next good byte
 // 115200 baud from 60 MHz; at 50 MHz use BAUD16_INC = 618475.
-// The module name is set here and in info.yaml (top_module) only; the test
-// Makefile and tb.v take it from info.yaml.
+// The module name is set here and in test/info_uart.yaml (top_module) only;
+// the test Makefile and tb.v take it from there.
 module tt_um_tse_sk #(
     parameter logic [23:0] BAUD16_INC = 24'd515396     // 16 * 115200 * 2^24 / 60e6
 ) (

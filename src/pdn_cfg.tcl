@@ -321,15 +321,16 @@ proc pdngen {args} {
 }
 
 # --- TSE: empty the bottom-right pure-fill corner (Magic pSD.e/f at the die edge) ---
-# A hard placement blockage keeps standard-cell fillers out of x[1189.0,1289.28] um,
-# y[0,40.0] um. Runs during PDN generation, before global placement and fill, so both
+# A hard placement blockage keeps standard-cell fillers out of the last 100.28 um
+# before the die's right edge, y[0,40.0] um. Runs during PDN generation, before
+# global placement and fill, so both
 # skip the corner. Routing is unaffected (this is a placement blockage, not an obstruction).
 proc tse_corner_blockage {} {
     set block [ord::get_db_block]
     set dbu [[[ord::get_db] getTech] getDbUnitsPerMicron]
-    set x0 [expr {int(1189.0 * $dbu)}]
+    set x1 [[$block getDieArea] xMax]
+    set x0 [expr {$x1 - int(100.28 * $dbu)}]
     set y0 0
-    set x1 [expr {int(1289.28 * $dbu)}]
     set y1 [expr {int(40.0 * $dbu)}]
     odb::dbBlockage_create $block $x0 $y0 $x1 $y1
     puts "TSEPDN: corner placement blockage $x0 $y0 $x1 $y1"

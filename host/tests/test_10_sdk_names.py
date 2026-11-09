@@ -122,7 +122,7 @@ def test_05_unknown_names_refused(world):
 # 6: the board selects the project by the full chip's top module, the name the
 # shuttle index uses
 def test_06_project_name():
-    text = open(os.path.join(ROOT, "info_chip.yaml")).read()
+    text = open(os.path.join(ROOT, "info.yaml")).read()
     assert board.PROJECT == re.search(r'top_module:\s*"([^"]+)"', text).group(1)
 
 

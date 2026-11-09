@@ -1,6 +1,6 @@
 name: gds
 
-# One hardening of the 6x4 tile takes hours of runner time, so a push only
+# One hardening of the 8x4 tile takes hours of runner time, so a push only
 # starts it when an input of the flow or of the gate-level test changed, and
 # a newer push to the same branch cancels the older run. Run it by hand
 # before a submission so the submitted commit has its own GDS.

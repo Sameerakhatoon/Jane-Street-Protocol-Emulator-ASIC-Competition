@@ -16,11 +16,11 @@ TABLE = {'version': 1,
  'lane_window': {'host_base': 4096, 'stride': 256, 'size': 256, 'max_lanes': 2},
  'regions': {'sram': {'base': 0,
                       'size': 512,
-                      'doc': 'program SRAM words; window w at 0x80 x w; 6x4 window 3 is the data '
+                      'doc': 'program SRAM words; window w at 0x80 x w; window 3 is the data '
                              'window'},
              'data': {'base': 1024,
                       'size': 128,
-                      'doc': 'data window for LDW and STW (alias of window 3 in 6x4)'},
+                      'doc': 'data window for LDW and STW (alias of SRAM window 3)'},
              'fallback': {'base': 2048, 'size': 8, 'doc': 'fallback latch program store'},
              'lanes': {'base': 4096,
                        'size': 512,

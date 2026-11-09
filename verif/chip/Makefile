@@ -3,14 +3,14 @@
 #   TB=chip  the whole chip through its pins: loader byte streams, the run-mode
 #            SPI target, self-test with injected SRAM faults, fallback store, data
 #            window, compiled programs judged on the pins. The source list is the
-#            full-chip one from info_chip.yaml, with the SRAM model instead of the
+#            full-chip one from info.yaml, with the SRAM model instead of the
 #            black box.
 #   TB=pmem  tse_prog_mem alone with stub lanes and host: data slots, host turn,
 #            fallback fetches, random traffic against a shadow memory.
 TOP      := $(abspath ../..)
 LANES    ?= 2
 TB       ?= chip
-SOURCES  := $(shell sed -n '/^ *source_files:/,/^[^ ]/s/^ *- *"\([^"]*\)".*/\1/p' $(TOP)/info_chip.yaml)
+SOURCES  := $(shell sed -n '/^ *source_files:/,/^[^ ]/s/^ *- *"\([^"]*\)".*/\1/p' $(TOP)/info.yaml)
 
 SIM              ?= icarus
 TOPLEVEL_LANG    := verilog

@@ -3,7 +3,7 @@
 session_rtl.py, with the lane count of the host model.
 
     python3 host/tests/rtl/run_rtl.py        (from the repository root)
-The source list is the full-chip one from info_chip.yaml, with the SRAM model
+The source list is the full-chip one from info.yaml, with the SRAM model
 instead of the black box; the pin driver comes from verif/chip.
 Exit status 0 when every test passes.
 """
@@ -21,7 +21,7 @@ PINS = os.path.join(ROOT, "verif", "chip")
 
 
 def sources():
-    text = open(os.path.join(ROOT, "info_chip.yaml")).read()
+    text = open(os.path.join(ROOT, "info.yaml")).read()
     block = text.split("source_files:")[1].split("\n\n")[0]
     names = re.findall(r'^\s*-\s*"([^"]+)"', block, re.M)
     src = [os.path.join(ROOT, "src", n) for n in names if n != "tse_sram_bb.v"]

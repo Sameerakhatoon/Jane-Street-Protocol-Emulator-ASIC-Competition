@@ -1,0 +1,50 @@
+# Project file of the UART test design (src/tt_um_tse_sk.sv). The tile builds
+# the full chip (../info.yaml); this design stays for its tests:
+# make -C test INFO=info_uart.yaml runs test.py on it, and sim/gen_pins.py
+# reads its pinout (pin mode UART). Same layout as info.yaml.
+project:
+  top_module:  "tt_um_tse_sk"
+
+  # Source files are in ../src, one per line. test/Makefile reads this list.
+  source_files:
+    - "tt_um_tse_sk.sv"
+    - "tse_rst_sync.sv"
+    - "tse_sync.sv"
+    - "tse_nco.sv"
+    - "tse_uart_tx.sv"
+    - "tse_uart_rx.sv"
+
+# The pinout of your project. Leave unused pins blank. DO NOT delete or add any pins.
+pinout:
+  # Inputs
+  ui[0]: "TX byte bit 0"
+  ui[1]: "TX byte bit 1"
+  ui[2]: "TX byte bit 2"
+  ui[3]: "TX byte bit 3 / UART RX in echo mode"
+  ui[4]: "TX byte bit 4"
+  ui[5]: "TX byte bit 5"
+  ui[6]: "TX byte bit 6"
+  ui[7]: "TX byte bit 7"
+
+  # Outputs
+  uo[0]: "UART TX"
+  uo[1]: "TX busy"
+  uo[2]: "RX byte toggle"
+  uo[3]: "RX framing error"
+  uo[4]: ""
+  uo[5]: ""
+  uo[6]: ""
+  uo[7]: ""
+
+  # Bidirectional pins
+  uio[0]: "send strobe (rising edge, input)"
+  uio[1]: "echo mode (input)"
+  uio[2]: ""
+  uio[3]: ""
+  uio[4]: ""
+  uio[5]: ""
+  uio[6]: ""
+  uio[7]: ""
+
+# Do not change!
+yaml_version: 6

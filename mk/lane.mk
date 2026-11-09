@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-# Lane alignment: area of the lane blocks and the 6x4 chip (needs LIB or LIB_SRC
+# Lane alignment: area of the lane blocks and the full chip (needs LIB or LIB_SRC
 # like make area).
 .PHONY: lane-area
 

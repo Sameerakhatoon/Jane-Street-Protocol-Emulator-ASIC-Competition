@@ -5,7 +5,7 @@
 # given info.yaml and config, with a copy of src/, and runs LibreLane there.
 # usage: tools/pd/harden-variant.sh <info.yaml> <config.json> <tag> [LibreLane step to stop after]
 # PD_SRC=<dir> takes the sources from <dir> instead of src/.
-#   e.g. tools/pd/harden-variant.sh info_chip.yaml src/config_chip.json chip1 OpenROAD.GlobalRouting
+#   e.g. tools/pd/harden-variant.sh info.yaml src/config.json chip1 OpenROAD.GlobalRouting
 # The run lands in runs/<tag>/proj/runs/wokwi, so tools/pd/precheck.sh <that gds> finds the right info.yaml.
 set -euo pipefail
 cd "$(dirname "$0")/../.."

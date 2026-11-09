@@ -9,7 +9,7 @@
 // is tied to 1 and writes are whole-word on both the functional and the test
 // port; the test port (selected by t_en, which must come from a flop) serves the
 // self-test, so the self-test adds no multiplexer to the functional address
-// path. Keep the instance names stable: config_chip.json places the two macros
+// path. Keep the instance names stable: src/config.json places the two macros
 // by their hierarchical paths (u_top.u_pmem.u_sram.u_macro_lo and ...u_macro_hi).
 // In simulation one 512x32 behavioural model stands in for the pair as the
 // golden reference (bit-for-bit identical function) and keeps the name u_macro

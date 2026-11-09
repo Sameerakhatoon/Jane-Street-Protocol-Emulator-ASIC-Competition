@@ -1,8 +1,7 @@
 name: fpga
 
-# Manual only. The UART top builds an ICE40UP5K bitstream; the full-chip top
-# does not, because its program memory is the IHP SRAM macro, which has no
-# FPGA model.
+# Manual only, and it fails for this project: the tile's top is the full
+# chip, whose program memory is the IHP SRAM macro, which has no FPGA model.
 on:
   workflow_dispatch:
 

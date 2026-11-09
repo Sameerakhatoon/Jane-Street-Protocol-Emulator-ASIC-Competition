@@ -11,7 +11,7 @@ macros at once, so it also covers paths from one macro to the other; the
 layout constraints only use the paths from a macro to its own inputs.
 This runner proves it on the whole Tiny Tapeout top:
 
-  1. flatten the chip (the source list of info_chip.yaml) with each SRAM
+  1. flatten the chip (the source list of info.yaml) with each SRAM
      macro replaced by sram_free.sv, a stand-in whose read data is free;
   2. product.py builds fp_core: two copies sharing every register, each
      with its own free read data of both macros; it fails unless it finds
@@ -55,7 +55,7 @@ BUGS = [
 
 
 def chip_sources(rtl):
-    text = (ROOT / "info_chip.yaml").read_text()
+    text = (ROOT / "info.yaml").read_text()
     body = text.split("source_files:")[1]
     files = []
     for ln in body.splitlines()[1:]:

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: Apache-2.0
-# Area of the lane blocks and of the 6x4 chip (2 lanes, latch config):
+# Area of the lane blocks and of the full chip (2 lanes, latch config):
 # the quick check after a lane change. Same flow and file order as area-all.sh.
 set -eu
 cd "$(dirname "$0")/../.."

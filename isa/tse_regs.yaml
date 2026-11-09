@@ -24,8 +24,8 @@ classes:
   R: {storage: none, lane: r, host: r}
 lane_window: {host_base: 0x1000, stride: 0x100, size: 0x100, max_lanes: 2}
 regions:
-  sram:     {base: 0x0000, size: 0x0200, doc: program SRAM words; window w at 0x80 x w; 6x4 window 3 is the data window}
-  data:     {base: 0x0400, size: 0x0080, doc: data window for LDW and STW (alias of window 3 in 6x4)}
+  sram:     {base: 0x0000, size: 0x0200, doc: program SRAM words; window w at 0x80 x w; window 3 is the data window}
+  data:     {base: 0x0400, size: 0x0080, doc: data window for LDW and STW (alias of SRAM window 3)}
   fallback: {base: 0x0800, size: 0x0008, doc: fallback latch program store}
   lanes:    {base: 0x1000, size: 0x0200, doc: lane registers at 0x1000 + 0x100 x lane + reg}
   xbar:     {base: 0x2000, size: 0x0040, doc: crossbar}

@@ -12,6 +12,8 @@ rtl-lint:
 rtl-test:
 	cd test && $(MAKE)
 	@! grep -q '<failure' test/results.xml
+	cd test && $(MAKE) INFO=info_uart.yaml
+	@! grep -q '<failure' test/results.xml
 
 rtl-sim:
 	bash test/rtl/run-all.sh

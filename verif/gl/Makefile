@@ -10,7 +10,7 @@ BUILD    := $(TOP)/build/gl
 NETLIST  := $(BUILD)/tse_chip_gl.v
 CELLS    := $(PDK_ROOT)/ihp-sg13cmos5l/libs.ref/sg13cmos5l_stdcell
 LIB      := $(CELLS)/lib/sg13cmos5l_stdcell_typ_1p20V_25C.lib
-SOURCES  := $(shell sed -n '/^ *source_files:/,/^[^ ]/s/^ *- *"\([^"]*\)".*/\1/p' $(TOP)/info_chip.yaml)
+SOURCES  := $(shell sed -n '/^ *source_files:/,/^[^ ]/s/^ *- *"\([^"]*\)".*/\1/p' $(TOP)/info.yaml)
 RTL      := $(addprefix $(TOP)/src/,$(filter-out tse_sram_bb.v tt_um_tse_sk_chip.sv,$(SOURCES)))
 DONT_USE := -dont_use sg13cmos5l_lgcp_1 -dont_use sg13cmos5l_slgcp_1 -dont_use sg13cmos5l_sdfbbp_1 \
             -dont_use sg13cmos5l_sighold

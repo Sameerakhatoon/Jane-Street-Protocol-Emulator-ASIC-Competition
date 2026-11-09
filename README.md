@@ -4,7 +4,7 @@
 
 Write a serial protocol once, as a timed spec. The chip speaks it, checks it and triggers on it, and the compiler proves that every response lands inside its datasheet window, or refuses to build the program.
 
-TSE is a Tiny Tapeout design for the IHP CMOS5L shuttle, 6x4 tiles. It is in development. Every result below comes from simulation of the RTL in this repository or from the physical-design flow; no chip exists yet, and there is no hardware or FPGA evidence.
+TSE is a Tiny Tapeout design for the IHP CMOS5L shuttle, 8x4 tiles. It is in development. Every result below comes from simulation of the RTL in this repository or from the physical-design flow; no chip exists yet, and there is no hardware or FPGA evidence.
 
 ## What it is
 
@@ -30,7 +30,7 @@ Inside the chip:
 
 A lane answers a bit-level pattern and a CRC verdict at a bit offset through its two response rules, with no program in the loop. That is why the compiler can treat a target role's reaction time as a constant and prove it against the datasheet window. Where PIO or PRU would count cycles by hand, TSE places the edges and either proves the window or refuses the program.
 
-The tile holds a UART test design (the datasheet page is `docs/info.md`); the full chip is the top `src/tt_um_tse_sk_chip.sv` with its source list in `info_chip.yaml`, and every claim below that says "on the chip" builds it.
+The tile holds the full chip: the top `src/tt_um_tse_sk_chip.sv` with its source list in `info.yaml`, and every claim below that says "on the chip" builds it. A small UART test design (`src/tt_um_tse_sk.sv`, project file `test/info_uart.yaml`) stays for its tests (`make -C test INFO=info_uart.yaml`, `make -C sim TOP=uart`).
 
 ## The instruction set
 
@@ -74,7 +74,7 @@ The status words:
 | Unmodified OpenOCD reads DPIDR 0x2BA01477, powers up the debug port and writes SELECT through the SWD probe lane; 19 packets, 0 violations | SIM | `make demo-swd` | SWCLK 1 MHz with 80 ns edge tolerance at `--pad-skew 0` (5 MHz is R310); runs a copy of the spec with SWDIO driven and released explicitly, and the demo clears the SWDIO pad's idle drive, two compiler gaps; the SW-DP is a model that answers OK only |
 | The CAN receiver lane acknowledges 8 frames that the simulator's bit-level CAN node builds from `struct can_frame` records; 0 violations | SIM | `make demo-can` | 500 kbit/s (1 Mbit/s is R311); this WSL kernel has no vcan, so the records come over a Unix socket, not from `cansend`; receiver only |
 | The Linux kernel answers an ARP request and an ICMP echo request sent by the 10BASE-T transmit lane through a TAP device | SIM | `make demo-ping` | transmit only: the replies reach the chip's receive pin, where no lane listens (R314), so ping from Linux does not complete; the frame comes from the 64-octet window variant of `eth10_tx` |
-| The full two-lane chip signs off at 60 MHz: global-route overflow 0 on every layer; detailed routing, KLayout DRC, LVS, antenna, disconnected pins, max cap and max slew all 0; setup and hold met at three corners | MEASURED | `tools/pd/harden-variant.sh info_chip.yaml src/config_chip.json <tag>` | run hm2a (rtl6d with a post-route hold margin); slow-corner setup slack +1.52 ns, fast-corner hold slack +0.134 ns; Magic DRC reports 53 flags, all only on the SRAM abstract and waived (`tools/pd/magic-flags.sh`) |
+| The full two-lane chip signs off at 60 MHz: global-route overflow 0 on every layer; detailed routing, KLayout DRC, LVS, antenna, disconnected pins, max cap and max slew all 0; setup and hold met at three corners | MEASURED | `make harden TAG=<tag>` | run hm2a (rtl6d with a post-route hold margin); slow-corner setup slack +1.52 ns, fast-corner hold slack +0.134 ns; Magic DRC reports 53 flags, all only on the SRAM abstract and waived (`tools/pd/magic-flags.sh`) |
 | Tiny Tapeout precheck passes all nine checks | MEASURED | `tools/pd/precheck.sh <gds>` | a local run on hm2a, the full-chip layout of the signoff row (and on rtl6d and rtl5e); the official GitHub workflows have not run yet |
 | Pin delays inside the tile from the clock edge: outputs 0.83 to 2.95 ns, inputs sampled 0.36 to 1.57 ns after the edge; at most 1.07 ns between two outputs and 0.85 ns between two inputs | MEASURED | `tools/pd/padskew.sh` | hm2a, over three corners (the spreads are the slow corner's); the Tiny Tapeout multiplexer and pad ring outside the tile are not included. An estimate for them, from the multiplexer's published signoff budgets and the IHP pad cell liberty, not from STA: outputs reach the bond pads at most about 19.7 ns after the tile clock edge, inputs at most about 4.5 ns, and two outputs differ by up to about 3.5 ns at the slow corner; hence `--pad-min 0 --pad-max 21 --pad-skew 3.5` |
 | The routed full chip, with its signoff delays (SDF) at all three corners, loads three random images over the loader pins, commits them and reads them back exactly; in run mode it answers register reads and writes over SPI and refuses what it must while a lane runs | SIM | `make -C verif/glsdf CORNER=<corner> [GL_MODULES=test_spi GL_TEST=]` | rtl6c, `test_loader` test 1 and both `test_spi` tests; the running lane only loops on one word, so no lane drives a protocol yet; Icarus applies the delays but runs no setup or hold checks, so only a wrong value at the pins would show a timing failure; 219 wires on SRAM pins (at most 24 ps) are left out |
@@ -142,8 +142,7 @@ Compile a spec yourself:
 
 | Path | What it holds |
 |---|---|
-| `info.yaml`, `docs/info.md` | Tiny Tapeout project file and datasheet page (the UART test design) |
-| `info_chip.yaml` | project file of the full chip |
+| `info.yaml`, `docs/info.md` | Tiny Tapeout project file and datasheet page |
 | `src/` | SystemVerilog RTL: `tt_um_tse_sk_chip.sv` and one file per block; `tse_isa_pkg.sv` and `tse_regs_pkg.sv` are generated |
 | `isa/` | instruction set and register map in YAML, the single source of the generated tables |
 | `tools/tsec/` | the timed-spec compiler |
