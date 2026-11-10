@@ -70,16 +70,18 @@ The rejections are evidence too. When the compiler refuses a spec (USB low-speed
 
 The full chip goes through the Tiny Tapeout flow and the precheck.
 
-The 8x4 full chip (run t8x4b) hardens and signs off at 60 MHz:
+The 8x4 full chip hardens and signs off at 60 MHz in the official Tiny Tapeout GitHub workflow (`gds` run 42834673499, commit 8cb3d4e):
 
 - Detailed routing finishes with 0 violations.
-- Setup slack: +1.75 ns at the slow corner, +4.39 ns typical, +4.32 ns fast (worst-case max clock about 67 MHz).
-- Hold slack: +0.159 ns at the fast corner, +0.30 ns typical, +0.46 ns slow.
-- LVS 0, the IHP KLayout sign-off DRC deck 0, antenna 0 (22 diodes added), max capacitance 0.
-- One max-slew flag at the slow corner, on a single net.
-- Standard-cell utilisation about 40 percent (44 percent with the SRAM macros), 29,164 cells.
-- Magic DRC reports 12,514 flags (metal spacing on the SRAM abstract and diff-tap length on standard-cell rows). The IHP KLayout deck and the Tiny Tapeout precheck both report 0, and the precheck runs no Magic for IHP.
-- The Tiny Tapeout precheck passes every check on the 8x4 GDS.
+- Setup slack: +1.61 ns at the slow corner, +4.30 ns typical, +4.22 ns fast.
+- Hold slack: +0.146 ns at the fast corner, +0.29 ns typical, +0.53 ns slow.
+- Magic DRC 0, the IHP KLayout sign-off DRC deck 0, LVS 0, antenna 0 (21 diodes added), max slew 0, max capacitance 0, disconnected pins 0.
+- Standard-cell utilisation about 40 percent, 29,153 cells.
+- Magic checks the SRAM macros through the abstract view in `src/maglef`; the vendor SRAM layout itself is checked by the KLayout deck.
+- The Tiny Tapeout precheck passes all ten checks, and the template gate-level test passes on the routed netlist.
+
+The pin delays below and the SDF simulation come from the local run t8x4b, an earlier layout of the same RTL:
+
 - Pin delays inside the tile from the clock edge (slow corner): outputs 1.93 to 3.12 ns, inputs sampled 0.74 to 1.57 ns after the edge, at most 1.19 ns between two outputs and 0.82 ns between two inputs. The multiplexer and pad ring outside the tile are estimated, not measured.
 
 The routed netlist is simulated with its signoff delays (SDF) at all three corners: it loads random images over the loader pins, reads them back exactly, and answers register reads and writes over SPI.
