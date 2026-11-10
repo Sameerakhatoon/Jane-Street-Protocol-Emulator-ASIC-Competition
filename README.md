@@ -1,4 +1,4 @@
-![](../../workflows/gds/badge.svg) ![](../../workflows/docs/badge.svg) ![](../../workflows/test/badge.svg) ![](../../workflows/fpga/badge.svg)
+[![gds](https://github.com/Sameerakhatoon/Jane-Street-Protocol-Emulator-ASIC-Competition/actions/workflows/gds.yaml/badge.svg)](https://github.com/Sameerakhatoon/Jane-Street-Protocol-Emulator-ASIC-Competition/actions/workflows/gds.yaml) [![verify](https://github.com/Sameerakhatoon/Jane-Street-Protocol-Emulator-ASIC-Competition/actions/workflows/verify.yaml/badge.svg)](https://github.com/Sameerakhatoon/Jane-Street-Protocol-Emulator-ASIC-Competition/actions/workflows/verify.yaml) [![test](https://github.com/Sameerakhatoon/Jane-Street-Protocol-Emulator-ASIC-Competition/actions/workflows/test.yaml/badge.svg)](https://github.com/Sameerakhatoon/Jane-Street-Protocol-Emulator-ASIC-Competition/actions/workflows/test.yaml) [![docs](https://github.com/Sameerakhatoon/Jane-Street-Protocol-Emulator-ASIC-Competition/actions/workflows/docs.yaml/badge.svg)](https://github.com/Sameerakhatoon/Jane-Street-Protocol-Emulator-ASIC-Competition/actions/workflows/docs.yaml)
 
 # TSE: Timed Spec Engine
 
