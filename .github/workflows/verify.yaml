@@ -36,13 +36,17 @@ jobs:
           BEFORE: ${{ github.event.before }}
           BASE: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          DEFAULT: ${{ github.event.repository.default_branch }}
+          REF: ${{ github.ref_name }}
         run: |
           if [ -n "$BASE" ]; then
               range="$BASE..$HEAD_SHA"
           elif [ -n "$BEFORE" ] && git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
               range="$BEFORE..HEAD"
+          elif [ "$REF" != "$DEFAULT" ] && git rev-parse -q --verify "origin/$DEFAULT" >/dev/null; then
+              range="origin/$DEFAULT..HEAD"   # new branch: the commits it adds
           else
-              range=HEAD          # new branch or rewritten history: every commit
+              range=HEAD          # rewritten history: every commit
           fi
           make hygiene-log RANGE="$range"
       - name: Workflow files
