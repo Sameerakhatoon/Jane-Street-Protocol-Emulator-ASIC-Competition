@@ -12,13 +12,14 @@ are checked. Rules:
     ref      references to an outside design document: section IDs (a letter
              A to J, a dot, a number), decision IDs (D and one or two digits),
              backlog IDs, planning folder paths, markdown file names other
-             than the template's README and info pages
+             than the template's README and info pages and the project's own
+             documents (PROJECT_MD)
     ascii    any byte above 0x7F (em and en dashes and emojis get their own rule)
     dash     an em or en dash
     emoji    an emoji or pictograph
     dhyphen  a free-standing double hyphen in a comment (flags like --lint-only
              and code such as "git diff -- path" are fine)
-    markdown a markdown file the template did not have
+    markdown a markdown file the template did not have, other than PROJECT_MD
 
 Exit status 0 when clean, 1 with one "path:line: rule: text" per finding.
 """
@@ -38,6 +39,9 @@ REF_RES = [
 MD_EXT = ".m" "d"
 MD_NAME = re.compile(r"[\w./-]*\w\.m" r"d(?!\w)")
 TEMPLATE_MD = {"README." "md", "info." "md"}
+# the project's own documents, by path; only these markdown files may be added or named
+PROJECT_MD = {"VERIFICATION." "md", "docs/architecture." "md", "docs/isa." "md", "docs/toolchain." "md"}
+PROJECT_MD_NAMES = {os.path.basename(x) for x in PROJECT_MD}
 DASHES = chr(0x2013) + chr(0x2014)
 DHYPHEN = re.compile(r"(?:^|\s)--(?:\s|$)")
 
@@ -73,7 +77,7 @@ def char_findings(line):
 def ref_findings(line):
     out = [("ref", m.group(0)) for r in REF_RES for m in r.finditer(line)]
     for m in MD_NAME.finditer(line):
-        if os.path.basename(m.group(0)) not in TEMPLATE_MD:
+        if os.path.basename(m.group(0)) not in TEMPLATE_MD | PROJECT_MD_NAMES:
             out.append(("ref", m.group(0)))
     return out
 
@@ -172,7 +176,7 @@ def check_tree(root):
         full = os.path.join(root, path)
         if not os.path.isfile(full):
             continue
-        if path.endswith(MD_EXT) and path not in tmpl_files:
+        if path.endswith(MD_EXT) and path not in tmpl_files and path not in PROJECT_MD:
             findings.append((path, 0, "markdown", "not a template file"))
         data = open(full, "rb").read()
         if b"\0" in data:

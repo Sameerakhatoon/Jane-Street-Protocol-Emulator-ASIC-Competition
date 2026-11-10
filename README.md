@@ -32,6 +32,8 @@ A lane answers a bit-level pattern and a CRC verdict at a bit offset through its
 
 The tile holds the full chip: the top `src/tt_um_tse_sk_chip.sv` with its source list in `info.yaml`, and every claim below that says "on the chip" builds it. A small UART test design (`src/tt_um_tse_sk.sv`, project file `test/info_uart.yaml`) stays for its tests (`make -C test INFO=info_uart.yaml`, `make -C sim TOP=uart`).
 
+The full description, block by block, is in [docs/architecture.md](docs/architecture.md).
+
 ## The instruction set
 
 A lane runs 16-bit instructions, one source of truth in `isa/tse_isa.yaml`, from which the SystemVerilog packages and the assembler tables are generated (`make isa-gen`; CI fails on any drift). The groups:
@@ -40,7 +42,25 @@ A lane runs 16-bit instructions, one source of truth in `isa/tse_isa.yaml`, from
 - **Data movement**: `SET` (write an immediate), `MOV` (copy a register), `OUT` and `IN` (shift 1 to 32 bits out of or into the shift registers, for the bit-level work the assists do not), `PUSH` and `PULL` (host mailboxes), `LDW` and `STW` (load and store a data-window word in the lane's own data slot).
 - **Configuration and timing**: `CSRW` and `CSRR` (write and read a lane register; configuration words take three cycles), `TMR` (timed-automaton clock control with a guard threshold), `SIG` (set chip-wide flags), `EMIT` (send a decoded event to the event unit).
 
-Each instruction's exact encoding, cycle cost and pipeline latency (for example an output port changes two cycles after the instruction dispatches; a trigger output three cycles after `EMIT`) is in `isa/tse_isa.yaml`. The assembler and disassembler are in `tools/tseasm/`.
+Each instruction's exact encoding, cycle cost and pipeline latency (for example an output port changes two cycles after the instruction dispatches; a trigger output three cycles after `EMIT`) is in `isa/tse_isa.yaml`. The assembler and disassembler are in `tools/tseasm/`. Every encoding, cycle cost and register field is listed in [docs/isa.md](docs/isa.md), generated from the same tables.
+
+## Flexibility: new protocols without new silicon
+
+No block in the chip is named after a protocol. A protocol is a spec, and the same two lanes run all of them by configuring the same generic assists differently:
+
+| Protocol (spec) | CRC | Stuffer | Line code | Clock recovery | Response rule |
+|---|---|---|---|---|---|
+| CAN receiver (`can_rx_ack`) | 15 bits, 0x4599 | after 5 equal bits | NRZ | DPLL, 80 percent sample point | ACK inside the CRC delimiter, only on a good CRC |
+| 10BASE-T transmitter (`eth10_tx`) | 32 bits, 0x04C11DB7, reflected | none | Manchester | none (timer for the link pulse) | none |
+| USB low-speed device (`usb_ls_device`, rejected) | 5 and 16 bits | after 6 ones | NRZI on two wires | DPLL | handshake answers |
+| I2C target, SPI target | none | none | NRZ | none | answers on the controller's clock edges |
+| UART, SPI and I2C controllers, SPI flash, JTAG, SWD, PS/2 | none | none | NRZ | none (the program paces the bits) | none |
+
+The 27 specs in `specs/` cover UART, SPI in four modes and both roles, I2C at two speeds and both roles, SPI flash, JTAG, SWD, CAN, 10BASE-T, PS/2 host and device, and USB low speed. Every one is built against the same hardware: the compiler accepts it or rejects it with a reason, and each outcome is pinned (`make specs-test`). The PS/2 host and device specs are accepted but have no end-to-end example yet.
+
+The same chip runs three modes: it speaks a protocol, checks a bus against timing rules, or triggers on decoded events. Turning a spec's `datasheet` rules straight into a Check program is partly done (see the claims table).
+
+Adding a protocol is writing a spec, compiling it, reading its timing report and running it in simulation, with no change to the hardware; [docs/toolchain.md](docs/toolchain.md) walks through it. The limits are stated by the compiler, not hidden: the two refusals that a spec change cannot fix (USB's SE0 and a full transmitting CAN node, both R307) come from a lane's pin structure and are listed under Known limits below.
 
 ## Claims and evidence
 
@@ -57,7 +77,7 @@ The status words:
 |---|---|---|---|
 | A UART spec is compiled, loaded over the loader pins into the two-lane chip and run from SRAM: 46 frames sent, 30 received, 0 violations at nominal and plus or minus 1.5 percent baud | SIM | `make e2e-uart` | simulation only; one baud family |
 | Every UART transmit edge lands on the cycle the compiler predicted | SIM | `make e2e-uart` | worst error about 3.5 of 10.18 ticks over 230 edges |
-| I2C controller and target both run on the chip at 100 and 400 kHz, 0 judge violations; the target stretches SCL | SIM | `examples/tests/11-i2c-target.sh` | the RTL window proof for the target has not closed |
+| I2C controller and target both run on the chip at 100 and 400 kHz, 0 judge violations; the target stretches SCL | SIM | `examples/tests/11-i2c-target.sh` | the target's window obligations 4 to 9 are proved on the lane RTL; 0 to 3 did not close in an hour and are shown non-vacuous in simulation (see the per-program proof row) |
 | SPI controller, modes 0 to 3, drives a simulated target | SIM, BUILDS | `examples/tests/07-spi.sh` | builds at 60 and 50 MHz with the tile pads and with the whole pad path (`--pad-min 0 --pad-max 21 --pad-skew 3.5`); at the compiler's default 25 ns skew it is rejected (R310 on cs_n). That one-range model assumes an input pad and an output pad differ by at most 3.5 ns; with separate ranges (`--pad-in-*` 0 to 4.5 ns, `--pad-out-*` 0 to 21 ns, independent) it is rejected (R312) unless that skew is held to 6.3 ns, which has not been measured |
 | CAN receiver answers with an in-bit ACK by a response rule; a bad-CRC frame is not ACKed, at 125k and 500k | SIM | `examples/tests/09-can.sh` | receiver only; two independent CAN nodes are not expressible |
 | 10BASE-T transmit, 3 frames, 0 violations | SIM | `examples/tests/10-eth10.sh` | transmit only; receive is blocked |
@@ -66,7 +86,7 @@ The status words:
 | 27 specs across 9 protocols compile to a pinned set of accept or reject outcomes | BUILDS | `make specs-test` | several are rejected by design, each for a recorded reason |
 | The RTL matches the reference model instruction by instruction on random programs | LOCKSTEP | `make verif-test` | Hypothesis property tests in cocotb |
 | CRC of any width 5 to 32 equals a textbook CRC; the stuffer, codec, DPLL, slot arbiter and SRAM false path meet their properties | PROVEN | `make formal` | planted bugs must fail; UNKNOWN is a failure |
-| Per-program window proof on the real lane RTL | PROVEN (some obligations) | `make tsec-proof`, `make tsec-proof-more` | proved with abc pdr or rIC3 (each obligation alone): SPI target (proved and covered), SPI flash target obligations 0 to 9, JTAG probe 5 of 5, I2C controller (Fast mode) 0 to 29, I2C target 0 to 9, 10BASE-T transmitter 0 to 4, CAN receiver 0 to 7 (1, 2 and 4 to 6 with the lane's engines cut to free inputs, a sound over-approximation), SPI controller mode 0 0 to 10, UART transmitter and receiver 0 and 1 (with chain lemmas, each asserted with its obligation). Every checker fails with its planted bug in simulation, so none passes vacuously; the planted bugs in `TSEC_PROOF2_FAIL` also fail in the solver |
+| Per-program window proof on the real lane RTL | PROVEN (some obligations) | `make tsec-proof`, `make tsec-proof-more` | proved with abc pdr or rIC3 (each obligation alone): SPI target (proved and covered), SPI flash target obligations 0 to 9, JTAG probe 5 of 5, I2C controller (Fast mode) 0 to 29, I2C target 4 to 9, 10BASE-T transmitter 1 to 3 (0 and 4 did not close in an hour and are shown non-vacuous in simulation), CAN receiver 0 to 7 (1, 2 and 4 to 6 with the lane's engines cut to free inputs, a sound over-approximation), SPI controller mode 0 0 to 10, UART transmitter and receiver 0 and 1 (with chain lemmas, each asserted with its obligation). Every checker fails with its planted bug in simulation, so none passes vacuously; the planted bugs in `TSEC_PROOF2_FAIL` also fail in the solver |
 | Check flags timing violations and sweeps a device's margin; Trigger fires on a decoded event sequence | SIM | `make check-thd-sta check-sweep check-trigger` | on the chip in simulation; compiling a spec directly into a Check program is partly done |
 | Independent judges decode pins-only traces from the published standards | SIM | `make judges-test` | nine protocols |
 | Unmodified OpenOCD reads a JTAG IDCODE and an SWD DPIDR, and Linux ping runs over 10BASE-T, through simulated pins | SIM | `make judges-demos judges-run` | runs on a small stand-in test top, not on the TSE lanes (the rows below are) |
@@ -74,10 +94,10 @@ The status words:
 | Unmodified OpenOCD reads DPIDR 0x2BA01477, powers up the debug port and writes SELECT through the SWD probe lane; 19 packets, 0 violations | SIM | `make demo-swd` | SWCLK 1 MHz with 80 ns edge tolerance at `--pad-skew 0` (5 MHz is R310); runs a copy of the spec with SWDIO driven and released explicitly, and the demo clears the SWDIO pad's idle drive, two compiler gaps; the SW-DP is a model that answers OK only |
 | The CAN receiver lane acknowledges 8 frames that the simulator's bit-level CAN node builds from `struct can_frame` records; 0 violations | SIM | `make demo-can` | 500 kbit/s (1 Mbit/s is R311); this WSL kernel has no vcan, so the records come over a Unix socket, not from `cansend`; receiver only |
 | The Linux kernel answers an ARP request and an ICMP echo request sent by the 10BASE-T transmit lane through a TAP device | SIM | `make demo-ping` | transmit only: the replies reach the chip's receive pin, where no lane listens (R314), so ping from Linux does not complete; the frame comes from the 64-octet window variant of `eth10_tx` |
-| The full two-lane chip signs off at 60 MHz: global-route overflow 0 on every layer; detailed routing, KLayout DRC, LVS, antenna, disconnected pins, max cap and max slew all 0; setup and hold met at three corners | MEASURED | `make harden TAG=<tag>` | run hm2a (rtl6d with a post-route hold margin); slow-corner setup slack +1.52 ns, fast-corner hold slack +0.134 ns; Magic DRC reports 53 flags, all only on the SRAM abstract and waived (`tools/pd/magic-flags.sh`) |
-| Tiny Tapeout precheck passes all nine checks | MEASURED | `tools/pd/precheck.sh <gds>` | a local run on hm2a, the full-chip layout of the signoff row (and on rtl6d and rtl5e); the official GitHub workflows have not run yet |
-| Pin delays inside the tile from the clock edge: outputs 0.83 to 2.95 ns, inputs sampled 0.36 to 1.57 ns after the edge; at most 1.07 ns between two outputs and 0.85 ns between two inputs | MEASURED | `tools/pd/padskew.sh` | hm2a, over three corners (the spreads are the slow corner's); the Tiny Tapeout multiplexer and pad ring outside the tile are not included. An estimate for them, from the multiplexer's published signoff budgets and the IHP pad cell liberty, not from STA: outputs reach the bond pads at most about 19.7 ns after the tile clock edge, inputs at most about 4.5 ns, and two outputs differ by up to about 3.5 ns at the slow corner; hence `--pad-min 0 --pad-max 21 --pad-skew 3.5` |
-| The routed full chip, with its signoff delays (SDF) at all three corners, loads three random images over the loader pins, commits them and reads them back exactly; in run mode it answers register reads and writes over SPI and refuses what it must while a lane runs | SIM | `make -C verif/glsdf CORNER=<corner> [GL_MODULES=test_spi GL_TEST=]` | rtl6c, `test_loader` test 1 and both `test_spi` tests; the running lane only loops on one word, so no lane drives a protocol yet; Icarus applies the delays but runs no setup or hold checks, so only a wrong value at the pins would show a timing failure; 219 wires on SRAM pins (at most 24 ps) are left out |
+| The full two-lane chip signs off at 60 MHz: global-route overflow 0 on every layer; detailed routing, KLayout DRC, LVS, antenna, disconnected pins and max cap all 0; setup and hold met at three corners | MEASURED | `make harden TAG=<tag>` | run t8x4b (the 8x4 full chip); slow-corner setup slack +1.75 ns, fast-corner hold slack +0.159 ns; one max-slew flag at the slow corner on a single net; Magic DRC reports 12,514 flags (SRAM-abstract metal spacing and standard-cell diff-tap length), while the IHP KLayout sign-off deck and the Tiny Tapeout precheck both report 0 and the precheck runs no Magic for IHP |
+| Tiny Tapeout precheck passes all nine checks | MEASURED | `tools/pd/precheck.sh <gds>` | a local run on t8x4b, the 8x4 full-chip layout of the signoff row; the official GitHub workflows have not run yet |
+| Pin delays inside the tile from the clock edge: outputs 1.93 to 3.12 ns, inputs sampled 0.74 to 1.57 ns after the edge; at most 1.19 ns between two outputs and 0.82 ns between two inputs | MEASURED | `tools/pd/padskew.sh` | t8x4b, over three corners (the spreads are the slow corner's); the Tiny Tapeout multiplexer and pad ring outside the tile are not included. An estimate for them, from the multiplexer's published signoff budgets and the IHP pad cell liberty, not from STA: outputs reach the bond pads at most about 19.7 ns after the tile clock edge, inputs at most about 4.5 ns, and two outputs differ by up to about 3.5 ns at the slow corner; hence `--pad-min 0 --pad-max 21 --pad-skew 3.5` |
+| The routed full chip, with its signoff delays (SDF) at all three corners, loads three random images over the loader pins, commits them and reads them back exactly; in run mode it answers register reads and writes over SPI and refuses what it must while a lane runs | SIM | `make -C verif/glsdf CORNER=<corner> [GL_MODULES=test_spi GL_TEST=]` | t8x4b (the 8x4 full chip), `test_loader` test 1 and both `test_spi` tests, all passing at the slow, typical and fast corners; the running lane only loops on one word, so no lane drives a protocol yet; Icarus applies the delays but runs no setup or hold checks, so only a wrong value at the pins would show a timing failure; 216 wires on SRAM pins (at most 20 ps) are left out |
 
 ### Known limits
 
@@ -121,7 +141,7 @@ What is left that is TSE's, all on one design: reaction-window proofs for target
 
 ## Run it
 
-Everything runs on Linux (Ubuntu 22.04 or 24.04, or WSL2). Needed: the OSS CAD Suite (Verilator, Icarus Verilog, Yosys, SymbiYosys), `g++`, `make`, Python 3.11 with cocotb 2.1, pytest, Hypothesis and PyYAML. The Tiny Tapeout template test in `test/` pins its own versions in `test/requirements.txt`.
+The full guide, from install to adding a protocol, is [docs/toolchain.md](docs/toolchain.md). Everything runs on Linux (Ubuntu 22.04 or 24.04, or WSL2). Needed: the OSS CAD Suite (Verilator, Icarus Verilog, Yosys, SymbiYosys), `g++`, `make`, Python 3.11 with cocotb 2.1, pytest, Hypothesis and PyYAML. The Tiny Tapeout template test in `test/` pins its own versions in `test/requirements.txt`.
 
 All tests, one step after the other, with a log per step in `build/regress/` and a summary table at the end (about 15 minutes):
 
@@ -143,6 +163,8 @@ Compile a spec yourself:
 | Path | What it holds |
 |---|---|
 | `info.yaml`, `docs/info.md` | Tiny Tapeout project file and datasheet page |
+| `docs/architecture.md`, `docs/isa.md`, `docs/toolchain.md` | the hardware block by block, the instruction set and register map, and the toolchain guide |
+| `VERIFICATION.md` | how every claim is checked, and what is not covered |
 | `src/` | SystemVerilog RTL: `tt_um_tse_sk_chip.sv` and one file per block; `tse_isa_pkg.sv` and `tse_regs_pkg.sv` are generated |
 | `isa/` | instruction set and register map in YAML, the single source of the generated tables |
 | `tools/tsec/` | the timed-spec compiler |
