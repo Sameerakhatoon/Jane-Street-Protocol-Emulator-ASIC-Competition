@@ -1,6 +1,9 @@
 # Tools for the repository's own make targets: one pinned OSS CAD Suite build
 # (yosys, iverilog, verilator, sby, mcy), cached as the release archive, and
-# Python 3.11 with the pinned packages of .github/ci-requirements.txt.
+# the pinned packages of .github/ci-requirements.txt installed for the suite's
+# own Python 3.11. The suite's vvp wrapper always runs cocotb in that Python
+# (it sets PYTHONHOME and PYTHONEXECUTABLE), so the packages must live there;
+# they go in their own folder ahead of the suite's bundled cocotb on PYTHONPATH.
 name: setup-tse
 description: Install the pinned OSS CAD Suite and Python packages
 inputs:
@@ -46,17 +49,15 @@ runs:
         rm -rf "$dir" && mkdir -p "$dir"
         tar -xzf ~/.cache/oss-cad-suite/"$NAME" -C "$dir" --strip-components=1
         echo "$dir/bin" >> "$GITHUB_PATH"
-
-    # after the suite, so this Python and its cocotb-config come first on PATH
-    - uses: actions/setup-python@v6
-      with:
-        python-version: '3.11'
-        cache: pip
-        cache-dependency-path: .github/ci-requirements.txt
+        echo "$dir/py3bin" >> "$GITHUB_PATH"
 
     - name: Python packages
       shell: bash
-      run: pip install -r .github/ci-requirements.txt
+      run: |
+        deps="$RUNNER_TEMP/pydeps"
+        "$RUNNER_TEMP/oss-cad-suite/py3bin/python3" -m pip install --quiet --target "$deps" -r .github/ci-requirements.txt
+        echo "PYTHONPATH=$deps" >> "$GITHUB_ENV"
+        echo "$deps/bin" >> "$GITHUB_PATH"
 
     - name: Versions
       shell: bash
@@ -64,5 +65,5 @@ runs:
         yosys -V
         { iverilog -V 2>&1 || true; } | sed -n 1p
         verilator --version
-        python --version
+        which python3 && python3 --version
         cocotb-config --version
