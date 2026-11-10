@@ -7,14 +7,16 @@
 # usage: tools/pd/magic-flags.sh <run dir, e.g. runs/rtl6d/proj/runs/wokwi>
 # Writes <run dir>/magic-flags/ (clips, per-window reports, summary.txt).
 #
-# Waiver, rtl6c and rtl6d: Magic reports 51 flags (32 M4.e, 14 M3.f, 5 M1.f), hm2a 53
-# (7 M1.f), all on the two SRAM macros or 0.5 um outside their top and bottom edges. The
-# abstract (src/maglef, from the vendor LEF) draws each obstruction layer as one solid
-# rectangle, so the wide-metal .f rules fire on our wires beside it, and its pin and
-# obstruction rectangles meet in 0.03 um slivers (M4.e); the real layout has neither. This
-# script finds 0 of them on the real GDS (on rtl6b it finds 722 of the 727 real pSD.e/f
-# errors, so it does see errors of ours), the IHP KLayout deck checks M1.e to M4.f on the
-# real GDS clean, and the Tiny Tapeout precheck runs no Magic for IHP.
+# The SRAM abstract (src/maglef) carries the macro's pins only. Its obstruction layers drew
+# each metal as one solid rectangle, so the wide-metal .f rules fired on our wires beside
+# it and its pin and obstruction rectangles met in 0.03 um slivers (M4.e), 53 flags on the
+# 8x4 chip that the real layout does not have. The router still keeps out of the macro
+# through its LEF obstructions, and the IHP KLayout deck checks our wiring against the
+# real SRAM GDS. The vendor SRAM GDS itself is not Magic-clean (57 Cnt.c flags even with
+# the PDK's read_sram_gds.tcl flattening), so the flow keeps the abstract.
+# Magic also flags the standard-cell fill cells (pSD.e/f) wherever two of them sit directly
+# above each other across a shared rail; the PDK's decap cells, which fill large gaps
+# first, do not have the diffusion stub that causes it.
 # Recheck after any change to the macro placement, the power grid or the abstract.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
